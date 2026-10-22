@@ -27,6 +27,9 @@ service disappearing, leaves the user with a complete, self-describing folder.
 
 - ACP (WAC only). Solid Notifications beyond WebSocketChannel2023.
 - SPARQL Update PATCH (N3 Patch only; SPARQL Update is a later addition).
+- Remote JSON-LD contexts: a document whose `@context` is a URL is refused
+  (400), because loading it would make every parse a fetch to a URL the client
+  chose. Bundling a few well-known contexts is a later option.
 - iCloud (no web API for iCloud Drive).
 - Uploads over 100 MB (the Cloudflare request-body cap on our zone plan).
 - Server-side encryption of user data.
@@ -103,8 +106,8 @@ case folding is refused with 409, so the layout stays one-to-one.
 ## Resource semantics (Solid Protocol subset for M1)
 
 - `GET`/`HEAD` on documents stream the file, honoring `Range`. RDF documents
-  are converted on request: `text/turtle`, `application/ld+json` (M1b),
-  `application/n-triples`.
+  are stored as sent and converted on request between `text/turtle`,
+  `application/ld+json` and `application/n-triples`.
 - `GET` on a container returns its description: `ldp:Container`,
   `ldp:BasicContainer`, `ldp:Resource`, `ldp:contains` per child, from the
   index (no storage round trip).
@@ -119,7 +122,8 @@ case folding is refused with 409, so the layout stays one-to-one.
   creating it if absent. A document breaking the N3 Patch rules (not exactly
   one patch resource, unbound variables, blank nodes in `where`/`deletes`,
   nested formulae) is 422. A `where` that does not match exactly once, or a
-  delete that is absent, is 409. Only `text/turtle` documents can be patched.
+  delete that is absent, is 409. Any RDF document can be patched; it keeps
+  its stored type.
 - `DELETE` removes a document (and its `.acl`/`.meta`) or an empty container
   (409 if not empty). The root cannot be deleted.
 - Conditional requests: `If-Match` and `If-None-Match` (including `*`) on
@@ -204,11 +208,12 @@ the dev config enables it.
 
 ## Milestones
 
-- **M1 core**: Worker + Pod DO + domain, `MemoryFileStore`/`DevFileStore`, all
+- **M1 core** (done): Worker + Pod DO + domain, `MemoryFileStore`/`DevFileStore`, all
   resource semantics above except JSON-LD, WAC with dev agent header, CORS.
   Exit: unit tests + an HTTP-level suite against `wrangler dev`.
-- **M1b**: JSON-LD conneg; the CSS-compatibility test (CSS file backend
-  serves a folder we wrote, and we index a folder CSS wrote).
+- **M1b** (done): JSON-LD; `make compat` proves a stock CSS 7.2 serves a
+  folder we wrote with the same documents, members and access decisions.
+  Indexing a folder CSS wrote comes with reconcile in M2.
 - **M2**: Solid-OIDC verification; Dropbox adapter (App folder, PKCE + refresh
   token, encrypted at rest); link flow; Dropbox change feed into reconcile.
 - **M3**: our own Solid-OIDC identity provider, signup, WebID profiles.

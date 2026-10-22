@@ -8,6 +8,8 @@
     "dev": "wrangler dev --config wrangler.dev.jsonc"
   },
   "dependencies": {
+    "jsonld-streaming-parser": "5.0.1",
+    "jsonld-streaming-serializer": "4.0.0",
     "mime-types": "2.1.35",
     "n3": "1.26.0"
   },
@@ -22,6 +24,7 @@
   },
   "allowScripts": {
     "esbuild@0.28.1": true,
-    "workerd@1.20261001.1": true
+    "workerd@1.20261001.1": true,
+    "fsevents": false
   }
 }

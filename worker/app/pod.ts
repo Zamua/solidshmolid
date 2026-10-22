@@ -199,7 +199,7 @@ export class Pod {
     const text = await this.readText(row);
     if (text !== null) {
       try {
-        auths = authorizationsOf(parseRdf(text, ACL_TYPE, this.url(row.path)));
+        auths = authorizationsOf(await parseRdf(text, ACL_TYPE, this.url(row.path)));
       } catch {
         // An ACL that does not parse grants nothing.
         auths = [];
@@ -223,7 +223,7 @@ export class Pod {
     return row.kind === 'container' ? this.readContainer(row, options, access) : this.readDocument(row, options, access);
   }
 
-  private readContainer(row: ResourceRow, options: ReadOptions, access: Access): ReadResult {
+  private async readContainer(row: ResourceRow, options: ReadOptions, access: Access): Promise<ReadResult> {
     const type = negotiate(options.accept, [...RDF_TYPES]);
     if (!type) throw new NotAcceptable('containers are served as RDF');
     const members = this.members(row.path).map((m) => ({ url: this.url(m.path) }));
@@ -234,7 +234,7 @@ export class Pod {
       contentType: type,
       etag: type === TURTLE ? row.etag : `${row.etag}+${typeSuffix(type)}`,
       modified: row.modified,
-      body: options.head ? null : serializeRdf(quads, type, this.url(row.path)),
+      body: options.head ? null : await serializeRdf(quads, type, this.url(row.path)),
       size: null,
       range: null,
       access,
@@ -251,12 +251,12 @@ export class Pod {
 
     if (bareType(type) !== bareType(stored)) {
       const text = await this.requireText(row);
-      const quads = parseRdf(text, stored, this.url(row.path));
+      const quads = await parseRdf(text, stored, this.url(row.path));
       return {
         ...base,
         contentType: type,
         etag: `${row.etag}+${typeSuffix(type)}`,
-        body: options.head ? null : serializeRdf(quads, type, this.url(row.path)),
+        body: options.head ? null : await serializeRdf(quads, type, this.url(row.path)),
         size: null,
         range: null,
       };
@@ -359,11 +359,11 @@ export class Pod {
         throw e;
       }
       const storedType = existing?.contentType ?? TURTLE;
-      if (existing && bareType(storedType) !== TURTLE) throw new UnsupportedMediaType(`${path} is ${storedType}; only text/turtle can be patched`);
+      if (!isRdfType(storedType)) throw new UnsupportedMediaType(`${path} is ${storedType}; only RDF documents can be patched`);
       if (isAclPath(path)) await this.authorizeWrite(path, existing, agent);
       else if (!existing) await this.authorizeCreate(path, agent);
       await this.require(path, agent, modesForPatch(patch));
-      const current = existing ? parseRdf(await this.requireText(existing), TURTLE, this.url(path)) : [];
+      const current = existing ? await parseRdf(await this.requireText(existing), storedType, this.url(path)) : [];
       let next;
       try {
         next = applyPatch(current, patch);
@@ -371,7 +371,7 @@ export class Pod {
         if (e instanceof PatchConflict) throw new Conflict(e.message);
         throw e;
       }
-      await this.storeRdf(path, TURTLE, serializeRdf(next, TURTLE, this.url(path)), existing);
+      await this.storeRdf(path, storedType, await serializeRdf(next, storedType, this.url(path)), existing);
       return { path, created: existing === null };
     });
   }
@@ -491,7 +491,7 @@ export class Pod {
   /** Validates and stores an RDF document. */
   private async storeRdf(path: PodPath, contentType: string, text: string, existing: ResourceRow | null): Promise<void> {
     try {
-      const quads = parseRdf(text, contentType, this.url(path));
+      const quads = await parseRdf(text, contentType, this.url(path));
       if (isAclPath(path)) authorizationsOf(quads);
     } catch (e) {
       if (e instanceof InvalidRdf) throw new BadRequest(`invalid ${bareType(contentType)}: ${e.message}`);

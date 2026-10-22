@@ -129,6 +129,21 @@ describe('documents and containers', () => {
     await expect(pod.read('/b.bin', alice, { ...GET, range: { start: 10, end: null } })).rejects.toThrow(RangeNotSatisfiable);
   });
 
+  it('stores JSON-LD as sent and converts it on request', async () => {
+    const { pod, files } = await newPod();
+    const doc = JSON.stringify({ '@id': '#x', 'http://example.org/p': 'v' });
+    await pod.put('/j.jsonld', alice, body(doc), 'application/ld+json', NO_CONDITIONS);
+    expect(files.text('j.jsonld')).toBe(doc);
+    const ttl = await read(pod, '/j.jsonld', alice, { ...GET, accept: 'text/turtle' });
+    expect(ttl.text).toContain('"v"');
+    const container = await read(pod, '/', alice, { ...GET, accept: 'application/ld+json' });
+    expect(container.contentType).toBe('application/ld+json');
+    expect(JSON.parse(container.text)).toBeTruthy();
+    await pod.patch('/j.jsonld', alice, `${PRE}_:p a solid:InsertDeletePatch; solid:inserts { <#x> ex:n 1 }.`, N3, NO_CONDITIONS);
+    expect(JSON.parse(files.text('j.jsonld')!)).toBeTruthy();
+    expect((await read(pod, '/j.jsonld', alice, { ...GET, accept: 'application/n-triples' })).text).toContain('<http://example.org/n>');
+  });
+
   it('forgets a resource whose file vanished from storage', async () => {
     const { pod, files, index } = await newPod();
     await pod.put('/gone.bin', alice, body('x'), 'application/octet-stream', NO_CONDITIONS);
