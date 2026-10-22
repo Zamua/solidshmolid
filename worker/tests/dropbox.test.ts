@@ -114,7 +114,7 @@ describe('DropboxFileStore', () => {
     ]);
     fake.editOutOfBand('/x/2.txt', '2');
     await files.remove('x/1.txt');
-    const changes = await files.listChanges(all.cursor);
+    const changes = await files.changes(all.cursor);
     expect(changes.entries.map((e) => [e.kind, e.path])).toEqual([
       ['file', 'x/2.txt'],
       ['deleted', 'x/1.txt'],

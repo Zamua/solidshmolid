@@ -40,7 +40,8 @@ import {
   Unprocessable,
   UnsupportedMediaType,
 } from './errors.js';
-import { type ByteRange, type FileStore, type PodIndex, type ResourceRow, RevisionConflict } from './ports.js';
+import { type ByteRange, type FileStore, type ListedEntry, type PodIndex, type ResourceRow, RevisionConflict } from './ports.js';
+import { type ReconcileReport, applyChanges, rebuildIndex } from './reconcile.js';
 import { Serial } from './serial.js';
 
 /** RDF bodies are parsed in memory; anything larger is refused. */
@@ -156,6 +157,22 @@ export class Pod {
       await this.storeRdf('/profile/card.acl', ACL_TYPE, profileAcl, null);
       index.setState({ owner, created: this.deps.now().toISOString() });
     });
+  }
+
+  // ---- reconcile ------------------------------------------------------------
+
+  /** Takes over an existing pod folder: the index becomes what it holds. */
+  adopt(owner: string, entries: ListedEntry[]): Promise<ReconcileReport> {
+    return this.writes.run(async () => {
+      const report = await rebuildIndex(this.deps, entries);
+      if (!this.deps.index.state()) this.deps.index.setState({ owner, created: this.deps.now().toISOString() });
+      return report;
+    });
+  }
+
+  /** Folds in changes made to the folder outside this server. */
+  applyChanges(entries: ListedEntry[]): Promise<ReconcileReport> {
+    return this.writes.run(() => applyChanges(this.deps, entries));
   }
 
   // ---- access control ---------------------------------------------------

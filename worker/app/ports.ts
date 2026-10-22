@@ -44,6 +44,28 @@ export interface FileStore {
 /** A write's revision precondition failed. */
 export class RevisionConflict extends Error {}
 
+/** One entry of a storage listing. Folder paths end in '/'. */
+export interface ListedEntry {
+  kind: 'file' | 'folder' | 'deleted';
+  path: string;
+  rev: string | null;
+  size: number;
+  modified: string | null;
+}
+
+export interface Listing {
+  entries: ListedEntry[];
+  /** Pass to `changes` to get what changed after this listing. */
+  cursor: string;
+}
+
+/** Storage that can enumerate the pod folder and report later changes. */
+export interface FileLister {
+  listAll(): Promise<Listing>;
+  /** Changes since `cursor`, deletions included. */
+  changes(cursor: string): Promise<Listing>;
+}
+
 export interface ResourceRow {
   path: PodPath;
   kind: 'container' | 'document';

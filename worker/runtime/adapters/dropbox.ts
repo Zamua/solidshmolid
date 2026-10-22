@@ -7,7 +7,17 @@
 // own write queue keeps contention from our side to one request at a time.
 
 import { InsufficientStorage, StorageUnavailable } from '../../app/errors.js';
-import { type ByteRange, type FileInfo, type FileStore, RevisionConflict, type StoredFile, type WriteOptions } from '../../app/ports.js';
+import {
+  type ByteRange,
+  type FileInfo,
+  type FileLister,
+  type FileStore,
+  type ListedEntry,
+  type Listing,
+  RevisionConflict,
+  type StoredFile,
+  type WriteOptions,
+} from '../../app/ports.js';
 
 const API = 'https://api.dropboxapi.com/2';
 const CONTENT = 'https://content.dropboxapi.com/2';
@@ -32,16 +42,7 @@ interface Metadata {
   server_modified: string;
 }
 
-export interface ListedEntry {
-  kind: 'file' | 'folder' | 'deleted';
-  /** Relative to the app folder, as stored ('a/b.ttl', 'a/' for a folder). */
-  path: string;
-  rev: string | null;
-  size: number;
-  modified: string | null;
-}
-
-export class DropboxFileStore implements FileStore {
+export class DropboxFileStore implements FileStore, FileLister {
   private readonly sleep: (ms: number) => Promise<void>;
   private readonly chunkSize: number;
 
@@ -91,13 +92,11 @@ export class DropboxFileStore implements FileStore {
     await this.deletePath(path);
   }
 
-  /** Every entry under the app folder, and a cursor for later changes. */
-  async listAll(): Promise<{ entries: ListedEntry[]; cursor: string }> {
+  async listAll(): Promise<Listing> {
     return this.listPages(`${API}/files/list_folder`, { path: '', recursive: true, include_deleted: false });
   }
 
-  /** Entries changed since `cursor`, deletions included. */
-  async listChanges(cursor: string): Promise<{ entries: ListedEntry[]; cursor: string }> {
+  async changes(cursor: string): Promise<Listing> {
     return this.listPages(`${API}/files/list_folder/continue`, { cursor });
   }
 
@@ -154,7 +153,7 @@ export class DropboxFileStore implements FileStore {
     await this.ensureOk(res, 'delete');
   }
 
-  private async listPages(url: string, body: object): Promise<{ entries: ListedEntry[]; cursor: string }> {
+  private async listPages(url: string, body: object): Promise<Listing> {
     const entries: ListedEntry[] = [];
     let page = await this.json(url, body);
     for (;;) {
