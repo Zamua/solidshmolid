@@ -25,6 +25,7 @@ make typecheck
 make dev         # wrangler dev on 127.0.0.1:8787, pods at http://<handle>.localhost:8787
 POD_URL=http://smoke.localhost:8787 DEV_WEBID='http://smoke.localhost:8787/profile/card#me' make smoke
 make build       # wrangler dry-run bundle
+make compat      # a stock CSS 7.2 serves a folder we wrote (installs CSS in ~/.cache/solidshmolid)
 ```
 
 `wrangler.dev.jsonc` sets `DEV_MODE=1`: pods are created on first request,
@@ -42,6 +43,11 @@ make build       # wrangler dry-run bundle
   into a pod's ACL at provisioning uses the base of that first request. In dev,
   always use `http://<handle>.localhost:8787` (with the port), or the owner
   WebID will not match.
+- CSS reads every `CSS_*` environment variable as a CLI option, so the compat
+  test's variable is `COMPAT_CSS_BIN`.
+- CSS lists a file whose name holds an escaped character (`a%3Ab.txt`)
+  double-encoded (`a%253Ab.txt`) while serving the canonical URL; the compat
+  test tolerates exactly that.
 - `curl --data '@prefix ...'` reads a file named `prefix ...`; use
   `--data-raw` for Turtle/N3 bodies.
 - Install scripts for esbuild/workerd are allow-listed in `package.json`
@@ -50,6 +56,6 @@ make build       # wrangler dry-run bundle
 ## State
 
 M1 (core resource server on a dev store) is done and smoke-tested on wrangler
-dev. Next: M1b (JSON-LD, CSS compatibility test against a real CSS), then M2
+dev; the CSS compatibility test passes. Next: JSON-LD conversion, then M2
 (Solid-OIDC verification, Dropbox adapter, link flow). Not deployed anywhere
 yet; deploying waits for M2 since a pod without auth or storage is useless.
