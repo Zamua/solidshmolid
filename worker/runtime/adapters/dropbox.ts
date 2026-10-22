@@ -32,6 +32,9 @@ export interface DropboxDeps {
   sleep?: (ms: number) => Promise<void>;
   /** Upload piece size; tests shrink it. */
   chunkSize?: number;
+  /** A folder inside the app folder to treat as the pod folder ('' or
+   * 'pods/alice'); the app folder itself by default. */
+  root?: string;
 }
 
 interface Metadata {
@@ -45,15 +48,22 @@ interface Metadata {
 export class DropboxFileStore implements FileStore, FileLister {
   private readonly sleep: (ms: number) => Promise<void>;
   private readonly chunkSize: number;
+  private readonly root: string;
 
   constructor(private readonly deps: DropboxDeps) {
     this.sleep = deps.sleep ?? ((ms) => new Promise((r) => setTimeout(r, ms)));
     this.chunkSize = deps.chunkSize ?? CHUNK;
+    this.root = (deps.root ?? '').replace(/^\/+|\/+$/gu, '');
+  }
+
+  /** A pod-folder path as a Dropbox path. */
+  private at(path: string): string {
+    return dropboxPath(this.root ? `${this.root}/${path}` : path);
   }
 
   async read(file: string, range?: ByteRange): Promise<StoredFile | null> {
     const res = await this.call(`${CONTENT}/files/download`, {
-      arg: { path: dropboxPath(file) },
+      arg: { path: this.at(file) },
       headers: range ? { Range: `bytes=${range.start}-${range.end}` } : {},
     });
     if (res.status === 409) {
@@ -69,17 +79,17 @@ export class DropboxFileStore implements FileStore, FileLister {
   async write(file: string, body: ReadableStream<Uint8Array> | Uint8Array, options: WriteOptions = {}): Promise<FileInfo> {
     const mode =
       options.ifRev === undefined ? 'overwrite' : options.ifRev === null ? 'add' : { '.tag': 'update', update: options.ifRev };
-    const commit = { path: dropboxPath(file), mode, autorename: false, mute: true, strict_conflict: true };
+    const commit = { path: this.at(file), mode, autorename: false, mute: true, strict_conflict: true };
     const meta = body instanceof Uint8Array ? await this.upload(commit, body) : await this.uploadStream(commit, body);
     return { file, rev: meta.rev, size: meta.size, modified: meta.server_modified };
   }
 
   async remove(file: string): Promise<void> {
-    await this.deletePath(dropboxPath(file));
+    await this.deletePath(this.at(file));
   }
 
   async makeFolder(folder: string): Promise<void> {
-    const path = dropboxPath(folder);
+    const path = this.at(folder);
     if (path === '') return;
     const res = await this.writeCall(`${API}/files/create_folder_v2`, { json: { path, autorename: false } });
     if (res.status === 409 && (await errorSummary(res)).includes('conflict')) return;
@@ -87,13 +97,13 @@ export class DropboxFileStore implements FileStore, FileLister {
   }
 
   async removeFolder(folder: string): Promise<void> {
-    const path = dropboxPath(folder);
-    if (path === '') throw new Error('refusing to delete the app folder');
+    const path = this.at(folder);
+    if (path === this.at('')) throw new Error('refusing to delete the pod folder');
     await this.deletePath(path);
   }
 
   async listAll(): Promise<Listing> {
-    return this.listPages(`${API}/files/list_folder`, { path: '', recursive: true, include_deleted: false });
+    return this.listPages(`${API}/files/list_folder`, { path: this.at(''), recursive: true, include_deleted: false });
   }
 
   async changes(cursor: string): Promise<Listing> {
@@ -158,7 +168,12 @@ export class DropboxFileStore implements FileStore, FileLister {
     let page = await this.json(url, body);
     for (;;) {
       for (const e of page.entries as (Metadata & { '.tag': string; path_display: string })[]) {
-        const path = e.path_display.replace(/^\//u, '');
+        const full = e.path_display.replace(/^\//u, '');
+        // Dropbox matches paths case-insensitively, and so must the prefix.
+        const prefix = this.root ? `${this.root}/` : '';
+        if (prefix && !full.toLowerCase().startsWith(prefix.toLowerCase())) continue;
+        const path = full.slice(prefix.length);
+        if (path === '') continue;
         entries.push({
           kind: e['.tag'] === 'folder' ? 'folder' : e['.tag'] === 'deleted' ? 'deleted' : 'file',
           path: e['.tag'] === 'folder' ? `${path}/` : path,

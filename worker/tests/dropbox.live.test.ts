@@ -3,9 +3,11 @@
 // gives one for your own account). Works in a scratch subfolder it removes.
 
 import { afterAll, describe, expect, it } from 'vitest';
+import { NotFound } from '../app/errors.js';
+import { NO_CONDITIONS, Pod } from '../app/pod.js';
 import { RevisionConflict } from '../app/ports.js';
 import { DropboxFileStore } from '../runtime/adapters/dropbox.js';
-import { streamOf, textOf } from './support/fakes.js';
+import { ALICE, BASE, PROFILE, sqliteIndex, streamOf, textOf } from './support/fakes.js';
 
 const TOKEN = process.env.DROPBOX_LIVE_TOKEN;
 const DIR = `live-test-${Date.now().toString(36)}`;
@@ -30,7 +32,7 @@ describe.skipIf(!TOKEN)('DropboxFileStore on real Dropbox', () => {
     expect(await files.read(`${DIR}/missing.txt`)).toBeNull();
   });
 
-  it('streams a body larger than one upload piece', async () => {
+  it('streams a body larger than one upload piece', { timeout: 60_000 }, async () => {
     const big = 'z'.repeat(9 * 1024 * 1024 + 7);
     const info = await files.write(`${DIR}/big.bin`, streamOf(big));
     expect(info.size).toBe(big.length);
@@ -50,4 +52,43 @@ describe.skipIf(!TOKEN)('DropboxFileStore on real Dropbox', () => {
     expect(seen).toContain(`deleted ${DIR}/listed/one.txt`.toLowerCase());
     expect(seen).toContain(`file ${DIR}/listed/two.txt`.toLowerCase());
   });
+});
+
+describe.skipIf(!TOKEN)('a pod on real Dropbox', () => {
+  const ROOT = `live-pod-${Date.now().toString(36)}`;
+  const store = () => new DropboxFileStore({ fetch: (u, i) => fetch(u, i), accessToken: async () => TOKEN!, root: ROOT });
+  const appFolder = new DropboxFileStore({ fetch: (u, i) => fetch(u, i), accessToken: async () => TOKEN! });
+  const alice = { webid: ALICE };
+  const GET = { accept: null, range: null, head: false };
+
+  afterAll(async () => {
+    if (TOKEN) await appFolder.removeFolder(`${ROOT}/`);
+  });
+
+  it('serves, edits and deletes, and a fresh index adopts the same pod', async () => {
+    let id = 0;
+    const pod = new Pod({ index: sqliteIndex(), files: store(), base: BASE, now: () => new Date(), newId: () => `l${++id}` });
+    await pod.provision(ALICE, PROFILE);
+    await pod.put('/notes/caf%C3%A9.ttl', alice, { stream: streamOf('<#a> <http://example.org/n> 1.') }, 'text/turtle', NO_CONDITIONS);
+    await pod.put('/odd', alice, { stream: streamOf('?') }, 'application/x-odd', NO_CONDITIONS);
+    await pod.put('/gone.txt', alice, { stream: streamOf('x') }, 'text/plain', NO_CONDITIONS);
+    await pod.patch(
+      '/notes/caf%C3%A9.ttl',
+      alice,
+      '@prefix solid: <http://www.w3.org/ns/solid/terms#>. _:p a solid:InsertDeletePatch; solid:inserts { <#a> <http://example.org/n> 2 }.',
+      'text/n3',
+      NO_CONDITIONS,
+    );
+    await pod.remove('/gone.txt', alice, NO_CONDITIONS);
+
+    const adopted = new Pod({ index: sqliteIndex(), files: store(), base: BASE, now: () => new Date(), newId: () => `m${++id}` });
+    const report = await adopted.adopt(ALICE, (await store().listAll()).entries);
+    expect(report.skipped).toEqual([]);
+    const note = await adopted.read('/notes/caf%C3%A9.ttl', alice, { ...GET, accept: 'application/n-triples' });
+    expect((await textOf(note.body)).split('\n').filter(Boolean)).toHaveLength(2);
+    expect((await adopted.read('/odd', alice, GET)).contentType).toBe('application/x-odd');
+    await expect(adopted.read('/gone.txt', alice, GET)).rejects.toThrow(NotFound);
+    const card = await adopted.read('/profile/card', { webid: null }, GET);
+    expect(await textOf(card.body)).toContain('PersonalProfileDocument');
+  }, 60_000);
 });
