@@ -2,7 +2,7 @@
 SHELL := /bin/bash
 NODE  := npx
 
-.PHONY: help build test typecheck dev smoke compat
+.PHONY: help build test typecheck dev smoke compat e2e
 
 help:
 	@grep -E '^[a-z-]+:.*?##' $(MAKEFILE_LIST) | sed 's/:.*##/\t/'
@@ -27,9 +27,14 @@ smoke: ## smoke a running pod (POD_URL, optional DEV_WEBID; see scripts/smoke.sh
 CSS_VERSION := 7.2.0
 CSS_DIR     ?= $(HOME)/.cache/solidshmolid/css-$(CSS_VERSION)
 
-compat: ## check a stock Community Solid Server serves the folders we write
-	@test -f $(CSS_DIR)/node_modules/@solid/community-server/bin/server.js || \
-	  (mkdir -p $(CSS_DIR) && cd $(CSS_DIR) && npm init -y >/dev/null && \
-	   npm install --no-audit --no-fund --ignore-scripts @solid/community-server@$(CSS_VERSION))
-	COMPAT_CSS_BIN=$(CSS_DIR)/node_modules/@solid/community-server/bin/server.js \
-	  $(NODE) vitest run --root worker tests/compat.test.ts
+CSS_BIN     := $(CSS_DIR)/node_modules/@solid/community-server/bin/server.js
+
+$(CSS_BIN):
+	mkdir -p $(CSS_DIR) && cd $(CSS_DIR) && npm init -y >/dev/null && \
+	  npm install --no-audit --no-fund --ignore-scripts @solid/community-server@$(CSS_VERSION)
+
+compat: $(CSS_BIN) ## a stock CSS serves the folders we write, and its tokens verify here
+	COMPAT_CSS_BIN=$(CSS_BIN) $(NODE) vitest run --root worker tests/compat.test.ts tests/idp.test.ts
+
+e2e: $(CSS_BIN) ## a CSS WebID uses a dev pod through the Worker (starts wrangler dev)
+	COMPAT_CSS_BIN=$(CSS_BIN) ./scripts/e2e.sh

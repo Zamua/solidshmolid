@@ -3,10 +3,16 @@
 
 import { handleFromHost } from '../domain/handles.js';
 import { profileDocument } from '../domain/profile.js';
+import { InvalidCredentials, SolidOidcVerifier } from './auth/solidOidc.js';
 import type { Env } from './env.js';
-import { AGENT_HEADER, BASE_HEADER, INTERNAL_PREFIX } from './podObject.js';
+import { withCors } from './http.js';
+import { AGENT_HEADER, BASE_HEADER, INTERNAL_PREFIX, JTI_EXPIRES_HEADER, JTI_HEADER } from './podObject.js';
 
 export { PodObject } from './podObject.js';
+
+// Module scope, so issuer keys and WebID lookups are cached across requests
+// in one isolate. An eviction costs a refetch, never a failure.
+let verifier: SolidOidcVerifier | null = null;
 
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
@@ -28,14 +34,42 @@ export default {
     const base = url.origin;
     if (dev) await stub.ensureProvisioned(base, `${base}/profile/card#me`, profileDocument(`${base}/`, null));
 
-    // Solid-OIDC verification arrives in M2; until then only the dev config
-    // can name an agent, and everyone else is anonymous.
-    const agent = dev ? (request.headers.get('X-Dev-WebID') ?? '') : '';
-
     const headers = new Headers(request.headers);
     for (const name of [...headers.keys()]) if (name.toLowerCase().startsWith(INTERNAL_PREFIX)) headers.delete(name);
     headers.set(BASE_HEADER, base);
-    headers.set(AGENT_HEADER, agent);
+
+    if (request.method !== 'OPTIONS') {
+      verifier ??= new SolidOidcVerifier({ fetch: (input, init) => fetch(input, init), now: () => Date.now() });
+      try {
+        const agent = await verifier.verify({
+          method: request.method,
+          url: request.url,
+          authorization: request.headers.get('Authorization'),
+          dpop: request.headers.get('DPoP'),
+        });
+        if (agent) {
+          headers.set(AGENT_HEADER, agent.webid);
+          headers.set(JTI_HEADER, agent.jti);
+          headers.set(JTI_EXPIRES_HEADER, String(agent.jtiExpires));
+        } else if (dev) {
+          headers.set(AGENT_HEADER, request.headers.get('X-Dev-WebID') ?? '');
+        }
+      } catch (e) {
+        if (!(e instanceof InvalidCredentials)) throw e;
+        return withCors(invalidToken(e.message), request, request.headers.get('Origin'));
+      }
+    }
     return stub.fetch(new Request(request, { headers }));
   },
 } satisfies ExportedHandler<Env>;
+
+function invalidToken(reason: string): Response {
+  const description = reason.replace(/["\\]/gu, "'");
+  return new Response(`${reason}\n`, {
+    status: 401,
+    headers: {
+      'Content-Type': 'text/plain; charset=utf-8',
+      'WWW-Authenticate': `DPoP algs="ES256 PS256 RS256", error="invalid_token", error_description="${description}"`,
+    },
+  });
+}
