@@ -100,8 +100,8 @@ describe.skipIf(!CSS)('a stock CSS serves the folder we wrote', () => {
       headers: { ...(agent?.webid ? { Authorization: `WebID ${agent.webid}` } : {}), ...(accept ? { Accept: accept } : {}) },
     });
 
-  const triples = (text: string, type: string, at: string) =>
-    serializeRdf(parseRdf(text, type, at), 'application/n-triples').trim().split('\n').sort();
+  const triples = async (text: string, type: string, at: string) =>
+    (await serializeRdf(await parseRdf(text, type, at), 'application/n-triples')).trim().split('\n').sort();
 
   it('serves every document with our type and content', async () => {
     for (const [path, type] of [...DOCUMENTS.map(([p, t]) => [p, t] as const), ['/profile/card', 'text/turtle'] as const]) {
@@ -111,15 +111,15 @@ describe.skipIf(!CSS)('a stock CSS serves the folder we wrote', () => {
       expect(res.status, path).toBe(200);
       expect(bareType(res.headers.get('Content-Type') ?? ''), path).toBe(bareType(ours.contentType));
       const theirText = await res.text();
-      if (type === 'text/turtle') expect(triples(theirText, type, `${base}${path}`), path).toEqual(triples(ourText, type, `${base}${path}`));
+      if (type === 'text/turtle') expect(await triples(theirText, type, `${base}${path}`), path).toEqual(await triples(ourText, type, `${base}${path}`));
       else if (type === 'application/ld+json') expect(JSON.parse(theirText), path).toEqual(JSON.parse(ourText));
       else expect(theirText, path).toBe(ourText);
     }
   });
 
   it('lists the same container members', async () => {
-    const members = (text: string, at: string) =>
-      parseRdf(text, 'text/turtle', at)
+    const members = async (text: string, at: string) =>
+      (await parseRdf(text, 'text/turtle', at))
         .filter((q) => q.predicate.value === LDP('contains'))
         .map((q) => q.object.value)
         .sort();
@@ -130,8 +130,8 @@ describe.skipIf(!CSS)('a stock CSS serves the folder we wrote', () => {
       // CSS lists a file whose name holds an escaped character (`a%3Ab.txt`)
       // with the escape encoded again (`a%253Ab.txt`), though it serves the
       // canonical URL; undo that one step before comparing.
-      const listed = members(await res.text(), `${base}${path}`).map((u) => u.replace(/%25(3A|3C|3E|22|7C|3F|2A|25)/giu, '%$1'));
-      expect(listed, path).toEqual(members(await textOf(ours.body), `${base}${path}`));
+      const listed = (await members(await res.text(), `${base}${path}`)).map((u) => u.replace(/%25(3A|3C|3E|22|7C|3F|2A|25)/giu, '%$1'));
+      expect(listed, path).toEqual(await members(await textOf(ours.body), `${base}${path}`));
     }
   });
 

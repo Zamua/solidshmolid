@@ -6,12 +6,12 @@ const POD = 'https://alice.example';
 const ALICE = `${POD}/profile/card#me`;
 const BOB = 'https://bob.example/profile/card#me';
 
-const acl = (turtle: string, at = `${POD}/.acl`) =>
+const acl = async (turtle: string, at = `${POD}/.acl`) =>
   authorizationsOf(
-    parseRdf(`@prefix acl: <http://www.w3.org/ns/auth/acl#>. @prefix foaf: <http://xmlns.com/foaf/0.1/>.\n${turtle}`, 'text/turtle', at),
+    await parseRdf(`@prefix acl: <http://www.w3.org/ns/auth/acl#>. @prefix foaf: <http://xmlns.com/foaf/0.1/>.\n${turtle}`, 'text/turtle', at),
   );
 
-const ROOT = acl(`
+const ROOT = await acl(`
   <#owner> a acl:Authorization; acl:agent <${ALICE}>;
     acl:accessTo <./>; acl:default <./>;
     acl:mode acl:Read, acl:Write, acl:Control.
@@ -39,13 +39,13 @@ describe('grantedModes', () => {
     expect(grantedModes(ROOT, own, BOB)).toEqual(set('read'));
   });
 
-  it('ignores statements that are not typed acl:Authorization', () => {
-    const untyped = acl(`<#x> acl:agentClass foaf:Agent; acl:accessTo <./>; acl:mode acl:Write.`);
+  it('ignores statements that are not typed acl:Authorization', async () => {
+    const untyped = await acl(`<#x> acl:agentClass foaf:Agent; acl:accessTo <./>; acl:mode acl:Write.`);
     expect(grantedModes(untyped, { url: `${POD}/`, inheritedFrom: null }, null)).toEqual(set());
   });
 
-  it('resolves relative IRIs against the ACL document', () => {
-    const own = acl(`<#r> a acl:Authorization; acl:agent <${BOB}>; acl:accessTo <a.ttl>; acl:mode acl:Read.`, `${POD}/notes/a.ttl.acl`);
+  it('resolves relative IRIs against the ACL document', async () => {
+    const own = await acl(`<#r> a acl:Authorization; acl:agent <${BOB}>; acl:accessTo <a.ttl>; acl:mode acl:Read.`, `${POD}/notes/a.ttl.acl`);
     expect(grantedModes(own, { url: `${POD}/notes/a.ttl`, inheritedFrom: null }, BOB)).toEqual(set('read'));
   });
 });

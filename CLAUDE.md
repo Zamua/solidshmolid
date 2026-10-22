@@ -56,6 +56,6 @@ make compat      # a stock CSS 7.2 serves a folder we wrote (installs CSS in ~/.
 ## State
 
 M1 (core resource server on a dev store) is done and smoke-tested on wrangler
-dev; the CSS compatibility test passes. Next: JSON-LD conversion, then M2
+dev; JSON-LD and the CSS compatibility test are in. Next: M2
 (Solid-OIDC verification, Dropbox adapter, link flow). Not deployed anywhere
 yet; deploying waits for M2 since a pod without auth or storage is useless.
