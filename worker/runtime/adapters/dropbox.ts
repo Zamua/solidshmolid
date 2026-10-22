@@ -214,7 +214,10 @@ export class DropboxFileStore implements FileStore, FileLister {
   private async ensureOk(res: Response, what: string): Promise<void> {
     if (res.ok) return;
     const detail = await errorSummary(res);
-    if (res.status === 401) throw new StorageUnavailable('the Dropbox link was revoked or expired; reconnect Dropbox');
+    if (res.status === 401) {
+      if (detail.includes('missing_scope')) throw new StorageUnavailable(`the Dropbox app lacks a permission (${detail})`);
+      throw new StorageUnavailable('the Dropbox link was revoked or expired; reconnect Dropbox');
+    }
     if (res.status === 429 || res.status >= 500) {
       const retry = Number(res.headers.get('Retry-After'));
       throw new StorageUnavailable(`Dropbox ${what}: ${detail}`, Number.isFinite(retry) ? retry : null);
