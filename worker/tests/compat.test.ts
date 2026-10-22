@@ -16,7 +16,7 @@ import { profileDocument } from '../domain/profile.js';
 import { parseRdf, serializeRdf } from '../domain/rdf.js';
 import { LDP } from '../domain/vocab.js';
 import { DirFileStore } from './support/dirFiles.js';
-import { CSS_BIN, type RunningCss, freePort, startCssOn } from './support/css.js';
+import { CSS_BIN, type RunningCss, freePort, startCss, startCssOn } from './support/css.js';
 import { sqliteIndex, streamOf, textOf } from './support/fakes.js';
 
 const CONFIG = new URL('./compat/css-file-root.json', import.meta.url).pathname;
@@ -135,6 +135,61 @@ describe.skipIf(!CSS_BIN)('a stock CSS serves the folder we wrote', () => {
       );
       const res = await theirs(path, agent);
       expect(res.status, `${agent?.webid ?? 'anonymous'} ${path}`).toBe(ourStatus);
+    }
+  });
+});
+
+describe.skipIf(!CSS_BIN)('we adopt a folder a stock CSS wrote', () => {
+  const INIT_CONFIG = new URL('./compat/css-file-root-init.json', import.meta.url).pathname;
+  const WRITES: [path: string, type: string, body: string][] = [
+    ['/notes/a.ttl', 'text/turtle', '<#a> <http://example.org/p> "café".'],
+    ['/notes/b.txt', 'text/plain', 'hello\n'],
+    ['/data.json', 'application/ld+json', '{"@id":"http://example.org/x","http://example.org/p":"v"}'],
+    ['/odd', 'application/x-solidshmolid-test', 'opaque'],
+    ['/my%20notes/caf%C3%A9.ttl', 'text/turtle', '<#x> <http://example.org/p> 1.'],
+  ];
+  const READS = [...WRITES.map(([p]) => p), '/', '/notes/', '/my%20notes/'];
+  let dir: string;
+  let base: string;
+  const seen = new Map<string, { type: string; body: string }>();
+
+  beforeAll(async () => {
+    dir = await mkdtemp(join(tmpdir(), 'solidshmolid-adopt-'));
+    const css = await startCss(['-c', INIT_CONFIG, '-f', dir], '');
+    base = css.base.replace(/\/$/u, '');
+    try {
+      for (const [path, type, text] of WRITES) {
+        const res = await fetch(`${base}${path}`, { method: 'PUT', headers: { 'Content-Type': type }, body: text });
+        expect(res.status, path).toBeLessThan(300);
+      }
+      for (const path of READS) {
+        const res = await fetch(`${base}${path}`, { headers: { Accept: path.endsWith('/') ? 'text/turtle' : '*/*' } });
+        seen.set(path, { type: bareType(res.headers.get('Content-Type') ?? ''), body: await res.text() });
+      }
+    } finally {
+      css.stop();
+    }
+  }, 90_000);
+
+  afterAll(async () => {
+    if (dir) await rm(dir, { recursive: true, force: true });
+  });
+
+  it('serves every resource CSS held, with the same type, content and members', async () => {
+    const files = new DirFileStore(dir);
+    let id = 0;
+    const pod = new Pod({ index: sqliteIndex(), files, base, now: () => new Date(), newId: () => `a${++id}` });
+    const report = await pod.adopt('https://owner.example/#me', await files.listing());
+    expect(report.skipped).toEqual([]);
+    const contains = async (text: string, at: string) =>
+      (await parseRdf(text, 'text/turtle', at)).filter((q) => q.predicate.value === LDP('contains')).map((q) => q.object.value).sort();
+    for (const path of READS) {
+      const ours = await pod.read(path, { webid: null }, { accept: path.endsWith('/') ? 'text/turtle' : null, range: null, head: false });
+      const theirs = seen.get(path)!;
+      expect(bareType(ours.contentType), path).toBe(theirs.type);
+      const text = await textOf(ours.body);
+      if (path.endsWith('/')) expect(await contains(text, `${base}${path}`), path).toEqual(await contains(theirs.body, `${base}${path}`));
+      else expect(text, path).toBe(theirs.body);
     }
   });
 });

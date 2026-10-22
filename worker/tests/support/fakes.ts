@@ -1,7 +1,15 @@
 // Test doubles: an in-memory FileStore and the SQLite index over node:sqlite.
 
 import { createRequire } from 'node:module';
-import { type ByteRange, type FileInfo, type FileStore, RevisionConflict, type StoredFile, type WriteOptions } from '../../app/ports.js';
+import {
+  type ByteRange,
+  type FileInfo,
+  type FileStore,
+  type ListedEntry,
+  RevisionConflict,
+  type StoredFile,
+  type WriteOptions,
+} from '../../app/ports.js';
 import { Pod } from '../../app/pod.js';
 import { SqlIndex } from '../../runtime/sqlIndex.js';
 
@@ -75,6 +83,20 @@ export class MemoryFileStore implements FileStore {
   async removeFolder(folder: string): Promise<void> {
     this.folders.delete(folder);
     for (const f of [...this.files.keys()]) if (f.startsWith(folder)) this.files.delete(f);
+  }
+
+  /** A full listing, as a provider would report it. */
+  listing(): ListedEntry[] {
+    const folders = new Set<string>();
+    for (const f of [...this.folders, ...this.files.keys()]) {
+      const parts = f.split('/');
+      for (let i = 1; i < parts.length; i++) folders.add(`${parts.slice(0, i).join('/')}/`);
+    }
+    folders.delete('/');
+    return [
+      ...[...folders].filter((f) => f !== '').map((path) => ({ kind: 'folder' as const, path, rev: null, size: 0, modified: null })),
+      ...[...this.files].map(([path, e]) => ({ kind: 'file' as const, path, rev: e.rev, size: e.bytes.byteLength, modified: e.modified })),
+    ];
   }
 
   text(file: string): string | undefined {

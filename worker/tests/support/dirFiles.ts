@@ -1,8 +1,16 @@
 // A FileStore over a real directory, so another server can read what we wrote.
 
-import { mkdir, readFile, rm, stat, writeFile } from 'node:fs/promises';
-import { dirname, join } from 'node:path';
-import { type ByteRange, type FileInfo, type FileStore, RevisionConflict, type StoredFile, type WriteOptions } from '../../app/ports.js';
+import { mkdir, readFile, readdir, rm, stat, writeFile } from 'node:fs/promises';
+import { dirname, join, relative } from 'node:path';
+import {
+  type ByteRange,
+  type FileInfo,
+  type FileStore,
+  type ListedEntry,
+  RevisionConflict,
+  type StoredFile,
+  type WriteOptions,
+} from '../../app/ports.js';
 import { bytesOf, streamOf } from './fakes.js';
 
 export class DirFileStore implements FileStore {
@@ -38,6 +46,28 @@ export class DirFileStore implements FileStore {
   async remove(file: string): Promise<void> {
     await rm(join(this.root, file), { force: true });
     this.revs.delete(file);
+  }
+
+  /** Everything under the root, as a provider listing would report it. */
+  async listing(): Promise<ListedEntry[]> {
+    const out: ListedEntry[] = [];
+    const walk = async (dir: string) => {
+      for (const d of await readdir(dir, { withFileTypes: true })) {
+        const full = join(dir, d.name);
+        const rel = relative(this.root, full);
+        if (d.isDirectory()) {
+          out.push({ kind: 'folder', path: `${rel}/`, rev: null, size: 0, modified: null });
+          await walk(full);
+        } else {
+          const st = await stat(full);
+          const rev = this.revs.get(rel) ?? `m${st.mtimeMs}`;
+          this.revs.set(rel, rev);
+          out.push({ kind: 'file', path: rel, rev, size: st.size, modified: st.mtime.toISOString() });
+        }
+      }
+    };
+    await walk(this.root);
+    return out;
   }
 
   async makeFolder(folder: string): Promise<void> {

@@ -196,6 +196,27 @@ unauthorized (access revoked), rate limited (with retry-after), unavailable.
 Adapters in order: `MemoryFileStore` (tests), `DevFileStore` (DO SQLite, local
 dev only; deployments refuse it), Dropbox (M2), OneDrive, Drive, WebDAV.
 
+## Linking storage
+
+`GET|POST https://<apex>/link/dropbox/start?pod=<handle>` (the caller must
+hold Control on the pod root) begins Dropbox OAuth with PKCE and offline
+access; the verifier waits in the pod's DO under a one-time nonce (15 min).
+The state is `<handle>.<nonce>`. `/link/dropbox/callback` exchanges the code
+in the pod's DO. With PKCE Dropbox refreshes without a client secret, so the
+service holds no app secret. The refresh token is stored AES-GCM-encrypted
+under the `TOKEN_KEY` secret with the handle as associated data; access tokens
+stay in memory.
+
+On link, an app folder with no files receives a copy of the pod; a folder that
+already holds files is adopted: the index is rebuilt from a full listing
+(`app/reconcile.ts`), keeping ETags and caches of unchanged files. Files the
+layout cannot map, or that collide with another file for the same resource,
+are reported and left alone; CSS's `.internal/` folder is ignored.
+
+While linked, a request first folds in what changed in Dropbox since the last
+look (`list_folder/continue` from the stored cursor), at most every 30 s per
+pod. Webhooks can replace the polling later; the reconcile path is the same.
+
 ## Authentication
 
 Resource-server side of Solid-OIDC (`runtime/auth/solidOidc.ts`, in the
@@ -222,7 +243,8 @@ config also accepts an `X-Dev-WebID` header.
   folder we wrote with the same documents, members and access decisions.
   Indexing a folder CSS wrote comes with reconcile in M2.
 - **M2**: Solid-OIDC verification (done; `make compat` verifies a real CSS
-  token, `make e2e` drives a dev pod with one); Dropbox adapter (App folder, PKCE + refresh
+  token, `make e2e` drives a dev pod with one); reconcile (done, including
+  adopting a folder a stock CSS wrote); Dropbox adapter (App folder, PKCE + refresh
   token, encrypted at rest); link flow; Dropbox change feed into reconcile.
 - **M3**: our own Solid-OIDC identity provider, signup, WebID profiles.
 - **M4**: Solid Notifications (WebSocketChannel2023 on hibernating DO
