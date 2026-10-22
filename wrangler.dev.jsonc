@@ -1,0 +1,20 @@
+// LOCAL DEVELOPMENT ONLY. DEV_MODE trusts an X-Dev-WebID header as the
+// authenticated agent, creates pods on first request, and stores files in the
+// pod's own SQLite. A separate file rather than an env override, so a
+// deployment is never one variable away from any of that.
+{
+  "name": "solidshmolid-dev",
+  "main": "worker/runtime/worker.ts",
+  "compatibility_date": "2026-10-01",
+  "compatibility_flags": ["nodejs_compat"],
+  "durable_objects": {
+    "bindings": [{ "name": "POD", "class_name": "PodObject" }]
+  },
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["PodObject"] }],
+  "vars": {
+    "POD_HOST_TEMPLATE": "{handle}.localhost",
+    "APEX_HOST": "localhost",
+    "STORAGE": "dev",
+    "DEV_MODE": "1"
+  }
+}

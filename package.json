@@ -1,0 +1,27 @@
+{
+  "name": "solidshmolid",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "typecheck": "tsc -p worker/tsconfig.json --noEmit && tsc -p worker/tests/tsconfig.json --noEmit",
+    "test": "vitest run --root worker",
+    "dev": "wrangler dev --config wrangler.dev.jsonc"
+  },
+  "dependencies": {
+    "mime-types": "2.1.35",
+    "n3": "1.26.0"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "5.20261008.1",
+    "@types/mime-types": "2.1.4",
+    "@types/n3": "1.26.4",
+    "@types/node": "26.6.4",
+    "typescript": "5.9.3",
+    "vitest": "5.0.3",
+    "wrangler": "4.146.0"
+  },
+  "allowScripts": {
+    "esbuild@0.28.1": true,
+    "workerd@1.20261001.1": true
+  }
+}

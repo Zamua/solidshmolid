@@ -1,0 +1,18 @@
+// Deploy contract. The per-environment files in the operator repo fill in
+// the hosts and routes; nothing here may name a real domain.
+{
+  "name": "solidshmolid",
+  "main": "worker/runtime/worker.ts",
+  "compatibility_date": "2026-10-01",
+  "compatibility_flags": ["nodejs_compat"],
+  "durable_objects": {
+    "bindings": [{ "name": "POD", "class_name": "PodObject" }]
+  },
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["PodObject"] }],
+  "observability": { "enabled": true },
+  "vars": {
+    "POD_HOST_TEMPLATE": "{handle}.pods.example",
+    "APEX_HOST": "pods.example",
+    "STORAGE": "dropbox"
+  }
+}
