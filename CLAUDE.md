@@ -25,7 +25,8 @@ make typecheck
 make dev         # wrangler dev on 127.0.0.1:8787, pods at http://<handle>.localhost:8787
 POD_URL=http://smoke.localhost:8787 DEV_WEBID='http://smoke.localhost:8787/profile/card#me' make smoke
 make build       # wrangler dry-run bundle
-make compat      # a stock CSS 7.2 serves a folder we wrote (installs CSS in ~/.cache/solidshmolid)
+make compat      # a stock CSS 7.2 serves a folder we wrote, and its tokens verify (CSS in ~/.cache/solidshmolid)
+make e2e         # a CSS WebID reads/writes a dev pod through wrangler dev (Worker, verifier, DO)
 ```
 
 `wrangler.dev.jsonc` sets `DEV_MODE=1`: pods are created on first request,
@@ -44,7 +45,9 @@ make compat      # a stock CSS 7.2 serves a folder we wrote (installs CSS in ~/.
   always use `http://<handle>.localhost:8787` (with the port), or the owner
   WebID will not match.
 - CSS reads every `CSS_*` environment variable as a CLI option, so the compat
-  test's variable is `COMPAT_CSS_BIN`.
+  test's variable is `COMPAT_CSS_BIN`; and under the test runner's
+  `NODE_ENV=test` its OIDC stack calls `jest`. `tests/support/css.ts` spawns it
+  with a bare env.
 - CSS lists a file whose name holds an escaped character (`a%3Ab.txt`)
   double-encoded (`a%253Ab.txt`) while serving the canonical URL; the compat
   test tolerates exactly that.
@@ -56,6 +59,7 @@ make compat      # a stock CSS 7.2 serves a folder we wrote (installs CSS in ~/.
 ## State
 
 M1 (core resource server on a dev store) is done and smoke-tested on wrangler
-dev; JSON-LD and the CSS compatibility test are in. Next: M2
-(Solid-OIDC verification, Dropbox adapter, link flow). Not deployed anywhere
+dev; JSON-LD, the CSS compatibility test and Solid-OIDC verification are in.
+Next in M2: the Dropbox adapter and link flow (waiting on the Dropbox app
+registration), then reconcile. Not deployed anywhere
 yet; deploying waits for M2 since a pod without auth or storage is useless.

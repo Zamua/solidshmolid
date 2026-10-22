@@ -8,6 +8,7 @@
     "dev": "wrangler dev --config wrangler.dev.jsonc"
   },
   "dependencies": {
+    "jose": "6.2.12",
     "jsonld-streaming-parser": "5.0.1",
     "jsonld-streaming-serializer": "4.0.0",
     "mime-types": "2.1.35",

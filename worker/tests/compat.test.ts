@@ -5,9 +5,7 @@
 // bin/server.js. Skipped otherwise. (Not CSS_*: CSS reads every CSS_* variable
 // as a command-line option.)
 
-import { type ChildProcess, spawn } from 'node:child_process';
 import { mkdtemp, rm } from 'node:fs/promises';
-import { createServer } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -18,9 +16,9 @@ import { profileDocument } from '../domain/profile.js';
 import { parseRdf, serializeRdf } from '../domain/rdf.js';
 import { LDP } from '../domain/vocab.js';
 import { DirFileStore } from './support/dirFiles.js';
+import { CSS_BIN, type RunningCss, freePort, startCssOn } from './support/css.js';
 import { sqliteIndex, streamOf, textOf } from './support/fakes.js';
 
-const CSS = process.env.COMPAT_CSS_BIN;
 const CONFIG = new URL('./compat/css-file-root.json', import.meta.url).pathname;
 const BOB = 'https://bob.example/profile/card#me';
 
@@ -37,25 +35,15 @@ const DOCUMENTS: [path: string, type: string, body: string][] = [
 
 const CONTAINERS = ['/', '/notes/', '/shared/', '/my%20notes/', '/profile/'];
 
-async function freePort(): Promise<number> {
-  return new Promise((resolve) => {
-    const s = createServer();
-    s.listen(0, '127.0.0.1', () => {
-      const { port } = s.address() as { port: number };
-      s.close(() => resolve(port));
-    });
-  });
-}
-
 function status(e: unknown): number {
   const name = e instanceof PodError ? e.name : '';
   return { Unauthenticated: 401, Forbidden: 403, NotFound: 404 }[name] ?? 500;
 }
 
-describe.skipIf(!CSS)('a stock CSS serves the folder we wrote', () => {
+describe.skipIf(!CSS_BIN)('a stock CSS serves the folder we wrote', () => {
   let dir: string;
   let base: string;
-  let css: ChildProcess;
+  let css: RunningCss;
   let pod: Pod;
   let alice: Agent;
 
@@ -80,18 +68,11 @@ describe.skipIf(!CSS)('a stock CSS serves the folder we wrote', () => {
       NO_CONDITIONS,
     );
 
-    css = spawn('node', [CSS!, '-c', CONFIG, '-f', dir, '-p', String(port), '-b', `${base}/`, '-l', 'warn'], { stdio: 'inherit' });
-    const deadline = Date.now() + 60_000;
-    for (;;) {
-      const ok = await fetch(`${base}/profile/card`).then((r) => r.ok, () => false);
-      if (ok) break;
-      if (Date.now() > deadline) throw new Error('CSS did not start');
-      await new Promise((r) => setTimeout(r, 250));
-    }
+    css = await startCssOn(port, ['-c', CONFIG, '-f', dir], 'profile/card');
   }, 90_000);
 
   afterAll(async () => {
-    css?.kill();
+    css?.stop();
     if (dir) await rm(dir, { recursive: true, force: true });
   });
 

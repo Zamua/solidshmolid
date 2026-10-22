@@ -196,15 +196,22 @@ unauthorized (access revoked), rate limited (with retry-after), unavailable.
 Adapters in order: `MemoryFileStore` (tests), `DevFileStore` (DO SQLite, local
 dev only; deployments refuse it), Dropbox (M2), OneDrive, Drive, WebDAV.
 
-## Authentication (M2)
+## Authentication
 
-Resource-server side of Solid-OIDC: `Authorization: DPoP <jwt>` plus a `DPoP`
-proof. Verify the proof (`htm`, `htu`, `iat` window, `jti` not replayed, key
-thumbprint equals the token's `cnf.jkt`), the token signature against the
-issuer's JWKS, `aud` including `solid`, `exp`, and that the token's `webid`
-document lists the issuer as `solid:oidcIssuer`. Any Solid issuer is accepted;
-our own comes in M3. Local dev may accept an `X-Dev-WebID` header, only when
-the dev config enables it.
+Resource-server side of Solid-OIDC (`runtime/auth/solidOidc.ts`, in the
+Worker): `Authorization: DPoP <jwt>` plus a `DPoP` proof. Bearer tokens are
+refused. Checked: the token signature against the issuer's JWKS (discovered
+from `/.well-known/openid-configuration`, cached 5 minutes, refetched once on
+an unknown key), `iss`, `exp`, `aud` including `solid`, a `webid` claim and a
+`cnf.jkt`; the proof's signature, `typ`, key thumbprint equal to `cnf.jkt`,
+`htm`, `htu` (query ignored), `iat` within 5 minutes, a `jti`, and `ath` when
+present; and that the WebID document names the issuer as `solid:oidcIssuer`.
+The pod's DO rejects a `jti` it has seen inside the proof window: a proof
+names the pod's host in `htu`, so per-pod uniqueness suffices. Every URL the
+verifier fetches is chosen by the client, so each fetch is time-boxed (5 s)
+and size-capped (256 KiB). Any Solid issuer is accepted; our own comes in M3.
+A failure is 401 with `WWW-Authenticate: DPoP error="invalid_token"`. The dev
+config also accepts an `X-Dev-WebID` header.
 
 ## Milestones
 
@@ -214,7 +221,8 @@ the dev config enables it.
 - **M1b** (done): JSON-LD; `make compat` proves a stock CSS 7.2 serves a
   folder we wrote with the same documents, members and access decisions.
   Indexing a folder CSS wrote comes with reconcile in M2.
-- **M2**: Solid-OIDC verification; Dropbox adapter (App folder, PKCE + refresh
+- **M2**: Solid-OIDC verification (done; `make compat` verifies a real CSS
+  token, `make e2e` drives a dev pod with one); Dropbox adapter (App folder, PKCE + refresh
   token, encrypted at rest); link flow; Dropbox change feed into reconcile.
 - **M3**: our own Solid-OIDC identity provider, signup, WebID profiles.
 - **M4**: Solid Notifications (WebSocketChannel2023 on hibernating DO
