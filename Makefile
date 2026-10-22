@@ -2,7 +2,7 @@
 SHELL := /bin/bash
 NODE  := npx
 
-.PHONY: help build test typecheck dev smoke compat e2e
+.PHONY: help build test typecheck dev smoke compat e2e live
 
 help:
 	@grep -E '^[a-z-]+:.*?##' $(MAKEFILE_LIST) | sed 's/:.*##/\t/'
@@ -18,8 +18,16 @@ typecheck: ## typecheck the worker and its tests
 test: ## unit tests
 	$(NODE) vitest run --root worker
 
-dev: ## run the worker locally on :8787 (pods at http://<handle>.localhost:8787)
+.dev.vars:
+	@printf 'TOKEN_KEY=%s\n' "$$(head -c 32 /dev/urandom | base64)" > .dev.vars
+	@chmod 600 .dev.vars
+
+dev: .dev.vars ## run the worker locally on :8787 (pods at http://<handle>.localhost:8787)
 	$(NODE) wrangler dev --config wrangler.dev.jsonc --ip 127.0.0.1 --port 8787
+
+live: ## the Dropbox adapter against real Dropbox (DROPBOX_LIVE_TOKEN_FILE holds an app-folder token)
+	DROPBOX_LIVE_TOKEN="$$(tr -d '\n' < $${DROPBOX_LIVE_TOKEN_FILE:-$$HOME/keys/dropbox-dev-token})" \
+	  $(NODE) vitest run --root worker tests/dropbox.live.test.ts
 
 smoke: ## smoke a running pod (POD_URL, optional DEV_WEBID; see scripts/smoke.sh)
 	./scripts/smoke.sh
