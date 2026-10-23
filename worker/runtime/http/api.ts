@@ -52,7 +52,7 @@ export async function apiRoute(request: Request, env: Env, url: URL, person: str
         if ('retry' in outcome) {
           const { token, sentence } = outcome.retry;
           return html
-            ? confirmDeletionPage(token, sentence, "That didn't match. Type the sentence exactly as shown.", 400)
+            ? confirmDeletionPage(token, sentence, "That didn't match. Copy the sentence above, or type it exactly.", 400)
             : Response.json({ code: 'not_confirmed', confirmToken: token, sentence }, { status: 400 });
         }
         return done(html, outcome.deleted === 'account' ? '/sign-out' : '/', null, 204);

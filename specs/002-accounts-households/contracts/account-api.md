@@ -18,5 +18,5 @@ JSON. Errors: `{ "error": "<code>", "message": "..." }` with 400/401/403/404/409
 | `POST /api/pods/{id}/delete` `{deleteFiles: false}` | deletes a pod other than the first; keeps its folder; 409 for the WebID pod |
 | `POST /api/pods/{id}/delete` `{deleteFiles: true}` | returns `{confirmToken, sentence}`; nothing deleted yet |
 | `POST /api/account/delete` `{deleteFiles}` | the same for the whole account: every pod, the grants, the stored records, the Clerk user |
-| `POST /api/deletions/confirm` `{token, typed}` | deletes the files only when `typed` equals `sentence` exactly (SC-005); any answer uses the token up |
+| `POST /api/deletions/confirm` `{token, typed}` | deletes the files only when `typed` equals `sentence` exactly (SC-005); any answer uses the token up, and a wrong one answers 400 `{code: "not_confirmed", confirmToken, sentence}` with a fresh token |
 | `POST /api/pods/{id}/move` `{linkId}` | copies to another link, then switches (FR-014); not built yet |
