@@ -10,16 +10,15 @@ import { escapeHtml, page, podCloud } from './shell.js';
 export function welcomePage(): Response {
   return page(
     'solidshmolid',
-    `<div style="margin-top:72px"><div class="row" style="gap:6px">${podCloud({ html: icon('image', 28) })}${podCloud({ html: icon('notepad', 28) })}${podCloud({ html: icon('calendarBlank', 28) })}</div>
+    `<div class="welcome"><div style="margin-top:72px"><div class="row" style="gap:6px">${podCloud({ html: icon('image', 28) })}${podCloud({ html: icon('notepad', 28) })}${podCloud({ html: icon('calendarBlank', 28) })}</div>
 <h1>A home for your data, kept in your own cloud</h1>
-<p class="lede">Get a pod: a private space your apps can use with your permission. Its files live in your Dropbox, where you can always see them.</p></div>
-<ul class="plain card" style="margin-top:26px">
+<p class="lede">Get a pod: a private space your apps can use with your permission. Its files live in your Dropbox, where you can always see them.</p>
+<div class="dock"><div><a class="btn primary" href="/sign-up?return=%2F">Create your pod</a><a class="btn quiet" href="/sign-in?return=%2F">I already have one</a></div></div></div>
+<ul class="plain card features" style="margin-top:26px">
 <li>${icon('folderSimpleLock')}<span>Your files stay in your Dropbox, not on our servers.</span></li>
 <li>${icon('stack')}<span>Keep separate pods for work, photos or anything else.</span></li>
 <li>${icon('doorOpen')}<span>Leave anytime. Your folder is still a complete pod.</span></li>
-</ul>
-<p class="small center" style="margin-top:18px"><a href="/privacy">Privacy</a></p>
-<div class="dock"><div><a class="btn primary" href="/sign-up?return=%2F">Create your pod</a><a class="btn quiet" href="/sign-in?return=%2F">I already have one</a></div></div>`,
+</ul></div>`,
   );
 }
 
@@ -62,14 +61,14 @@ export function podsPage(state: AccountState, apps: Approval[], hosts: Hosts): R
       const body = p.linkId
         ? `<a class="grow row-link" href="/pods/${escapeHtml(p.podId)}/files">${label}<div class="small">${escapeHtml(new URL(origin).host)}</div></a>`
         : `<div class="grow">${label}<div class="small">${where}</div></div>`;
-      return `<div class="row" style="padding:12px 0${i ? ';border-top:1px solid var(--line)' : ''}">
+      return `<div class="row list-row pod-row">
 ${podCloud(String(i + 1), true)}
 ${body}${remove}</div>`;
     })
     .join('');
   const appRows = apps
     .map(
-      (a, i) => `<div class="row" style="padding:10px 0${i ? ';border-top:1px solid var(--line)' : ''}">
+      (a) => `<div class="row list-row">
 <div class="grow"><b>${escapeHtml(appName(a))}</b><div class="small">${escapeHtml(a.site ?? 'Signed in with your WebID')}</div></div>
 <a class="chip-btn" href="/apps/remove?client=${encodeURIComponent(a.clientId)}">Remove</a></div>`,
     )
@@ -237,12 +236,12 @@ export function filesPage(state: AccountState, podId: string, path: string, entr
     .join('<span class="crumb-sep">/</span>');
   const rows = [...entries]
     .sort((a, b) => (a.kind === b.kind ? a.path.localeCompare(b.path) : a.kind === 'container' ? -1 : 1))
-    .map((e, i) => {
+    .map((e) => {
       const name = decodeSegment(e.path.replace(/\/$/u, '').split('/').pop()!);
       const folder = e.kind === 'container';
       const href = folder ? `${base}/files?path=${encodeURIComponent(e.path)}` : `${base}/download?path=${encodeURIComponent(e.path)}`;
       const detail = folder ? 'Folder' : `${formatSize(e.size)}, ${formatDate(e.modified)}`;
-      return `<a class="row row-link file-row" style="padding:12px 0${i ? ';border-top:1px solid var(--line)' : ''}" href="${escapeHtml(href)}"${folder ? '' : ' download'}>
+      return `<a class="row row-link list-row" href="${escapeHtml(href)}"${folder ? '' : ' download'}>
 <span class="icon-tile">${icon(folder ? 'folder' : 'file')}</span>
 <span class="grow"><b class="file-name">${escapeHtml(name)}</b><span class="small" style="display:block">${escapeHtml(detail)}</span></span>
 ${folder ? '' : `<span class="file-get">${icon('downloadSimple', 20)}</span>`}</a>`;

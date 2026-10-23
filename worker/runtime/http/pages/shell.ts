@@ -14,19 +14,23 @@ body{font:17px/1.5 var(--body);color:var(--ink);background:linear-gradient(180de
 /* The masthead stays put; only the content scrolls (and bounces) beneath it. */
 .scroller{position:absolute;inset:0;overflow-y:auto;-webkit-overflow-scrolling:touch}
 .masthead{position:absolute;top:0;left:0;right:0;z-index:5;padding:calc(env(safe-area-inset-top) + 16px) 22px 18px;background:linear-gradient(180deg,var(--sky-top) 72%,rgba(207,228,255,0))}
-.masthead-inner{max-width:396px;margin:0 auto;display:flex;align-items:center;justify-content:space-between;gap:12px}
+.masthead-inner{max-width:396px;min-height:40px;margin:0 auto;display:flex;align-items:center;justify-content:space-between;gap:12px}
 .sky{position:absolute;inset:0 0 auto 0;height:300px;overflow:hidden;pointer-events:none}
 .sky svg{position:absolute}
 .sky .near{left:50%;margin-left:-201px;width:402px;height:300px}
 .sky .far{display:none;width:220px;height:120px}
+.sky .a{left:7%;top:150px}
+.sky .b{right:8%;top:60px;width:160px;height:90px}
+.sky .c{right:22%;top:250px;width:110px;height:62px}
 main{max-width:440px;margin:0 auto;padding:calc(env(safe-area-inset-top) + 64px) 22px 170px;position:relative}
-.wordmark{font:600 22px var(--display);color:var(--blue-deep);display:flex;align-items:center;gap:8px}
+.wordmark{font:600 22px var(--display);color:var(--blue-deep);display:flex;align-items:center;gap:8px;text-decoration:none}
 .account-menu{position:relative}
 .account-menu summary{list-style:none;cursor:pointer}
 .account-menu summary::-webkit-details-marker{display:none}
 .account-menu summary::marker{content:''}
 .user-chip{display:grid;place-items:center;width:40px;height:40px;border-radius:50%;background:#fff;color:var(--blue-deep);font:600 17px var(--display);box-shadow:0 1px 0 var(--line),0 8px 18px -12px rgba(42,82,184,.5)}
 .account-menu summary:focus-visible .user-chip{outline:3px solid var(--sun);outline-offset:2px}
+.account-menu summary:hover .user-chip{box-shadow:0 1px 0 var(--line),0 10px 22px -10px rgba(42,82,184,.6)}
 .menu{position:absolute;right:0;top:48px;z-index:10;min-width:200px;background:#fff;border-radius:18px;padding:8px;box-shadow:0 18px 40px -16px rgba(31,45,77,.35)}
 .menu a{display:block;padding:10px 12px;border-radius:12px;color:var(--ink);text-decoration:none;font-weight:700}
 .menu a:hover{background:var(--mist)}
@@ -40,8 +44,6 @@ a{color:var(--blue-deep)}
 .row{display:flex;align-items:center;gap:12px}
 .grow{flex:1;min-width:0}
 .badge{display:inline-flex;align-items:center;font:600 13px var(--body);padding:3px 10px;border-radius:999px;background:var(--mist);color:var(--blue-deep)}
-.badge.you{background:var(--sun);color:#5c4300}
-.badge.kid{background:#e3f6ec;color:#1c6b49}
 .label{display:block;font:600 15px var(--body);margin:0 0 8px}
 .field{display:block;width:100%;height:58px;padding:0 16px;font:18px var(--body);color:var(--ink);background:var(--mist);border:2px solid var(--line);border-radius:16px}
 .field:focus{outline:none;border-color:var(--blue);background:#fff}
@@ -89,14 +91,21 @@ ul.plain li .icon{color:var(--blue);flex:none;margin-top:1px}
 .row-link{color:inherit;text-decoration:none;display:flex;flex-direction:column}
 a.row.row-link{flex-direction:row}
 .row-link:hover b{color:var(--blue-deep)}
+/* Rows of a list; a pod row's link covers the whole row, beneath its own buttons. */
+.list-row{position:relative;padding:12px 0}
+.list-row+.list-row::before,.add-row::before{content:'';position:absolute;left:0;right:0;top:0;border-top:1px solid var(--line)}
+.pod-row .row-link::after{content:'';position:absolute;inset:0}
+.pod-row .icon-btn{position:relative;z-index:1}
 .crumbs{font-size:15px;color:var(--ink-soft);overflow-wrap:anywhere}
 .crumbs a{color:var(--blue-deep);font-weight:700;text-decoration:none}
 .crumb-sep{margin:0 6px;color:var(--ink-soft)}
 .file-name{display:block;overflow-wrap:anywhere}
 .file-get{color:var(--ink-soft);flex:none}
-.add-row{border-top:1px solid var(--line)}
+.add-row{position:relative}
 .add-pod{display:flex;align-items:center;gap:10px;width:100%;padding:14px 0;border:0;background:none;color:var(--blue-deep);font:600 17px var(--display);cursor:pointer}
 .add-pod:focus-visible{outline:3px solid var(--sun);outline-offset:2px;border-radius:12px}
+.add-pod:hover{color:var(--blue)}
+.foot{margin-top:28px;text-align:center;font-size:14px}
 .prose h2{margin:22px 0 6px}
 .prose h2:first-child{margin-top:0}
 .prose p{margin:0 0 10px}
@@ -111,7 +120,36 @@ main{max-width:480px;padding:96px 22px 80px}
 .masthead-inner{max-width:436px}
 h1{font-size:38px}
 .dock{position:static;padding:30px 0 0;background:none}
-.dock>*{max-width:none}
+.dock>*{max-width:none;display:flex;flex-wrap:wrap;align-items:center;gap:8px 12px}
+.dock .btn{width:auto;padding:0 30px}
+}
+/* With a mouse, the page scrolls as a document: wheel, keys, scrollbar, find. */
+@media (min-width:720px) and (hover:hover) and (pointer:fine){
+html{height:auto;overflow:visible;background:var(--sky)}
+body{position:static;overflow:visible;min-height:100vh;background:linear-gradient(180deg,var(--sky-top) 0,var(--sky) 340px) no-repeat,var(--sky)}
+.scroller{position:static;overflow:visible}
+.masthead{position:sticky}
+main{padding-top:10px}
+}
+@media (hover:hover){
+.list-row{margin:0 -10px;padding:12px 10px;border-radius:14px}
+.list-row+.list-row::before{left:10px;right:10px}
+a.list-row:hover,.pod-row:has(.row-link):hover{background:var(--mist)}
+.list-row .icon-btn:hover{background:#fff}
+}
+@media (min-width:1024px){
+.masthead-inner{max-width:1040px}
+main{max-width:620px}
+h1{font-size:44px}
+p.lede{font-size:19px;max-width:40ch}
+main:has(.welcome){max-width:1084px}
+.sky{height:760px}
+.sky .a{left:2%;top:430px}
+.sky .b{right:3%;top:120px}
+.sky .c{right:8%;top:640px}
+.welcome{display:grid;grid-template-columns:1.2fr 1fr;gap:64px;align-items:center;margin-top:56px}
+.welcome h1{font-size:56px}
+.welcome .features{margin-top:0}
 }
 `;
 
@@ -123,9 +161,9 @@ const SKY = `<div class="sky" aria-hidden="true">
 <svg class="near" viewBox="0 0 402 300"><g fill="#fff" opacity=".85"><circle cx="40" cy="96" r="26"/><circle cx="72" cy="84" r="34"/><circle cx="108" cy="98" r="24"/><rect x="40" y="96" width="70" height="26" rx="13"/></g>
 <g fill="#fff" opacity=".6"><circle cx="300" cy="58" r="18"/><circle cx="326" cy="46" r="26"/><circle cx="356" cy="60" r="18"/><rect x="300" y="58" width="58" height="20" rx="10"/></g>
 <g fill="#fff" opacity=".45"><circle cx="232" cy="150" r="12"/><circle cx="250" cy="142" r="17"/><circle cx="270" cy="152" r="12"/><rect x="232" y="150" width="40" height="14" rx="7"/></g></svg>
-<svg class="far" viewBox="0 0 150 100" style="left:7%;top:150px"><g fill="#fff" opacity=".7">${CLOUD_PUFFS}</g></svg>
-<svg class="far" viewBox="0 0 150 100" style="right:8%;top:60px;width:160px;height:90px"><g fill="#fff" opacity=".55">${CLOUD_PUFFS}</g></svg>
-<svg class="far" viewBox="0 0 150 100" style="right:22%;top:250px;width:110px;height:62px"><g fill="#fff" opacity=".45">${CLOUD_PUFFS}</g></svg>
+<svg class="far a" viewBox="0 0 150 100"><g fill="#fff" opacity=".7">${CLOUD_PUFFS}</g></svg>
+<svg class="far b" viewBox="0 0 150 100"><g fill="#fff" opacity=".55">${CLOUD_PUFFS}</g></svg>
+<svg class="far c" viewBox="0 0 150 100"><g fill="#fff" opacity=".45">${CLOUD_PUFFS}</g></svg>
 </div>`;
 
 /** A pod drawn as a cloud carrying its person's initial, or (given trusted
@@ -164,7 +202,8 @@ export function pageCsp(allow: CspAllow = {}): string {
     .join('; ');
 }
 
-export function page(title: string, body: string, status = 200): Response {
+/** `home` is where the wordmark leads: the account site's front page. */
+export function page(title: string, body: string, status = 200, home = '/'): Response {
   const html = `<!doctype html><html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="theme-color" content="#cfe4ff">
@@ -172,9 +211,10 @@ export function page(title: string, body: string, status = 200): Response {
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:wght@400;700&family=Fredoka:wght@500;600&display=swap" rel="stylesheet">
 <style>${STYLE}</style></head><body>${SKY}
-<header class="masthead"><div class="masthead-inner"><div class="wordmark">${LOGO} solidshmolid</div></div></header>
+<header class="masthead"><div class="masthead-inner"><a class="wordmark" href="${escapeHtml(home)}">${LOGO} solidshmolid</a></div></header>
 <div class="scroller"><main>
 ${body}
+<footer class="foot"><a href="${escapeHtml(home)}privacy">Privacy</a></footer>
 </main></div></body></html>`;
   return new Response(html, {
     status,
