@@ -7,7 +7,7 @@ import { providerDisplayName } from '../../domain/accounts/deletion.js';
 import { accounts, provider, storageProviders } from '../composition.js';
 import type { Env } from '../env.js';
 import { hostsFor } from '../hosts.js';
-import { connectPage, deletePage, filesPage, podsPage, removeAppPage, signupPage, welcomePage } from './pages/home.js';
+import { connectPage, deletePage, filesPage, newPodPage, podsPage, removeAppPage, signupPage, welcomePage } from './pages/home.js';
 import { PAGE_SCRIPT, PAGE_SCRIPT_PATH } from './assets/pageScript.js';
 import { privacyPage } from './pages/privacy.js';
 import { problemPage } from './pages/problem.js';
@@ -25,7 +25,7 @@ export async function homeRoute(request: Request, env: Env, url: URL, person: st
   }
   const deletingPod = /^\/pods\/([a-z0-9]{1,32})\/delete$/u.exec(url.pathname)?.[1];
   const [, browsing, browseAction] = /^\/pods\/([a-z0-9]{1,32})\/(files|download)$/u.exec(url.pathname) ?? [];
-  if (url.pathname !== '/' && url.pathname !== '/account/delete' && !deletingPod && !browsing) return null;
+  if (url.pathname !== '/' && url.pathname !== '/account/delete' && url.pathname !== '/pods/new' && !deletingPod && !browsing) return null;
   if (!person) return url.pathname === '/' ? welcomePage(storageProviders(env)) : Response.redirect(`${url.origin}/sign-in?return=${encodeURIComponent(url.pathname)}`, 302);
   const hosts = hostsFor(env, url);
   const state = await accounts(env, hosts).mine(person);
@@ -33,7 +33,8 @@ export async function homeRoute(request: Request, env: Env, url: URL, person: st
   if (deletingPod) {
     const pod = state.pods.find((p) => p.podId === deletingPod);
     if (!pod || pod === state.pods[0]) return Response.redirect(`${url.origin}/`, 302);
-    return deletePage('pod', `/api/pods/${pod.podId}/delete`, providerNames(state, [pod.linkId]));
+    const index = state.pods.indexOf(pod);
+    return deletePage('pod', `/api/pods/${pod.podId}/delete`, providerNames(state, [pod.linkId]), { index, host: new URL(hosts.podOrigin(pod.podId)).host });
   }
   if (browsing) {
     const path = url.searchParams.get('path') ?? '/';
@@ -49,7 +50,8 @@ export async function homeRoute(request: Request, env: Env, url: URL, person: st
   }
   if (url.pathname === '/account/delete') return deletePage('account', '/api/account/delete', providerNames(state, state.pods.map((p) => p.linkId)));
   if (state.links.length === 0) return connectPage(storageProviders(env));
-  return podsPage(state, await (await provider(env, `${url.origin}/`)).apps(person), hosts);
+  if (url.pathname === '/pods/new') return newPodPage(state, storageProviders(env));
+  return podsPage(state, await (await provider(env, `${url.origin}/`)).apps(person), hosts, storageProviders(env));
 }
 
 /** A file handed to the browser to save, never to render: pods hold

@@ -60,7 +60,13 @@ ${icon('caretRight', 20)}</button></form>`;
   );
 }
 
-export function podsPage(state: AccountState, apps: Approval[], hosts: Hosts): Response {
+/** `offered` lists the providers people may connect; with more than the
+ * one storage already connected, adding a pod asks where it goes. */
+export function podsPage(state: AccountState, apps: Approval[], hosts: Hosts, offered: string[]): Response {
+  const choose = state.links.length > 1 || unconnected(state, offered).length > 0;
+  const add = choose
+    ? `<a class="add-pod add-row" href="/pods/new">${icon('plus', 20)}Add a pod</a>`
+    : `<form method="post" action="/api/pods" class="add-row"><button class="add-pod">${icon('plus', 20)}Add a pod</button></form>`;
   const rows = state.pods
     .map((p, i) => {
       const origin = hosts.podOrigin(p.podId);
@@ -91,7 +97,7 @@ export function podsPage(state: AccountState, apps: Approval[], hosts: Hosts): R
     `<h1>Your pods</h1>
 <p class="lede">Each pod is its own folder in your storage. Apps you allow can use them.</p>
 <div class="card" style="padding:6px 16px">${rows}
-<form method="post" action="/api/pods" class="add-row"><button class="add-pod">${icon('plus', 20)}Add a pod</button></form></div>
+${add}</div>
 <div class="card">
 <div class="row"><div class="icon-tile">${icon('identificationCard')}</div><b class="grow">Your WebID</b>
 <button type="button" class="copy-btn" data-copy="${escapeHtml(state.webid)}" hidden>${icon('copy', 18)}${icon('check', 18)}<span data-label>Copy</span></button></div>
@@ -102,6 +108,35 @@ ${storage}
 <div class="row"><div class="icon-tile">${icon('squaresFour')}</div><div class="grow"><b>Apps</b><div class="small">${appRows ? 'Solid apps you signed in to' : 'None yet. When you sign in to a Solid app with solidshmolid, it shows up here.'}</div></div></div>
 ${appRows ? `<div style="margin-top:8px">${appRows}</div>` : ''}</div>
 <p class="small center" style="margin-top:22px"><a href="/account/delete">Delete account</a></p>`,
+  );
+}
+
+/** Offered providers the person has no storage with yet. */
+function unconnected(state: AccountState, offered: string[]): string[] {
+  return offered.filter((p) => !state.links.some((l) => l.provider === p));
+}
+
+/** Where a new pod goes: storage already connected, or more to connect. */
+export function newPodPage(state: AccountState, offered: string[]): Response {
+  const choice = (action: string, hidden: string, provider: string, title: string, detail: string) => {
+    const look = lookOf(provider);
+    return `<form method="post" action="${escapeHtml(action)}">${hidden}<button class="choice pick">
+<span class="provider-logo"${look.color ? ` style="color:${look.color}"` : ''}>${icon(look.icon, 28)}</span>
+<span class="grow"><b>${escapeHtml(title)}</b><span class="small" style="display:block">${escapeHtml(detail)}</span></span>
+${icon('caretRight', 20)}</button></form>`;
+  };
+  const connected = state.links.map((l) =>
+    choice('/api/pods', `<input type="hidden" name="link" value="${escapeHtml(l.linkId)}">`, l.provider, lookOf(l.provider).yours, podCount(state, l.linkId)),
+  );
+  const more = unconnected(state, offered).map((p) =>
+    choice(`/api/storage/${p}/start`, '<input type="hidden" name="newPod" value="true">', p, `Connect ${lookOf(p).name}`, lookOf(p).where),
+  );
+  return page(
+    'Add a pod',
+    `<h1>Where should the new pod live?</h1>
+<p class="lede">It gets its own folder and address. Apps you allow can use it.</p>
+<div class="choices">${connected.join('')}${more.join('')}</div>
+<p class="small center" style="margin-top:22px"><a href="/">Cancel</a></p>`,
   );
 }
 

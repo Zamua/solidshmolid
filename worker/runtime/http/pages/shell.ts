@@ -111,6 +111,7 @@ a.row.row-link{flex-direction:row}
 .add-pod{display:flex;align-items:center;gap:10px;width:100%;padding:14px 0;border:0;background:none;color:var(--blue-deep);font:600 17px var(--display);cursor:pointer}
 .add-pod:focus-visible{outline:3px solid var(--blue-deep);outline-offset:3px;border-radius:12px}
 .add-pod:hover{color:var(--blue)}
+a.add-pod{text-decoration:none}
 .problem-icon{margin-top:40px;color:var(--berry)}
 .problem-icon+h1{margin-top:16px}
 .consent-head{margin-top:40px}

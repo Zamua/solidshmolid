@@ -190,6 +190,20 @@ describe('connecting storage', () => {
     await expect(service.completeLink('user_dana', 'other', key, nonce, 'code', 'https://x/cb')).rejects.toThrow(LinkExpired);
   });
 
+  it('adds a pod to the storage it is told, or to storage connected for it', async () => {
+    const { service, placed, declared, state } = await connected();
+    const first = state.links[0]!.linkId;
+    const [key, nonce] = stateOf(await service.beginLink('user_dana', 'other', 'https://x/cb', true));
+    const two = await service.completeLink('user_dana', 'other', key, nonce, 'code', 'https://x/cb');
+    const second = two.links[1]!.linkId;
+    expect(two.pods.map((p) => p.linkId)).toEqual([first, second]);
+    const three = await service.addPod('user_dana', first);
+    expect(three.pods.map((p) => p.linkId)).toEqual([first, second, first]);
+    expect(placed.map((p) => p.placement.provider)).toEqual(['dropbox', 'other', 'dropbox']);
+    expect(declared).toHaveLength(2);
+    await expect(service.addPod('user_dana', 'not-a-link')).rejects.toThrow(NotFound);
+  });
+
   it('does not place a pod twice when a second link is connected', async () => {
     const { service, placed } = await connected();
     const [key, nonce] = stateOf(await service.beginLink('user_dana', 'dropbox', 'https://x/cb'));

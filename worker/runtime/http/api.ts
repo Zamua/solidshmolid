@@ -25,8 +25,12 @@ export async function apiRoute(request: Request, env: Env, url: URL, person: str
   const routes: Route[] = [
     { method: 'GET', path: /^\/api\/me$/u, run: (p) => me(env, url, p) },
     { method: 'POST', path: /^\/api\/signup$/u, run: async (p) => done(html, '/', view(await service().signup(p), env, url), 201) },
-    { method: 'POST', path: /^\/api\/pods$/u, run: async (p) => done(html, '/', view(await service().addPod(p), env, url), 201) },
-    { method: 'POST', path: /^\/api\/storage\/([\w-]{1,64})\/start$/u, run: (p, [provider]) => start(html, env, url, p, provider!) },
+    { method: 'POST', path: /^\/api\/pods$/u, run: async (p) => done(html, '/', view(await service().addPod(p, (await fields(request)).link ?? null), env, url), 201) },
+    {
+      method: 'POST',
+      path: /^\/api\/storage\/([\w-]{1,64})\/start$/u,
+      run: async (p, [provider]) => start(html, env, url, p, provider!, (await fields(request)).newPod === 'true'),
+    },
     { method: 'GET', path: /^\/link\/([\w-]{1,64})\/callback$/u, run: (p, [provider]) => finish(env, url, p, provider!) },
     { method: 'GET', path: /^\/api\/apps$/u, run: async (p) => Response.json(await (await identityProvider(env, url)).apps(p)) },
     {
@@ -119,8 +123,8 @@ async function me(env: Env, url: URL, person: string): Promise<Response> {
   return Response.json({ person, account: account && view(account, env, url) });
 }
 
-async function start(html: boolean, env: Env, url: URL, person: string, provider: string): Promise<Response> {
-  const authorizeUrl = await accounts(env, hostsFor(env, url)).beginLink(person, provider, callbackUrl(url, provider));
+async function start(html: boolean, env: Env, url: URL, person: string, provider: string, newPod: boolean): Promise<Response> {
+  const authorizeUrl = await accounts(env, hostsFor(env, url)).beginLink(person, provider, callbackUrl(url, provider), newPod);
   return html ? redirect(authorizeUrl) : Response.json({ authorizeUrl });
 }
 

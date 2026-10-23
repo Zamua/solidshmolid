@@ -29,6 +29,8 @@ export interface PendingLink {
   verifier: string;
   /** The provider the flow started with; its callback alone may finish it. */
   provider: string;
+  /** Finishing it also adds a pod in the new storage. */
+  newPod: boolean;
 }
 
 /** A deletion waiting for its typed confirmation. */
