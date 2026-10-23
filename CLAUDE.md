@@ -59,7 +59,7 @@ configs never set any of the dev switches.
 `make dev STORAGE=dev,dropbox,google-drive` offers real Dropbox and Google Drive
 beside dev storage, with their keys in `.dev.vars.local`.
 `wrangler.jsonc` is the deploy contract with example hosts; a deployment
-supplies its own copy (README "Self-hosting").
+supplies its own copy (`docs/self-hosting.md`).
 
 ## Gotchas
 
