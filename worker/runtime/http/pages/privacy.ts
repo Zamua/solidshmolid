@@ -15,14 +15,14 @@ export function privacyPage(): Response {
 <p>Your pods' files live in folders of your own storage (for Dropbox, inside <b>Apps/solidshmolid</b>). We can open only that folder. When you or an app you approved reads or writes a file, it passes through our servers on its way; we do not keep a copy.</p>
 <p>To answer quickly, we keep an index of your pod: each file's name, size, type and version. We also keep a copy of small linked-data documents (64 KB or less), such as your profile, access rules and app settings, alongside that index.</p>
 <h2>Your account</h2>
-<p>Signing in is handled by Clerk. It holds your sign-in details: your email address or username, and your name and email if you continue with Google.</p>
+<p>Signing in is handled by Clerk. It holds your sign-in details: your email address, or your name and email if you continue with Google.</p>
 <p>We keep your account: your pods' addresses, your WebID, which apps you have approved, and the connection to your storage. That connection is a token from your storage provider; we store it encrypted and use it only to reach your pods' folders.</p>
 <p>solidshmolid is not meant for children under 13.</p>
 <h2>Who else is involved</h2>
 <p>Cloudflare runs our servers and keeps short-lived request logs for operating the service. Clerk handles sign-in. Your storage provider (such as Dropbox) holds your files under your own account and its own terms. Google is involved only if you continue with Google.</p>
 <p>We do not sell your data, show ads, or use your files for anything except serving your pod to you and the apps you allow.</p>
 <h2>Leaving</h2>
-<p>You can remove apps, disconnect storage and delete your account. Deleting your account removes what we keep; your storage folder stays yours, and it is still a complete pod you can use with another Solid server. You can also revoke our access from your storage provider at any time.</p>
+<p>You can remove apps, disconnect storage, delete a pod and delete your account. Deleting your account removes what we keep and your sign-in with Clerk. Your storage folders stay yours unless you choose to delete them too, and each is still a complete pod you can use with another Solid server. You can also revoke our access from your storage provider at any time.</p>
 <h2>Contact</h2>
 <p>Questions or requests: <a href="mailto:${SUPPORT}">${SUPPORT}</a>.</p>
 </div>`,
