@@ -25,15 +25,6 @@ export function welcomePage(providers: string[]): Response {
   );
 }
 
-export function signupPage(): Response {
-  return page(
-    'Create your pod',
-    `<h1>Create your pod</h1>
-<p class="lede">You get your own address that apps know you by. Next, you choose where your pod's files live.</p>
-<div class="dock"><form method="post" action="/api/signup"><button class="btn primary">Create my pod</button></form></div>`,
-  );
-}
-
 /** Choosing storage for an account whose pods have none yet: one tap per
  * provider starts connecting it. */
 export function connectPage(providers: string[]): Response {
@@ -55,26 +46,35 @@ ${icon('caretRight', 20)}</button></form>`;
 </div>
 <ul class="plain" style="margin-top:18px">
 <li>${icon('eye')}<span>We can only open that one folder, nothing else in your storage.</span></li>
-<li>${icon('plugs')}<span>Disconnect anytime from your account or from your storage provider.</span></li>
+<li>${icon('plugs')}<span>Take our access away anytime, here or in your storage provider's settings.</span></li>
 </ul>`,
   );
 }
 
-/** `offered` lists the providers people may connect; with more than the
+/** The person's WebID, then their pods grouped under the storage each lives
+ * in. `offered` lists the providers people may connect; with more than the
  * one storage already connected, adding a pod asks where it goes. */
 export function podsPage(state: AccountState, apps: Approval[], hosts: Hosts, offered: string[]): Response {
   const choose = state.links.length > 1 || unconnected(state, offered).length > 0;
   const add = choose
-    ? `<a class="add-pod add-row" href="/pods/new">${icon('plus', 20)}Add a pod</a>`
-    : `<form method="post" action="/api/pods" class="add-row"><button class="add-pod">${icon('plus', 20)}Add a pod</button></form>`;
-  const rows = state.pods
-    .map((p, i) => {
-      const origin = hosts.podOrigin(p.podId);
-      const host = escapeHtml(new URL(origin).host);
-      const text = `<b>${podLabel(i)}</b><span class="small" style="display:block">${p.linkId ? host : 'Waiting for storage'}</span>${i === 0 ? '<span class="small" style="display:block">Holds your WebID</span>' : ''}`;
-      return p.linkId
-        ? `<a class="row list-row row-link" href="/pods/${escapeHtml(p.podId)}/files">${podCloud(String(i + 1), true)}<span class="grow">${text}</span><span class="chevron">${icon('caretRight', 20)}</span></a>`
-        : `<div class="row list-row">${podCloud(String(i + 1), true)}<span class="grow">${text}</span></div>`;
+    ? `<a class="add-pod" href="/pods/new">${icon('plus', 20)}Add a pod</a>`
+    : `<form method="post" action="/api/pods"><button class="add-pod">${icon('plus', 20)}Add a pod</button></form>`;
+  const podRow = (i: number) => {
+    const p = state.pods[i]!;
+    const host = escapeHtml(new URL(hosts.podOrigin(p.podId)).host);
+    return `<a class="row list-row row-link" href="/pods/${escapeHtml(p.podId)}/files">${podCloud(String(i + 1), true)}<span class="grow"><b>${podLabel(i)}</b><span class="small" style="display:block">${host}</span>${i === 0 ? '<span class="small" style="display:block">Holds your WebID</span>' : ''}</span><span class="chevron">${icon('caretRight', 20)}</span></a>`;
+  };
+  const groups = state.links
+    .map((l) => {
+      const look = lookOf(l.provider);
+      const pods = state.pods.flatMap((p, i) => (p.linkId === l.linkId ? [i] : []));
+      // Storage holding no pods can be let go; one holding pods cannot.
+      const disconnect = pods.length
+        ? ''
+        : `<form method="post" action="/api/storage/${escapeHtml(l.linkId)}/disconnect"><button class="chip-btn">Disconnect</button></form>`;
+      return `<div class="card" style="padding:6px 16px">
+<div class="row list-row"><span class="provider-logo"${look.color ? ` style="color:${look.color}"` : ''}>${icon(look.icon, 24)}</span><div class="grow"><b>${escapeHtml(look.yours)}</b><div class="small">${pods.length === 1 ? '1 pod' : `${pods.length} pods`}</div></div>${disconnect}</div>
+${pods.map(podRow).join('')}</div>`;
     })
     .join('');
   const appRows = apps
@@ -84,25 +84,16 @@ export function podsPage(state: AccountState, apps: Approval[], hosts: Hosts, of
 <a class="chip-btn" href="/apps/remove?client=${encodeURIComponent(a.clientId)}">Remove</a></div>`,
     )
     .join('');
-  const storage = state.links
-    .map(
-      (l) => `<div class="card row">
-<div class="icon-tile">${icon(lookOf(l.provider).icon)}</div>
-<div class="grow"><b>${escapeHtml(lookOf(l.provider).yours)}</b><div class="small">${podCount(state, l.linkId)}</div></div>
-<span class="ok">${icon('checkCircle')}</span></div>`,
-    )
-    .join('');
   return page(
     'Your pods',
     `<h1>Your pods</h1>
 <p class="lede">Each pod is its own folder in your storage. Apps you allow can use them.</p>
-<div class="card" style="padding:6px 16px">${rows}
-${add}</div>
 <div class="card">
 <div class="row"><div class="icon-tile">${icon('identificationCard')}</div><div class="grow"><b>Your WebID</b><div class="small">Apps ask for it when you sign in with Solid.</div></div></div>
 <div class="card-actions"><a class="pill-btn" href="${escapeHtml(state.webid)}" title="${escapeHtml(state.webid)}">${icon('user', 18)}View</a>
 <button type="button" class="pill-btn copy-btn" data-copy="${escapeHtml(state.webid)}" hidden>${icon('copy', 18)}${icon('check', 18)}<span data-label>Copy</span></button></div></div>
-${storage}
+${groups}
+<div class="card" style="padding:6px 16px">${add}</div>
 <div class="card">
 <div class="row"><div class="icon-tile">${icon('squaresFour')}</div><div class="grow"><b>Apps</b><div class="small">${appRows ? 'Solid apps you signed in to' : 'None yet. When you sign in to a Solid app with solidshmolid, it shows up here.'}</div></div></div>
 ${appRows ? `<div style="margin-top:8px">${appRows}</div>` : ''}</div>

@@ -101,14 +101,13 @@ a.row.row-link{flex-direction:row}
 /* Rows of a list. */
 a.list-row:focus-visible{outline-offset:-3px;border-radius:14px}
 .list-row{position:relative;padding:12px 0}
-.list-row+.list-row::before,.add-row::before{content:'';position:absolute;left:0;right:0;top:0;border-top:1px solid var(--line)}
+.list-row+.list-row::before{content:'';position:absolute;left:0;right:0;top:0;border-top:1px solid var(--line)}
 .crumbs{margin-top:40px;font-size:15px;color:var(--ink-soft);overflow-wrap:anywhere}
 .crumbs a{display:inline-block;padding:10px 0;color:var(--blue-deep);font-weight:700;text-decoration:none}
 .crumbs+h1{margin-top:4px}
 .crumb-sep{margin:0 6px;color:var(--ink-soft)}
 .file-name{display:block;overflow-wrap:anywhere}
 .chevron{color:var(--ink-soft);flex:none}
-.add-row{position:relative}
 .add-pod{display:flex;align-items:center;gap:10px;width:100%;padding:14px 0;border:0;background:none;color:var(--blue-deep);font:600 17px var(--display);cursor:pointer}
 .add-pod:focus-visible{outline:3px solid var(--blue-deep);outline-offset:3px;border-radius:12px}
 .add-pod:hover{color:var(--blue)}
