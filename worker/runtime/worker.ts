@@ -17,7 +17,9 @@ import { withClerk } from './http/clerkChrome.js';
 import { homeRoute } from './http/home.js';
 import { signInRoute } from './http/signIn.js';
 import { oidcRoute } from './http/oidc.js';
+import { PAGE_SCRIPT_PATH } from './http/assets/pageScript.js';
 import { accountMenu } from './http/pages/home.js';
+import { problemPage } from './http/pages/problem.js';
 import { isNavigation, podLandingPage, publicProfilePage } from './http/pages/podPages.js';
 import { summarizeProfile } from '../domain/pods/profile.js';
 import { parseRdf } from '../domain/shared/rdf.js';
@@ -53,7 +55,7 @@ async function apex(request: Request, env: Env, url: URL): Promise<Response> {
     (await homeRoute(request, env, url, session.person)) ??
     (await signInRoute(request, env, url)) ??
     (await devRoute(request, env, url)) ??
-    new Response('not found\n', { status: 404 });
+    (isNavigation(request) ? problemPage('Not found', 'There is nothing at this address.', 404, { way: { href: '/', label: 'Go to the front page' } }) : new Response('not found\n', { status: 404 }));
   if (session.headers) {
     response = new Response(response.body, response);
     for (const [name, value] of session.headers) response.headers.append(name, value);
@@ -72,7 +74,10 @@ async function withAccountMenu(response: Response, env: Env, url: URL, person: s
   const state = await accounts(env, hostsFor(env, url)).mine(person);
   if (!state) return response;
   const menu = accountMenu();
-  return new HTMLRewriter().on('.masthead-inner', { element: (e) => void e.append(menu, { html: true }) }).transform(response);
+  return new HTMLRewriter()
+    .on('.masthead-inner', { element: (e) => void e.append(menu, { html: true }) })
+    .on('head', { element: (e) => void e.append(`<script defer src="${PAGE_SCRIPT_PATH}"></script>`, { html: true }) })
+    .transform(response);
 }
 
 async function pod(request: Request, env: Env, url: URL, handle: string): Promise<Response> {

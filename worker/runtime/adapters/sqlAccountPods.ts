@@ -38,6 +38,7 @@ export class SqlAccountPods implements AccountRepository {
   ) {
     this.sql.exec(SCHEMA);
     addColumn(this.sql, 'link_pending', 'provider TEXT');
+    addColumn(this.sql, 'link_pending', 'new_pod INTEGER');
   }
 
   async load(): Promise<AccountState | null> {
@@ -91,15 +92,15 @@ export class SqlAccountPods implements AccountRepository {
   async rememberPending(nonce: string, pending: PendingLink): Promise<void> {
     const nowS = Math.floor(this.nowMs() / 1000);
     this.sql.exec('DELETE FROM link_pending WHERE expires < ?', nowS);
-    this.sql.exec('INSERT INTO link_pending(nonce, verifier, provider, expires) VALUES (?, ?, ?, ?)', nonce, pending.verifier, pending.provider, nowS + PENDING_TTL_S);
+    this.sql.exec('INSERT INTO link_pending(nonce, verifier, provider, new_pod, expires) VALUES (?, ?, ?, ?, ?)', nonce, pending.verifier, pending.provider, pending.newPod ? 1 : 0, nowS + PENDING_TTL_S);
   }
 
   /** Consumed on read, so a provider callback cannot be replayed. */
   async takePending(nonce: string): Promise<PendingLink | null> {
-    const row = this.sql.exec('SELECT verifier, provider, expires FROM link_pending WHERE nonce = ?', nonce).toArray()[0];
+    const row = this.sql.exec('SELECT verifier, provider, new_pod, expires FROM link_pending WHERE nonce = ?', nonce).toArray()[0];
     this.sql.exec('DELETE FROM link_pending WHERE nonce = ?', nonce);
     if (!row || Number(row.expires) < Math.floor(this.nowMs() / 1000)) return null;
-    return { verifier: String(row.verifier), provider: String(row.provider ?? '') };
+    return { verifier: String(row.verifier), provider: String(row.provider ?? ''), newPod: Number(row.new_pod) === 1 };
   }
 
   async rememberDeletion(token: string, pending: PendingDeletion): Promise<void> {

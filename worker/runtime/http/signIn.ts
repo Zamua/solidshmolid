@@ -21,7 +21,7 @@ export async function signInRoute(request: Request, env: Env, url: URL): Promise
       if (!clerk && !isDev(env)) return null;
       return page(
         'Sign in',
-        `${clerk ? `<div class="clerk-mount"><div data-clerk-mount="sign-in" data-return="${escapeHtml(back)}"></div></div>` : '<h1 style="margin-top:40px">Sign in</h1>'}
+        `${clerk ? `<div class="clerk-mount"><div data-clerk-mount="sign-in" data-return="${escapeHtml(back)}"></div></div>` : '<h1>Sign in</h1>'}
 ${isDev(env) ? `<p class="small center" style="margin-top:16px">Development: <a href="/dev/sign-in?person=dana&amp;return=${encodeURIComponent(back)}">continue as dana</a></p>` : ''}`,
       );
     case '/sign-up':
@@ -29,10 +29,10 @@ ${isDev(env) ? `<p class="small center" style="margin-top:16px">Development: <a 
       return signUpPage(back);
     case '/sso-callback':
       if (!clerk) return null;
-      return page('Signing in', `<h1 style="margin-top:40px">Signing in</h1><div data-clerk-mount="sso-callback" data-return="${escapeHtml(back)}"></div>`);
+      return page('Signing in', `<h1>Signing in</h1><div data-clerk-mount="sso-callback" data-return="${escapeHtml(back)}"></div>`);
     case '/sign-out': {
       const response = clerk
-        ? page('Signing out', '<h1 style="margin-top:40px">Signing out</h1><div data-clerk-mount="sign-out"></div>')
+        ? page('Signing out', '<h1>Signing out</h1><div data-clerk-mount="sign-out"></div>')
         : new Response(null, { status: 302, headers: { Location: '/' } });
       if (isDev(env)) response.headers.append('Set-Cookie', `${DEV_PERSON_COOKIE}=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0`);
       return response;

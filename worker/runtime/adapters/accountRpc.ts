@@ -3,6 +3,7 @@
 
 import type { AccountRepository, Directory, Identities, Placement, Pods } from '../../app/accounts/ports.js';
 import type { AccountStore, Accounts } from '../../app/identity/ports.js';
+import { BadRequest, Forbidden, InsufficientStorage, NotFound, PodError, StorageUnavailable } from '../../app/shared/errors.js';
 import { profileDocument } from '../../domain/pods/profile.js';
 import type { Env } from '../env.js';
 import type { Hosts } from '../hosts.js';
@@ -93,8 +94,8 @@ export function rpcPods(env: Env, hosts: Hosts): Pods {
     dropStorage: (webidPodId: string, owner: string, storagePodId: string) =>
       stub(webidPodId).dropStorage(hosts.podOrigin(webidPodId), owner, `${hosts.podOrigin(storagePodId)}/`),
     retire: (podId: string, deleteFiles: boolean) => stub(podId).retire(hosts.podOrigin(podId), deleteFiles),
-    list: (podId: string, owner: string, path: string) => stub(podId).list(hosts.podOrigin(podId), owner, path),
-    open: (podId: string, owner: string, path: string) => stub(podId).readFile(hosts.podOrigin(podId), owner, path),
+    list: (podId: string, owner: string, path: string) => revived(stub(podId).list(hosts.podOrigin(podId), owner, path)),
+    open: (podId: string, owner: string, path: string) => revived(stub(podId).readFile(hosts.podOrigin(podId), owner, path)),
   };
 }
 
@@ -107,4 +108,17 @@ export function rpcIdentities(env: Env): Identities {
       await account.bindWebid(webid);
     },
   };
+}
+
+const POD_ERRORS: Record<string, new (message: string) => PodError> = { NotFound, BadRequest, Forbidden, InsufficientStorage, StorageUnavailable };
+
+/** Durable Object RPC keeps a thrown error's name and message but not its
+ * class; callers branch on the class. */
+async function revived<T>(call: Promise<T>): Promise<T> {
+  try {
+    return await call;
+  } catch (e) {
+    const Class = e instanceof Error ? POD_ERRORS[e.name] : undefined;
+    throw Class && !(e instanceof Class) ? new Class((e as Error).message) : e;
+  }
 }

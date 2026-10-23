@@ -57,13 +57,14 @@ export class Accounts {
     return this.deps.account(await this.deps.directory.accountKeyFor(person)).load();
   }
 
-  /** Starts connecting storage at `provider`; returns its consent URL. */
-  async beginLink(person: string, provider: string, redirectUri: string): Promise<string> {
+  /** Starts connecting storage at `provider`; returns its consent URL.
+   * With `newPod`, finishing it also adds a pod there. */
+  async beginLink(person: string, provider: string, redirectUri: string, newPod = false): Promise<string> {
     const authorization = this.authorization(provider);
     const state = await this.signedUp(person);
     const { verifier, challenge } = await authorization.pkce();
     const nonce = this.deps.ids.random();
-    await this.deps.account(state.key).rememberPending(nonce, { verifier, provider });
+    await this.deps.account(state.key).rememberPending(nonce, { verifier, provider, newPod });
     return authorization.authorizeUrl(redirectUri, `${state.key}.${nonce}`, challenge);
   }
 
@@ -80,21 +81,17 @@ export class Accounts {
     const linkId = this.deps.ids.random();
     await account.addLink({ linkId, provider, account: grant.accountId }, grant.refreshToken);
     await this.placeWaiting(accountKey, linkId, provider);
-    return (await account.load())!;
+    const state = (await account.load())!;
+    return pending.newPod ? this.newPodIn(state, { linkId, provider }) : state;
   }
 
-  /** Adds a pod beside the first one, owned by the same WebID. */
-  async addPod(person: string): Promise<AccountState> {
+  /** Adds a pod beside the first one, owned by the same WebID, in the
+   * storage `linkId` names; the first pod's storage by default. */
+  async addPod(person: string, linkId: string | null = null): Promise<AccountState> {
     const state = await this.signedUp(person);
-    const first = state.pods[0]!;
-    const link = state.links.find((l) => l.linkId === first.linkId);
-    if (!link) throw new NoStorageYet('connect storage before adding a pod');
-    const podId = await this.deps.directory.allocatePodId(state.key);
-    const account = this.deps.account(state.key);
-    await account.addPod({ podId, linkId: null, folder: podId });
-    await this.placeWaiting(state.key, link.linkId, link.provider);
-    await this.deps.pods.declareStorage(first.podId, state.webid, podId);
-    return (await account.load())!;
+    const link = state.links.find((l) => l.linkId === (linkId ?? state.pods[0]!.linkId));
+    if (!link) throw linkId ? new NotFound('no such storage') : new NoStorageYet('connect storage before adding a pod');
+    return this.newPodIn(state, link);
   }
 
   /** A folder of one of the person's pods. */
@@ -183,14 +180,24 @@ export class Accounts {
     await this.deps.logins.remove(person);
   }
 
-  /** Places every pod still waiting for storage, each in its own folder of
-   * `linkId`. The first pod carries the WebID profile. */
   private authorization(provider: string): StorageAuthorization {
     const authorization = this.deps.authorizations[provider];
     if (!authorization) throw new NotFound(`${provider} is not storage this service connects`);
     return authorization;
   }
 
+  /** A new pod in `link`, listed in the WebID's profile beside the first. */
+  private async newPodIn(state: AccountState, link: { linkId: string; provider: string }): Promise<AccountState> {
+    const podId = await this.deps.directory.allocatePodId(state.key);
+    const account = this.deps.account(state.key);
+    await account.addPod({ podId, linkId: null, folder: podId });
+    await this.placeWaiting(state.key, link.linkId, link.provider);
+    await this.deps.pods.declareStorage(state.pods[0]!.podId, state.webid, podId);
+    return (await account.load())!;
+  }
+
+  /** Places every pod still waiting for storage, each in its own folder of
+   * `linkId`. The first pod carries the WebID profile. */
   private async placeWaiting(accountKey: string, linkId: string, provider: string): Promise<void> {
     const account = this.deps.account(accountKey);
     const state = (await account.load())!;

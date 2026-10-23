@@ -4,8 +4,8 @@
 import type { AccountState, FileEntry } from '../../../app/accounts/ports.js';
 import type { Approval } from '../../../app/identity/ports.js';
 import type { Hosts } from '../../hosts.js';
-import { PAGE_SCRIPT_PATH } from '../assets/pageScript.js';
 import { icon } from './icons.js';
+import { problemPage, sentenceOf } from './problem.js';
 import { lookOf, storagePhrase } from './providers.js';
 import { escapeHtml, page, podCloud } from './shell.js';
 
@@ -28,7 +28,7 @@ export function welcomePage(providers: string[]): Response {
 export function signupPage(): Response {
   return page(
     'Create your pod',
-    `<h1 style="margin-top:56px">Create your pod</h1>
+    `<h1>Create your pod</h1>
 <p class="lede">You get your own address that apps know you by. Next, you choose where your pod's files live.</p>
 <div class="dock"><form method="post" action="/api/signup"><button class="btn primary">Create my pod</button></form></div>`,
   );
@@ -48,7 +48,7 @@ ${icon('caretRight', 20)}</button></form>`;
     .join('');
   return page(
     'Connect storage',
-    `<h1 style="margin-top:44px">Where should your pod live?</h1>
+    `<h1>Where should your pod live?</h1>
 <p class="lede">Pick the storage you already use.</p>
 <div class="choices">${choices}
 <div class="choice off"><span class="provider-logo">${icon('cloud', 28)}</span><span class="grow"><b>OneDrive</b><span class="small" style="display:block">Coming soon</span></span></div>
@@ -60,19 +60,21 @@ ${icon('caretRight', 20)}</button></form>`;
   );
 }
 
-export function podsPage(state: AccountState, apps: Approval[], hosts: Hosts): Response {
+/** `offered` lists the providers people may connect; with more than the
+ * one storage already connected, adding a pod asks where it goes. */
+export function podsPage(state: AccountState, apps: Approval[], hosts: Hosts, offered: string[]): Response {
+  const choose = state.links.length > 1 || unconnected(state, offered).length > 0;
+  const add = choose
+    ? `<a class="add-pod add-row" href="/pods/new">${icon('plus', 20)}Add a pod</a>`
+    : `<form method="post" action="/api/pods" class="add-row"><button class="add-pod">${icon('plus', 20)}Add a pod</button></form>`;
   const rows = state.pods
     .map((p, i) => {
       const origin = hosts.podOrigin(p.podId);
-      const where = p.linkId ? `<a href="${escapeHtml(origin)}/">${escapeHtml(new URL(origin).host)}</a>` : 'Waiting for storage';
-      const remove = i === 0 ? '' : `<a class="icon-btn" href="/pods/${escapeHtml(p.podId)}/delete" aria-label="Delete pod ${i + 1}">${icon('trash', 20)}</a>`;
-      const label = `<div class="row" style="gap:8px;flex-wrap:wrap"><b>${podLabel(i)}</b>${i === 0 ? ' <span class="badge">WebID</span>' : ''}</div>`;
-      const body = p.linkId
-        ? `<a class="grow row-link" href="/pods/${escapeHtml(p.podId)}/files">${label}<div class="small">${escapeHtml(new URL(origin).host)}</div></a>`
-        : `<div class="grow">${label}<div class="small">${where}</div></div>`;
-      return `<div class="row list-row pod-row">
-${podCloud(String(i + 1), true)}
-${body}${remove}</div>`;
+      const host = escapeHtml(new URL(origin).host);
+      const text = `<b>${podLabel(i)}</b><span class="small" style="display:block">${p.linkId ? host : 'Waiting for storage'}</span>${i === 0 ? '<span class="small" style="display:block">Holds your WebID</span>' : ''}`;
+      return p.linkId
+        ? `<a class="row list-row row-link" href="/pods/${escapeHtml(p.podId)}/files">${podCloud(String(i + 1), true)}<span class="grow">${text}</span><span class="chevron">${icon('caretRight', 20)}</span></a>`
+        : `<div class="row list-row">${podCloud(String(i + 1), true)}<span class="grow">${text}</span></div>`;
     })
     .join('');
   const appRows = apps
@@ -92,19 +94,49 @@ ${body}${remove}</div>`;
     .join('');
   return page(
     'Your pods',
-    `<h1 style="margin-top:40px">Your pods</h1>
+    `<h1>Your pods</h1>
 <p class="lede">Each pod is its own folder in your storage. Apps you allow can use them.</p>
 <div class="card" style="padding:6px 16px">${rows}
-<form method="post" action="/api/pods" class="add-row"><button class="add-pod">${icon('plus', 20)}Add a pod</button></form></div>
+${add}</div>
 <div class="card">
 <div class="row"><div class="icon-tile">${icon('identificationCard')}</div><b class="grow">Your WebID</b>
 <button type="button" class="copy-btn" data-copy="${escapeHtml(state.webid)}" hidden>${icon('copy', 18)}${icon('check', 18)}<span data-label>Copy</span></button></div>
 <p class="webid">${escapeHtml(state.webid).replaceAll('/', '/<wbr>')}</p>
 <p class="small">Apps ask for it when you sign in with Solid.</p></div>
 ${storage}
-<div class="card"><h2>Apps</h2>${appRows ? `<div style="margin-top:4px">${appRows}</div>` : '<p class="small">No apps yet. When you sign in to a Solid app with solidshmolid, it shows up here, and you can remove it.</p>'}</div>
-<p class="small center" style="margin-top:22px"><a href="/account/delete">Delete account</a></p>
-<script defer src="${PAGE_SCRIPT_PATH}"></script>`,
+<div class="card">
+<div class="row"><div class="icon-tile">${icon('squaresFour')}</div><div class="grow"><b>Apps</b><div class="small">${appRows ? 'Solid apps you signed in to' : 'None yet. When you sign in to a Solid app with solidshmolid, it shows up here.'}</div></div></div>
+${appRows ? `<div style="margin-top:8px">${appRows}</div>` : ''}</div>
+<p class="small center" style="margin-top:22px"><a href="/account/delete">Delete account</a></p>`,
+  );
+}
+
+/** Offered providers the person has no storage with yet. */
+function unconnected(state: AccountState, offered: string[]): string[] {
+  return offered.filter((p) => !state.links.some((l) => l.provider === p));
+}
+
+/** Where a new pod goes: storage already connected, or more to connect. */
+export function newPodPage(state: AccountState, offered: string[]): Response {
+  const choice = (action: string, hidden: string, provider: string, title: string, detail: string) => {
+    const look = lookOf(provider);
+    return `<form method="post" action="${escapeHtml(action)}">${hidden}<button class="choice pick">
+<span class="provider-logo"${look.color ? ` style="color:${look.color}"` : ''}>${icon(look.icon, 28)}</span>
+<span class="grow"><b>${escapeHtml(title)}</b><span class="small" style="display:block">${escapeHtml(detail)}</span></span>
+${icon('caretRight', 20)}</button></form>`;
+  };
+  const connected = state.links.map((l) =>
+    choice('/api/pods', `<input type="hidden" name="link" value="${escapeHtml(l.linkId)}">`, l.provider, lookOf(l.provider).yours, podCount(state, l.linkId)),
+  );
+  const more = unconnected(state, offered).map((p) =>
+    choice(`/api/storage/${p}/start`, '<input type="hidden" name="newPod" value="true">', p, `Connect ${lookOf(p).name}`, lookOf(p).where),
+  );
+  return page(
+    'Add a pod',
+    `<h1>Where should the new pod live?</h1>
+<p class="lede">It gets its own folder and address. Apps you allow can use it.</p>
+<div class="choices">${connected.join('')}${more.join('')}</div>
+<p class="small center" style="margin-top:22px"><a href="/">Cancel</a></p>`,
   );
 }
 
@@ -114,7 +146,7 @@ function podCount(state: AccountState, linkId: string): string {
 }
 
 /** What deleting removes, and the choice of keeping the files. */
-export function deletePage(what: 'pod' | 'account', action: string, providerName: string | null): Response {
+export function deletePage(what: 'pod' | 'account', action: string, providerName: string | null, pod: { index: number; host: string } | null = null): Response {
   const title = what === 'pod' ? 'Delete this pod?' : 'Delete your account?';
   const lede =
     what === 'pod'
@@ -125,8 +157,9 @@ export function deletePage(what: 'pod' | 'account', action: string, providerName
     : '';
   return page(
     title,
-    `<h1 style="margin-top:40px">${title}</h1>
+    `<h1>${title}</h1>
 <p class="lede">${lede}</p>
+${pod ? `<div class="card row">${podCloud(String(pod.index + 1), true)}<div class="grow"><b>${podLabel(pod.index)}</b><div class="small">${escapeHtml(pod.host)}</div></div></div>` : ''}
 <form method="post" action="${escapeHtml(action)}" class="card stack">
 <button class="btn danger" name="deleteFiles" value="false">Delete, keep the files</button>
 ${files}
@@ -139,7 +172,7 @@ ${files}
 export function confirmDeletionPage(token: string, sentence: string): Response {
   return page(
     'Delete files',
-    `<h1 style="margin-top:40px">This deletes files for good</h1>
+    `<h1>This deletes files for good</h1>
 <p class="lede">Type the sentence below exactly to delete the files from your storage. Anything else deletes nothing.</p>
 <form method="post" action="/api/deletions/confirm" class="card">
 <p class="sentence">${escapeHtml(sentence)}</p>
@@ -160,7 +193,7 @@ function appName(a: Approval): string {
 export function removeAppPage(a: Approval): Response {
   return page(
     'Remove app',
-    `<h1 style="margin-top:40px">Remove ${escapeHtml(appName(a))}?</h1>
+    `<h1>Remove ${escapeHtml(appName(a))}?</h1>
 <p class="lede">${escapeHtml(a.site ?? 'This app')} will no longer be able to use your pods. If you sign in to it again, it will ask for your permission again.</p>
 <form method="post" action="/api/apps/revoke" class="card stack">
 <input type="hidden" name="clientId" value="${escapeHtml(a.clientId)}">
@@ -172,8 +205,7 @@ export function removeAppPage(a: Approval): Response {
 
 /** A request the service refused, with the way back. */
 export function refusalPage(title: string, message: string, status: number): Response {
-  const sentence = message.charAt(0).toUpperCase() + message.slice(1);
-  return page(title, `<h1 style="margin-top:40px">${escapeHtml(title)}</h1><p class="lede">${escapeHtml(sentence)}.</p><p style="margin-top:18px"><a href="/">Back to your pods</a></p>`, status);
+  return problemPage(title, sentenceOf(message), status);
 }
 
 /** Our own sign-up: an email code, or Google. The boot script drives it. */
@@ -181,7 +213,7 @@ export function signUpPage(back: string): Response {
   const signIn = `/sign-in?return=${encodeURIComponent(back)}`;
   return page(
     'Create your account',
-    `<h1 style="margin-top:40px">Create your account</h1>
+    `<h1>Create your account</h1>
 <p class="lede">Use your email or Google. There is no password to remember.</p>
 <div class="card" data-clerk-mount="sign-up" data-return="${escapeHtml(back)}">
 <button type="button" class="btn outline" data-google>${icon('googleLogo', 22)}Continue with Google</button>
@@ -210,8 +242,8 @@ export function accountMenu(): string {
   return `<details class="account-menu">
 <summary aria-label="Your account"><span class="user-chip">${icon('user', 20)}</span></summary>
 <div class="menu">
-<a href="/">Your pods</a>
-<a href="/sign-out">Sign out</a>
+<a href="/">${icon('house', 20)}Your pods</a>
+<a href="/sign-out">${icon('signOut', 20)}Sign out</a>
 </div>
 </details>`;
 }
@@ -225,8 +257,10 @@ export function filesPage(state: AccountState, podId: string, path: string, entr
   const index = state.pods.findIndex((p) => p.podId === podId);
   const base = `/pods/${encodeURIComponent(podId)}`;
   const segments = path.split('/').filter(Boolean);
-  const crumbs = [`<a href="${base}/files">${escapeHtml(podLabel(index))}</a>`]
-    .concat(segments.map((seg, i) => `<a href="${base}/files?path=${encodeURIComponent(`/${segments.slice(0, i + 1).join('/')}/`)}">${escapeHtml(decodeSegment(seg))}</a>`))
+  // Ancestors only: the folder itself is the heading.
+  const crumbs = [`<a href="/">Your pods</a>`]
+    .concat(segments.length ? [`<a href="${base}/files">${escapeHtml(podLabel(index))}</a>`] : [])
+    .concat(segments.slice(0, -1).map((seg, i) => `<a href="${base}/files?path=${encodeURIComponent(`/${segments.slice(0, i + 1).join('/')}/`)}">${escapeHtml(decodeSegment(seg))}</a>`))
     .join('<span class="crumb-sep">/</span>');
   const rows = [...entries]
     .sort((a, b) => (a.kind === b.kind ? a.path.localeCompare(b.path) : a.kind === 'container' ? -1 : 1))
@@ -238,16 +272,16 @@ export function filesPage(state: AccountState, podId: string, path: string, entr
       return `<a class="row row-link list-row" href="${escapeHtml(href)}"${folder ? '' : ' download'}>
 <span class="icon-tile">${icon(folder ? 'folder' : 'file')}</span>
 <span class="grow"><b class="file-name">${escapeHtml(name)}</b><span class="small" style="display:block">${escapeHtml(detail)}</span></span>
-${folder ? '' : `<span class="file-get">${icon('downloadSimple', 20)}</span>`}</a>`;
+<span class="chevron">${icon(folder ? 'caretRight' : 'downloadSimple', 20)}</span></a>`;
     })
     .join('');
   return page(
     'Files',
-    `${segments.length ? `<p class="crumbs" style="margin-top:40px">${crumbs}</p>` : ''}
-<h1 style="margin-top:${segments.length ? 8 : 40}px">${escapeHtml(segments.length ? decodeSegment(segments.at(-1)!) : podLabel(index))}</h1>
+    `<p class="crumbs">${crumbs}</p>
+<h1>${escapeHtml(segments.length ? decodeSegment(segments.at(-1)!) : podLabel(index))}</h1>
 <p class="small">${escapeHtml(new URL(hosts.podOrigin(podId)).host)}${escapeHtml(path)}</p>
 <div class="card" style="padding:6px 16px">${rows || '<p class="small" style="padding:14px 0">Nothing here yet. Apps you approve can save files here.</p>'}</div>
-<p class="small center" style="margin-top:18px"><a href="/">Back to your pods</a></p>`,
+${segments.length === 0 && index > 0 ? `<p class="small center" style="margin-top:22px"><a href="${base}/delete">Delete this pod</a></p>` : ''}`,
   );
 }
 

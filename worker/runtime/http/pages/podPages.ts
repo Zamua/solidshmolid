@@ -10,7 +10,7 @@ export function podLandingPage(status: 401 | 403 | 404, podUrl: string, accountS
   if (status === 404) {
     return page(
       'No pod here',
-      `<h1 style="margin-top:56px">There's no pod here</h1>
+      `<h1>There's no pod here</h1>
 <p class="lede">Nothing lives at ${escapeHtml(new URL(podUrl).host)}. Check the address, or get a pod of your own.</p>
 <div class="dock"><div><a class="btn primary" href="${escapeHtml(accountSite)}">Get a pod</a></div></div>`,
       404,
@@ -19,12 +19,10 @@ export function podLandingPage(status: 401 | 403 | 404, podUrl: string, accountS
   }
   return page(
     'A private Solid pod',
-    `<h1 style="margin-top:56px">This pod is private</h1>
-<p class="lede">It's a Solid pod: a space for someone's data, kept in their own storage. Apps they approve can use it; a browser on its own sees nothing.</p>
-<ul class="plain card" style="margin-top:22px">
-<li>${icon('folderSimpleLock')}<span>If it's yours, sign in to see what's in it.</span></li>
-</ul>
-<div class="dock"><div><a class="btn primary" href="${escapeHtml(`${accountSite}pods/${podId}/files`)}">See its files</a><a class="btn quiet" href="${escapeHtml(accountSite)}">Go to your pods</a></div></div>`,
+    `<div class="icon-tile problem-icon" style="color:var(--blue-deep)">${icon('folderSimpleLock')}</div>
+<h1>This pod is private</h1>
+<p class="lede">It's a Solid pod: someone's data, kept in their own storage. Apps they approve can use it; a browser on its own sees nothing. If it's yours, sign in to see what's in it.</p>
+<div class="dock"><div><a class="btn primary" href="${escapeHtml(`${accountSite}pods/${podId}/files`)}">Sign in to see its files</a><a class="btn quiet" href="${escapeHtml(accountSite)}">Get a pod</a></div></div>`,
     status,
     accountSite,
   );
@@ -34,11 +32,11 @@ export function podLandingPage(status: 401 | 403 | 404, podUrl: string, accountS
  * vouches for them. Apps get the profile document itself. */
 export function publicProfilePage(webid: string, profile: ProfileSummary, accountSite: string): Response {
   const name = profile.name ?? 'A Solid profile';
-  const storages = profile.storages.map((s) => `<li>${icon('folderSimpleLock')}<span>${escapeHtml(s)}</span></li>`).join('');
+  const storages = profile.storages.map((s) => `<li>${icon('folderSimpleLock')}<span>${breakable(s)}</span></li>`).join('');
   return page(
     name,
     `<div class="row" style="margin-top:44px;gap:16px">${podInitial(profile.name)}<h1 style="margin:0">${escapeHtml(name)}</h1></div>
-<div class="card row"><div class="icon-tile">${icon('identificationCard')}</div><div class="grow"><b>WebID</b><div class="small">${escapeHtml(webid)}</div></div></div>
+<div class="card row"><div class="icon-tile">${icon('identificationCard')}</div><div class="grow"><b>WebID</b><div class="small">${breakable(webid)}</div></div></div>
 ${storages ? `<div class="card"><h2>Pods</h2><ul class="plain">${storages}</ul></div>` : ''}
 ${profile.issuers.length ? `<p class="small" style="margin-top:16px">Signs in with ${profile.issuers.map((i) => escapeHtml(new URL(i).host)).join(', ')}.</p>` : ''}`,
     200,
@@ -48,6 +46,11 @@ ${profile.issuers.length ? `<p class="small" style="margin-top:16px">Signs in wi
 
 function podInitial(name: string | null): string {
   return `<span class="user-chip" style="width:56px;height:56px;font-size:24px">${name ? escapeHtml([...name][0]!.toUpperCase()) : icon('user', 26)}</span>`;
+}
+
+/** A URL that wraps at its slashes rather than mid-word. */
+function breakable(url: string): string {
+  return escapeHtml(url).replaceAll('/', '/<wbr>');
 }
 
 /** A top-level browser navigation, as opposed to an app's fetch. */

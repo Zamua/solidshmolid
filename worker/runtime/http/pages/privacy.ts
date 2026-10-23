@@ -8,7 +8,7 @@ const SUPPORT = 'solidshmolid-support@googlegroups.com';
 export function privacyPage(): Response {
   return page(
     'Privacy',
-    `<h1 style="margin-top:40px">Privacy</h1>
+    `<h1>Privacy</h1>
 <p class="lede">solidshmolid gives you a Solid pod whose files live in your own cloud storage. This page says what we keep, where, and why.</p>
 <div class="card prose">
 <h2>Your files</h2>
