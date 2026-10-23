@@ -81,6 +81,10 @@ export interface Grant {
   expiresAt: number;
 }
 
+/** The provider would not give or renew a grant: consent was cut short,
+ * the code was bad, or the person took the app's access away. */
+export class GrantRefused extends Error {}
+
 /** A storage provider's OAuth (PKCE, offline access). */
 export interface StorageAuthorization {
   readonly provider: string;

@@ -2,13 +2,13 @@
 // refresh token and accepts refreshes without a client secret, so the service
 // holds no app secret at all.
 
-import type { Grant, StorageAuthorization } from '../../app/storage/ports.js';
+import { type Grant, GrantRefused, type StorageAuthorization } from '../../app/storage/ports.js';
 import { type PkcePair, pkce } from './pkce.js';
 
 const AUTHORIZE = 'https://www.dropbox.com/oauth2/authorize';
 const TOKEN = 'https://api.dropboxapi.com/oauth2/token';
 
-export class DropboxAuthError extends Error {}
+export class DropboxAuthError extends GrantRefused {}
 
 export function authorizeUrl(appKey: string, redirectUri: string, state: string, challenge: string): string {
   const q = new URLSearchParams({

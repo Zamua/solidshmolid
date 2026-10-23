@@ -29,7 +29,8 @@ export interface AccountsDeps {
   pods: Pods;
   identities: Identities;
   logins: Logins;
-  authorization: StorageAuthorization;
+  /** The providers people may connect, by name. */
+  authorizations: Record<string, StorageAuthorization>;
   ids: Ids;
   /** The WebID of a pod id ('https://<id>.solidshmolid.com/profile/card#me'). */
   webidOf: (podId: string) => string;
@@ -56,26 +57,27 @@ export class Accounts {
     return this.deps.account(await this.deps.directory.accountKeyFor(person)).load();
   }
 
-  /** Starts connecting storage; returns the provider's consent URL. */
-  async beginLink(person: string, redirectUri: string): Promise<string> {
+  /** Starts connecting storage at `provider`; returns its consent URL. */
+  async beginLink(person: string, provider: string, redirectUri: string): Promise<string> {
+    const authorization = this.authorization(provider);
     const state = await this.signedUp(person);
-    const { verifier, challenge } = await this.deps.authorization.pkce();
+    const { verifier, challenge } = await authorization.pkce();
     const nonce = this.deps.ids.random();
-    await this.deps.account(state.key).rememberPending(nonce, { verifier });
-    return this.deps.authorization.authorizeUrl(redirectUri, `${state.key}.${nonce}`, challenge);
+    await this.deps.account(state.key).rememberPending(nonce, { verifier, provider });
+    return authorization.authorizeUrl(redirectUri, `${state.key}.${nonce}`, challenge);
   }
 
   /** Finishes connecting storage, then places every pod still waiting for
    * storage into its own folder there. Only the account that started the
    * flow may finish it, so a consent link cannot be handed to someone else. */
-  async completeLink(person: string, accountKey: string, nonce: string, code: string, redirectUri: string): Promise<AccountState> {
+  async completeLink(person: string, provider: string, accountKey: string, nonce: string, code: string, redirectUri: string): Promise<AccountState> {
+    const authorization = this.authorization(provider);
     if ((await this.deps.directory.accountKeyFor(person)) !== accountKey) throw new LinkExpired('this connection attempt expired; start again');
     const account = this.deps.account(accountKey);
     const pending = await account.takePending(nonce);
-    if (!pending) throw new LinkExpired('this connection attempt expired; start again');
-    const grant = await this.deps.authorization.exchange(code, pending.verifier, redirectUri);
+    if (!pending || pending.provider !== provider) throw new LinkExpired('this connection attempt expired; start again');
+    const grant = await authorization.exchange(code, pending.verifier, redirectUri);
     const linkId = this.deps.ids.random();
-    const provider = this.deps.authorization.provider;
     await account.addLink({ linkId, provider, account: grant.accountId }, grant.refreshToken);
     await this.placeWaiting(accountKey, linkId, provider);
     return (await account.load())!;
@@ -183,6 +185,12 @@ export class Accounts {
 
   /** Places every pod still waiting for storage, each in its own folder of
    * `linkId`. The first pod carries the WebID profile. */
+  private authorization(provider: string): StorageAuthorization {
+    const authorization = this.deps.authorizations[provider];
+    if (!authorization) throw new NotFound(`${provider} is not storage this service connects`);
+    return authorization;
+  }
+
   private async placeWaiting(accountKey: string, linkId: string, provider: string): Promise<void> {
     const account = this.deps.account(accountKey);
     const state = (await account.load())!;

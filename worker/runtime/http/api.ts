@@ -1,11 +1,12 @@
 // The account API on the apex host (contracts/account-api.md), and the
-// storage provider's callback. Translation only: who is asking comes from the
+// storage providers' callbacks. Translation only: who is asking comes from the
 // session, everything else from the accounts service.
 //
 // Pages post plain HTML forms here; those get a redirect, scripts get JSON.
 
 import { type DeletionStep, HoldsWebid, LinkExpired, NoStorageYet, NotConfirmed, NotFound, NotSignedUp, StorageInUse } from '../../app/accounts/accounts.js';
 import type { AccountState } from '../../app/accounts/ports.js';
+import { GrantRefused } from '../../app/storage/ports.js';
 import { accounts, provider } from '../composition.js';
 import type { Env } from '../env.js';
 import { hostsFor } from '../hosts.js';
@@ -19,16 +20,14 @@ interface Route {
 }
 
 export async function apiRoute(request: Request, env: Env, url: URL, person: string | null): Promise<Response | null> {
-  const provider = env.STORAGE;
-  const callback = `/link/${provider}/callback`;
   const html = wantsHtml(request);
   const service = () => accounts(env, hostsFor(env, url));
   const routes: Route[] = [
     { method: 'GET', path: /^\/api\/me$/u, run: (p) => me(env, url, p) },
     { method: 'POST', path: /^\/api\/signup$/u, run: async (p) => done(html, '/', view(await service().signup(p), env, url), 201) },
     { method: 'POST', path: /^\/api\/pods$/u, run: async (p) => done(html, '/', view(await service().addPod(p), env, url), 201) },
-    { method: 'POST', path: new RegExp(`^/api/storage/${provider}/start$`, 'u'), run: (p) => start(html, env, url, p, callback) },
-    { method: 'GET', path: new RegExp(`^${callback}$`, 'u'), run: (p) => finish(env, url, p, callback) },
+    { method: 'POST', path: /^\/api\/storage\/([\w-]{1,64})\/start$/u, run: (p, [provider]) => start(html, env, url, p, provider!) },
+    { method: 'GET', path: /^\/link\/([\w-]{1,64})\/callback$/u, run: (p, [provider]) => finish(env, url, p, provider!) },
     { method: 'GET', path: /^\/api\/apps$/u, run: async (p) => Response.json(await (await identityProvider(env, url)).apps(p)) },
     {
       method: 'POST',
@@ -62,7 +61,7 @@ export async function apiRoute(request: Request, env: Env, url: URL, person: str
     return error(403, 'cross_origin', 'requests must come from this site');
   }
   if (!person) {
-    return html ? redirect(`/sign-in?return=${encodeURIComponent(url.pathname === callback ? url.href : '/')}`) : error(401, 'signed_out', 'sign in first');
+    return html ? redirect(`/sign-in?return=${encodeURIComponent(/^\/link\//u.test(url.pathname) ? url.href : '/')}`) : error(401, 'signed_out', 'sign in first');
   }
   try {
     return await route.run(person, route.path.exec(url.pathname)!.slice(1));
@@ -120,20 +119,25 @@ async function me(env: Env, url: URL, person: string): Promise<Response> {
   return Response.json({ person, account: account && view(account, env, url) });
 }
 
-async function start(html: boolean, env: Env, url: URL, person: string, callback: string): Promise<Response> {
-  const authorizeUrl = await accounts(env, hostsFor(env, url)).beginLink(person, `${url.origin}${callback}`);
+async function start(html: boolean, env: Env, url: URL, person: string, provider: string): Promise<Response> {
+  const authorizeUrl = await accounts(env, hostsFor(env, url)).beginLink(person, provider, callbackUrl(url, provider));
   return html ? redirect(authorizeUrl) : Response.json({ authorizeUrl });
 }
 
-async function finish(env: Env, url: URL, person: string, callback: string): Promise<Response> {
+/** Where a provider sends the person back; each provider's app lists it. */
+function callbackUrl(url: URL, provider: string): string {
+  return `${url.origin}/link/${provider}/callback`;
+}
+
+async function finish(env: Env, url: URL, person: string, provider: string): Promise<Response> {
   const [accountKey, nonce] = (url.searchParams.get('state') ?? '').split('.');
   const code = url.searchParams.get('code');
   if (!accountKey || !nonce) return notConnected('The connection request was not recognised.');
   if (!code) return notConnected(`Storage was not connected (${url.searchParams.get('error') ?? 'no code'}).`);
   try {
-    await accounts(env, hostsFor(env, url)).completeLink(person, accountKey, nonce, code, `${url.origin}${callback}`);
+    await accounts(env, hostsFor(env, url)).completeLink(person, provider, accountKey, nonce, code, callbackUrl(url, provider));
   } catch (e) {
-    if (e instanceof LinkExpired) return notConnected(e.message);
+    if (e instanceof LinkExpired || e instanceof GrantRefused) return notConnected(e.message);
     throw e;
   }
   return redirect('/');

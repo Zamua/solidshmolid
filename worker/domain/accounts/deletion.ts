@@ -11,5 +11,5 @@ export function confirmsDeletion(typed: string, sentence: string): boolean {
 
 /** How the confirmation sentence names a storage provider. */
 export function providerDisplayName(provider: string): string {
-  return { dropbox: 'Dropbox', dev: 'development storage' }[provider] ?? provider;
+  return { dropbox: 'Dropbox', 'google-drive': 'Google Drive', dev: 'development storage' }[provider] ?? provider;
 }
