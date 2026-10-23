@@ -252,6 +252,14 @@ replace the polling later; the reconcile path is the same.
 dev config, which grants consent on the spot and keeps files in each pod's
 own SQLite.
 
+## People opening a pod in a browser
+
+A top-level browser navigation (`Sec-Fetch-Mode: navigate`) that a pod would
+answer with 401, 403 or 404 gets a short page for people instead: the pod is
+private (with links to open it in a Solid app and to the account site), or
+there is no pod at that address. Apps never send that header and keep the
+protocol's own answers.
+
 ## Signing in (people, on the apex)
 
 People sign in with Clerk. Every apex page loads clerk-js from the
@@ -283,7 +291,10 @@ The pod's DO rejects a `jti` it has seen inside the proof window: a proof
 names the pod's host in `htu`, so per-pod uniqueness suffices. Every URL the
 verifier fetches is chosen by the client, so each fetch is time-boxed (5 s)
 and size-capped (256 KiB). Any Solid issuer is accepted; our own comes in M3.
-A failure is 401 with `WWW-Authenticate: DPoP error="invalid_token"`. The dev
+Lookups of the service's own hosts (its provider's discovery and keys, a
+WebID one of its pods holds) are served in-process (`runtime/ownHosts.ts`):
+Cloudflare answers a Worker's subrequest to its own custom domain or route
+with 522. A failure is 401 with `WWW-Authenticate: DPoP error="invalid_token"`. The dev
 config also accepts an `X-Dev-WebID` header.
 
 ## Milestones

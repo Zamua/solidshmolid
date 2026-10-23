@@ -3,10 +3,29 @@
 // standing in for Dropbox) and gets a working pod at a random id.
 // Needs E2E_APEX_URL (e.g. http://localhost:8799); `make e2e` sets it.
 
+import { request } from 'node:http';
 import { describe, expect, it } from 'vitest';
 import { isPodId } from '../domain/accounts/podIds.js';
 
 const APEX = process.env.E2E_APEX_URL?.replace(/\/$/u, '');
+
+/** A browser's top-level navigation. fetch() drops Sec-* headers, so this
+ * goes through node:http. */
+function navigate(url: string): Promise<{ status: number; type: string | undefined; body: string }> {
+  return new Promise((resolve, reject) => {
+    const target = new URL(url);
+    const req = request(
+      { hostname: target.hostname, port: target.port, path: target.pathname, headers: { 'Sec-Fetch-Mode': 'navigate', accept: 'text/html' } },
+      (res) => {
+        let body = '';
+        res.on('data', (c: Buffer) => (body += c.toString()));
+        res.on('end', () => resolve({ status: res.statusCode ?? 0, type: res.headers['content-type'], body }));
+      },
+    );
+    req.on('error', reject);
+    req.end();
+  });
+}
 
 describe.skipIf(!APEX)('sign up and connect storage', () => {
   it('gives a new person a pod in their storage, served at a random id', async () => {
@@ -41,6 +60,14 @@ describe.skipIf(!APEX)('sign up and connect storage', () => {
     expect(await profile.text()).toContain(`${APEX}/`);
     expect((await fetch(pod!.url)).status).toBe(401);
     expect((await fetch(pod!.url, { headers: { 'X-Dev-WebID': webid } })).status).toBe(200);
+
+    // A browser opening the pod gets a page for people; apps keep the protocol's answers.
+    const privatePage = await navigate(pod!.url);
+    expect([privatePage.status, privatePage.type]).toEqual([401, 'text/html; charset=utf-8']);
+    expect(privatePage.body).toContain('This pod is private');
+    const nowhere = await navigate(pod!.url.replace(pod!.id, 'zzzzzzzz'));
+    expect([nowhere.status, nowhere.body]).toEqual([404, expect.stringContaining("There's no pod here")]);
+    expect((await fetch(pod!.url, { headers: { accept: 'text/html' } })).headers.get('content-type')).toContain('text/plain');
 
     const home = await (await fetch(`${APEX}/`, { headers: { cookie } })).text();
     expect(home).toContain('Your pods');

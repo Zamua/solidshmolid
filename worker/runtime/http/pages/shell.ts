@@ -9,6 +9,7 @@ const STYLE = `
 :root{--sky-top:#cfe4ff;--sky:#eaf4ff;--cloud:#fff;--mist:#f3f8ff;--blue:#3d6fe0;--blue-deep:#2a52b8;--ink:#1f2d4d;--ink-soft:#5a6b8c;--line:#dbe7fa;--sun:#ffd76a;--leaf:#2f9e6e;--berry:#c2415a;
 --display:'Fredoka',system-ui,sans-serif;--body:'Atkinson Hyperlegible',system-ui,sans-serif}
 *{box-sizing:border-box;margin:0}
+html{touch-action:manipulation}
 body{font:17px/1.5 var(--body);color:var(--ink);background:linear-gradient(180deg,var(--sky-top) 0%,var(--sky) 38%,var(--sky) 100%);min-height:100vh}
 .sky{position:absolute;inset:0 0 auto 0;height:300px;overflow:hidden;pointer-events:none}
 .sky svg{position:absolute}
