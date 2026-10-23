@@ -11,8 +11,7 @@ import type { Placement } from '../../app/accounts/ports.js';
 import type { FileContent, FileEntry } from '../../app/accounts/ports.js';
 import { BadRequest, Conflict } from '../../app/shared/errors.js';
 import { InvalidPath, canonicalPath } from '../../domain/pods/paths.js';
-import { addStoragePatch, removeStoragePatch, renamePatch, summarizeProfile } from '../../domain/pods/profile.js';
-import { parseRdf } from '../../domain/shared/rdf.js';
+import { addStoragePatch, removeStoragePatch } from '../../domain/pods/profile.js';
 import { NO_CONDITIONS } from '../../domain/pods/requests.js';
 import { placePod } from '../../app/storage/placement.js';
 import type { PlacementOutcome } from '../../app/storage/ports.js';
@@ -90,23 +89,6 @@ export class PodObject extends DurableObject<Env> {
   async declareStorage(base: string, owner: string, storage: string): Promise<void> {
     const { pod } = this.open(base);
     await pod.patch('/profile/card', { webid: owner }, addStoragePatch(storage), 'text/n3', NO_CONDITIONS);
-  }
-
-  /** The name this pod's profile gives `webid`, if any. */
-  async profileName(base: string, webid: string): Promise<string | null> {
-    const { pod } = this.open(base);
-    if (!pod.isProvisioned()) return null;
-    const read = await pod.read('/profile/card', { webid: null }, { accept: 'text/turtle', range: null, head: false });
-    const text = typeof read.body === 'string' ? read.body : await new Response(read.body).text();
-    return summarizeProfile(await parseRdf(text, read.contentType, pod.url('/profile/card')), webid).name;
-  }
-
-  /** Sets `owner`'s name in this pod's profile. */
-  async setProfileName(base: string, owner: string, name: string): Promise<void> {
-    const current = await this.profileName(base, owner);
-    if (current === name) return;
-    const { pod } = this.open(base);
-    await pod.patch('/profile/card', { webid: owner }, renamePatch(current, name), 'text/n3', NO_CONDITIONS);
   }
 
   /** A folder's entries, for the owner browsing on the account site. */

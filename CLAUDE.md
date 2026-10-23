@@ -105,7 +105,8 @@ The resource server, Dropbox storage, reconcile, our Solid-OIDC provider,
 signup with connecting storage, and more pods per person are in; `make e2e` covers
 signup on the dev provider, and `make clerk-live` a real Clerk session.
 Households and children's accounts were dropped on 2026-10-23. The app list,
-disconnect, delete, the profile page and browsing a pod's files are in.
+disconnect, delete, the WebID with a copy button, and browsing a pod's files
+are in.
 Staging runs on `stg.solidshmolid.com` with pods on
 `<id>-stg.solidshmolid.page` (see SPEC "URLs" and `infra/solidshmolid/DEPLOY.md`).
 Production is not deployed: it waits on Dropbox production approval and

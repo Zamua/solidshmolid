@@ -2,7 +2,7 @@
 SHELL := /bin/bash
 NODE  := npx
 
-.PHONY: help build test typecheck dev smoke compat e2e live
+.PHONY: help build test typecheck dev smoke compat e2e live icons
 
 help:
 	@grep -E '^[a-z-]+:.*?##' $(MAKEFILE_LIST) | sed 's/:.*##/\t/'
@@ -14,6 +14,9 @@ build: ## typecheck and bundle the worker (dry run)
 typecheck: ## typecheck the worker and its tests
 	$(NODE) tsc -p worker/tsconfig.json --noEmit
 	$(NODE) tsc -p worker/tests/tsconfig.json --noEmit
+
+icons: ## regenerate the page icons from @phosphor-icons/core (names in scripts/icons.mjs)
+	node scripts/icons.mjs
 
 test: ## unit tests
 	$(NODE) vitest run --root worker

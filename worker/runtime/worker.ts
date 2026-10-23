@@ -71,7 +71,7 @@ function isHtml(response: Response): boolean {
 async function withAccountMenu(response: Response, env: Env, url: URL, person: string): Promise<Response> {
   const state = await accounts(env, hostsFor(env, url)).mine(person);
   if (!state) return response;
-  const menu = accountMenu(state.name);
+  const menu = accountMenu();
   return new HTMLRewriter().on('.masthead-inner', { element: (e) => void e.append(menu, { html: true }) }).transform(response);
 }
 

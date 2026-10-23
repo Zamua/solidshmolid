@@ -37,16 +37,14 @@ export class SqlAccountPods implements AccountRepository {
     private readonly nowMs: () => number = () => Date.now(),
   ) {
     this.sql.exec(SCHEMA);
-    addColumn(this.sql, 'owner', 'name TEXT');
   }
 
   async load(): Promise<AccountState | null> {
-    const owner = this.sql.exec('SELECT account_key, webid, name FROM owner WHERE id = 1').toArray()[0];
+    const owner = this.sql.exec('SELECT account_key, webid FROM owner WHERE id = 1').toArray()[0];
     if (!owner) return null;
     return {
       key: String(owner.account_key),
       webid: String(owner.webid),
-      name: owner.name === null || owner.name === undefined ? null : String(owner.name),
       pods: this.sql.exec('SELECT pod_id, link_id, folder FROM pod ORDER BY seq').toArray().map((r) => ({
         podId: String(r.pod_id),
         linkId: r.link_id === null ? null : String(r.link_id),
@@ -71,10 +69,6 @@ export class SqlAccountPods implements AccountRepository {
 
   async addPod(pod: PodRecord): Promise<void> {
     this.insertPod(pod);
-  }
-
-  async setName(name: string | null): Promise<void> {
-    this.sql.exec('UPDATE owner SET name = ? WHERE id = 1', name);
   }
 
   async addLink(link: LinkSummary, refreshToken: string): Promise<void> {

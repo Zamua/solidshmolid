@@ -4,6 +4,7 @@
 import type { AccountState, FileEntry } from '../../../app/accounts/ports.js';
 import type { Approval } from '../../../app/identity/ports.js';
 import type { Hosts } from '../../hosts.js';
+import { PAGE_SCRIPT_PATH } from '../assets/pageScript.js';
 import { icon } from './icons.js';
 import { escapeHtml, page, podCloud } from './shell.js';
 
@@ -87,9 +88,15 @@ ${body}${remove}</div>`;
 <p class="lede">Each pod is its own folder in your storage. Apps you allow can use them.</p>
 <div class="card" style="padding:6px 16px">${rows}
 <form method="post" action="/api/pods" class="add-row"><button class="add-pod">${icon('plus', 20)}Add a pod</button></form></div>
+<div class="card">
+<div class="row"><div class="icon-tile">${icon('identificationCard')}</div><b class="grow">Your WebID</b>
+<button type="button" class="copy-btn" data-copy="${escapeHtml(state.webid)}" hidden>${icon('copy', 18)}${icon('check', 18)}<span data-label>Copy</span></button></div>
+<p class="webid"><a href="${escapeHtml(state.webid)}">${escapeHtml(state.webid).replaceAll('/', '/<wbr>')}</a></p>
+<p class="small">Apps ask for it when you sign in with Solid.</p></div>
 ${storage}
 <div class="card"><h2>Apps</h2>${appRows ? `<div style="margin-top:4px">${appRows}</div>` : '<p class="small">No apps yet. When you sign in to a Solid app with solidshmolid, it shows up here, and you can remove it.</p>'}</div>
-<p class="small center" style="margin-top:22px"><a href="/account/delete">Delete account</a></p>`,
+<p class="small center" style="margin-top:22px"><a href="/account/delete">Delete account</a></p>
+<script defer src="${PAGE_SCRIPT_PATH}"></script>`,
   );
 }
 
@@ -190,33 +197,12 @@ export function signUpPage(back: string): Response {
   );
 }
 
-/** The person's profile: their WebID and the name apps read. */
-export function profilePage(webid: string, name: string | null, problem: string | null = null): Response {
-  const card = webid.split('#')[0]!;
-  return page(
-    'Your profile',
-    `<h1 style="margin-top:40px">Your profile</h1>
-<p class="lede">This is what Solid apps know about you. Anyone can read it.</p>
-<form method="post" action="/api/profile" class="card">
-<label class="label" for="name">Your name</label>
-<input class="field" id="name" name="name" value="${escapeHtml(name ?? '')}" maxlength="60" autocomplete="name" placeholder="How apps should call you" required>
-${problem ? `<p class="small problem" role="alert">${escapeHtml(problem)}</p>` : ''}
-<button class="btn primary" style="margin-top:16px">Save</button>
-</form>
-<div class="card row"><div class="icon-tile">${icon('identificationCard')}</div><div class="grow"><b>Your WebID</b><div class="small">${escapeHtml(webid)}</div><div class="small">Apps ask for this when you sign in with Solid.</div></div></div>
-<p class="small center" style="margin-top:18px"><a href="${escapeHtml(card)}">See your public profile</a></p>`,
-  );
-}
-
 /** The avatar chip and its menu, for every page someone signed in sees. */
-export function accountMenu(name: string | null): string {
-  const initial = name ? [...name][0]!.toUpperCase() : null;
+export function accountMenu(): string {
   return `<details class="account-menu">
-<summary aria-label="Your account"><span class="user-chip">${initial ? escapeHtml(initial) : icon('user', 20)}</span></summary>
+<summary aria-label="Your account"><span class="user-chip">${icon('user', 20)}</span></summary>
 <div class="menu">
-${name ? `<p class="menu-name">${escapeHtml(name)}</p>` : ''}
 <a href="/">Your pods</a>
-<a href="/profile">Profile</a>
 <a href="/sign-out">Sign out</a>
 </div>
 </details>`;

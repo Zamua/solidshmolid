@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { applyPatch, parsePatch } from '../domain/pods/n3patch.js';
-import { addStoragePatch, profileDocument, renamePatch, summarizeProfile } from '../domain/pods/profile.js';
+import { addStoragePatch, profileDocument, summarizeProfile } from '../domain/pods/profile.js';
 import { podRootAcl, profileAcl } from '../domain/pods/starter.js';
 import { authorizationsOf, grantedModes } from '../domain/pods/wac.js';
 import { parseRdf } from '../domain/shared/rdf.js';
@@ -34,17 +34,5 @@ describe('a new pod', () => {
     const after = applyPatch(before, parsePatch(addStoragePatch('https://work.example/'), card));
     const storages = after.filter((q) => q.subject.value === DANA && q.predicate.value === PIM_STORAGE).map((q) => q.object.value);
     expect(storages.sort()).toEqual([`${POD}/`, 'https://work.example/']);
-  });
-});
-
-describe('profile names', () => {
-  it('sets, replaces and survives quotes in a name', async () => {
-    const card = `${POD}/profile/card`;
-    let quads = await parseRdf(profileDocument(`${POD}/`, null), 'text/turtle', card);
-    expect(summarizeProfile(quads, DANA).name).toBeNull();
-    quads = applyPatch(quads, parsePatch(renamePatch(null, 'Dana "D" \\ R'), card));
-    expect(summarizeProfile(quads, DANA).name).toBe('Dana "D" \\ R');
-    quads = applyPatch(quads, parsePatch(renamePatch('Dana "D" \\ R', 'Dana'), card));
-    expect(summarizeProfile(quads, DANA)).toEqual({ name: 'Dana', storages: [`${POD}/`], issuers: [] });
   });
 });

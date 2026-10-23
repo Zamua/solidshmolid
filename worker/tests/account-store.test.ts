@@ -12,7 +12,6 @@ const KEY = btoa(String.fromCharCode(...new Uint8Array(32).map((_, i) => i)));
 const STATE: AccountState = {
   key: 'k1',
   webid: 'https://k3x9fqm7.pods.example/profile/card#me',
-  name: null,
   pods: [{ podId: 'k3x9fqm7', linkId: null, folder: 'k3x9fqm7' }],
   links: [],
 };
@@ -44,15 +43,6 @@ describe("an account's pods", () => {
     expect(await account.load()).toBeNull();
     expect(await account.create(STATE)).toEqual(STATE);
     expect(await account.create({ ...STATE, webid: 'https://other.example/#me', pods: [] })).toEqual(STATE);
-  });
-
-  it('remembers the profile name it last saw', async () => {
-    const { account } = store();
-    await account.create(STATE);
-    await account.setName('Dana');
-    expect((await account.load())!.name).toBe('Dana');
-    await account.setName(null);
-    expect((await account.load())!.name).toBeNull();
   });
 
   it('adds pods in order', async () => {

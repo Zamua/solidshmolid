@@ -34,7 +34,6 @@ main{max-width:440px;margin:0 auto;padding:calc(env(safe-area-inset-top) + 64px)
 .menu{position:absolute;right:0;top:48px;z-index:10;min-width:200px;background:#fff;border-radius:18px;padding:8px;box-shadow:0 18px 40px -16px rgba(31,45,77,.35)}
 .menu a{display:block;padding:10px 12px;border-radius:12px;color:var(--ink);text-decoration:none;font-weight:700}
 .menu a:hover{background:var(--mist)}
-.menu-name{padding:8px 12px 6px;font:600 15px var(--display);color:var(--ink-soft);border-bottom:1px solid var(--line);margin-bottom:4px}
 h1{font:600 32px/1.12 var(--display);margin:28px 0 10px}
 h2{font:600 22px/1.2 var(--display);margin:0 0 6px}
 p.lede{color:var(--ink-soft);max-width:34ch}
@@ -83,6 +82,12 @@ ul.plain li .icon{color:var(--blue);flex:none;margin-top:1px}
 .icon-btn{display:grid;place-items:center;width:40px;height:40px;border-radius:12px;color:var(--ink-soft)}
 .icon-btn:hover{background:var(--mist);color:var(--berry)}
 .chip-btn{font:600 14px var(--body);color:var(--berry);background:var(--mist);border:0;border-radius:999px;padding:6px 12px;cursor:pointer}
+.copy-btn{display:inline-flex;align-items:center;gap:6px;flex:none;font:600 14px var(--body);color:var(--blue-deep);background:var(--mist);border:0;border-radius:999px;padding:8px 14px;cursor:pointer}
+.copy-btn:hover{background:var(--line)}
+.copy-btn .icon:nth-of-type(2),.copy-btn.copied .icon:first-of-type{display:none}
+.copy-btn.copied .icon:nth-of-type(2){display:inline}
+.webid{margin:12px 0 4px;font-size:16px;overflow-wrap:anywhere}
+.copy-btn:focus-visible{outline:3px solid var(--sun);outline-offset:2px}
 .sentence{font:600 17px var(--body);background:var(--mist);border-radius:14px;padding:12px 14px;margin:0 0 16px;user-select:all}
 .btn:focus-visible,a:focus-visible{outline:3px solid var(--sun);outline-offset:2px}
 .dock{position:fixed;left:0;right:0;bottom:0;padding:26px 22px calc(30px + env(safe-area-inset-bottom));background:linear-gradient(180deg,rgba(234,244,255,0) 0%,var(--sky) 34%)}
@@ -188,7 +193,7 @@ export function pageCsp(allow: CspAllow = {}): string {
   const list = (base: string[], more: string[] = []) => [...base, ...more].join(' ');
   return [
     "default-src 'none'",
-    allow.script?.length ? `script-src ${list(["'self'"], allow.script)}` : null,
+    `script-src ${list(["'self'"], allow.script)}`,
     allow.connect?.length ? `connect-src ${list(["'self'"], allow.connect)}` : null,
     allow.worker?.length ? `worker-src ${list(["'self'"], allow.worker)}` : null,
     allow.frame?.length ? `frame-src ${list([], allow.frame)}` : null,
