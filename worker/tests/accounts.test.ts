@@ -117,7 +117,7 @@ function world() {
     pods,
     identities: { bind: async (person, webid) => void bound.set(person, webid) },
     logins: { remove: async (person) => void removedLogins.push(person) },
-    authorization,
+    authorizations: { dropbox: authorization, other: { ...authorization, provider: 'other' } },
     ids: { random: () => `r${++n}` },
     webidOf: (podId) => `https://${podId}.pods.example/profile/card#me`,
   });
@@ -129,8 +129,8 @@ const stateOf = (url: string) => new URL(url).searchParams.get('state')!.split('
 async function connected(person = 'user_dana') {
   const w = world();
   await w.service.signup(person);
-  const [key, nonce] = stateOf(await w.service.beginLink(person, 'https://x/cb'));
-  const state = await w.service.completeLink(person, key, nonce, 'code', 'https://x/cb');
+  const [key, nonce] = stateOf(await w.service.beginLink(person, 'dropbox', 'https://x/cb'));
+  const state = await w.service.completeLink(person, 'dropbox', key, nonce, 'code', 'https://x/cb');
   return { ...w, state };
 }
 
@@ -168,24 +168,32 @@ describe('connecting storage', () => {
 
   it('refuses someone who has not signed up', async () => {
     const { service } = world();
-    await expect(service.beginLink('user_nobody', 'https://x/cb')).rejects.toThrow(NotSignedUp);
+    await expect(service.beginLink('user_nobody', 'dropbox', 'https://x/cb')).rejects.toThrow(NotSignedUp);
   });
 
   it('refuses a callback it did not start, a replay, and a callback finished by someone else', async () => {
     const { service } = world();
     await service.signup('user_dana');
     await service.signup('user_eve');
-    const [key, nonce] = stateOf(await service.beginLink('user_dana', 'https://x/cb'));
-    await expect(service.completeLink('user_dana', key, 'nope', 'code', 'https://x/cb')).rejects.toThrow(LinkExpired);
-    await expect(service.completeLink('user_eve', key, nonce, 'code', 'https://x/cb')).rejects.toThrow(LinkExpired);
-    await service.completeLink('user_dana', key, nonce, 'code', 'https://x/cb');
-    await expect(service.completeLink('user_dana', key, nonce, 'code', 'https://x/cb')).rejects.toThrow(LinkExpired);
+    const [key, nonce] = stateOf(await service.beginLink('user_dana', 'dropbox', 'https://x/cb'));
+    await expect(service.completeLink('user_dana', 'dropbox', key, 'nope', 'code', 'https://x/cb')).rejects.toThrow(LinkExpired);
+    await expect(service.completeLink('user_eve', 'dropbox', key, nonce, 'code', 'https://x/cb')).rejects.toThrow(LinkExpired);
+    await service.completeLink('user_dana', 'dropbox', key, nonce, 'code', 'https://x/cb');
+    await expect(service.completeLink('user_dana', 'dropbox', key, nonce, 'code', 'https://x/cb')).rejects.toThrow(LinkExpired);
+  });
+
+  it('connects only the providers it offers, each through its own callback', async () => {
+    const { service } = world();
+    await service.signup('user_dana');
+    await expect(service.beginLink('user_dana', 'onedrive', 'https://x/cb')).rejects.toThrow(NotFound);
+    const [key, nonce] = stateOf(await service.beginLink('user_dana', 'dropbox', 'https://x/cb'));
+    await expect(service.completeLink('user_dana', 'other', key, nonce, 'code', 'https://x/cb')).rejects.toThrow(LinkExpired);
   });
 
   it('does not place a pod twice when a second link is connected', async () => {
     const { service, placed } = await connected();
-    const [key, nonce] = stateOf(await service.beginLink('user_dana', 'https://x/cb'));
-    await service.completeLink('user_dana', key, nonce, 'code', 'https://x/cb');
+    const [key, nonce] = stateOf(await service.beginLink('user_dana', 'dropbox', 'https://x/cb'));
+    await service.completeLink('user_dana', 'dropbox', key, nonce, 'code', 'https://x/cb');
     expect(placed).toHaveLength(1);
   });
 });
@@ -291,8 +299,8 @@ describe('disconnecting storage', () => {
 
   it('gives up a link no pod uses', async () => {
     const { service, accounts, state } = await connected();
-    const [key, nonce] = stateOf(await service.beginLink('user_dana', 'https://x/cb'));
-    const two = await service.completeLink('user_dana', key, nonce, 'code', 'https://x/cb');
+    const [key, nonce] = stateOf(await service.beginLink('user_dana', 'dropbox', 'https://x/cb'));
+    const two = await service.completeLink('user_dana', 'dropbox', key, nonce, 'code', 'https://x/cb');
     const spare = two.links[1]!.linkId;
     const after = await service.disconnect('user_dana', spare);
     expect(after.links.map((l) => l.linkId)).toEqual([state.links[0]!.linkId]);

@@ -213,7 +213,20 @@ provider errors into a small set: not found, conflict, quota exceeded,
 unauthorized (access revoked), rate limited (with retry-after), unavailable.
 
 Adapters in order: `MemoryFileStore` (tests), `DevFileStore` (DO SQLite, local
-dev only; deployments refuse it), Dropbox (M2), OneDrive, Drive, WebDAV.
+dev only; deployments refuse it), Dropbox (M2), Google Drive, then OneDrive and
+WebDAV.
+
+**Google Drive** uses only the `drive.file` scope (non-sensitive, so no Google
+security review): the app sees just the files it created. Pods live under a
+"solidshmolid" folder in My Drive, found by an app property, one folder per
+pod; a file someone drops into a pod folder from Drive's own UI stays
+invisible to the pod. Drive addresses files by id and allows same-named
+siblings, so the adapter keeps the pod folder's tree in the pod's SQLite
+(`drive_node`) to turn paths into ids and the change feed's ids back into
+paths; of same-named files the oldest wins. Drive has no conditional upload:
+a revision precondition is checked just before the write, which the pod's
+write queue makes exact for its own writes. Removing trashes, so the person
+can restore from Drive's trash.
 
 ## Accounts and storage
 
@@ -227,14 +240,17 @@ provider state.
 The pods exist once storage is connected. `POST /api/storage/<provider>/start` begins the
 provider's OAuth with PKCE and offline access; the verifier waits in the account under a
 one-time nonce (15 min). The state is `<accountKey>.<nonce>`; `/link/<provider>/callback`
-exchanges the code, and only the same account can finish it. With PKCE Dropbox refreshes
-without a client secret, so the service holds no app secret. The refresh token is stored in
+exchanges the code, and only the same account, through the same provider's callback, can
+finish it. With PKCE Dropbox refreshes without a client secret; Google requires its web
+client's secret (`GOOGLE_CLIENT_SECRET`) to exchange and refresh, so that is the one provider
+secret the service holds. The refresh token is stored in
 the account, AES-GCM-sealed under the `TOKEN_KEY` secret with `account/<key>/link/<linkId>` as
 associated data. Pods get short-lived access tokens from their account over RPC; nothing else
 holds a grant.
 
 Each pod waiting for storage is then placed in its own folder of the link,
-`Apps/solidshmolid/<pod id>/` on Dropbox (`app/storage/placement.ts`): an empty folder gets a
+`Apps/solidshmolid/<pod id>/` on Dropbox, `solidshmolid/<pod id>/` in My Drive
+(`app/storage/placement.ts`): an empty folder gets a
 new pod (the WebID in full; the first pod also gets the public profile); a folder that already
 holds files is adopted: the index is rebuilt from a full listing (`app/pods/reconcile.ts`),
 keeping ETags and caches of unchanged files. Files the layout cannot map, or that collide with
@@ -245,12 +261,13 @@ ignored. The pod records its placement and the listing's cursor.
 own; the WebID's profile gains a `pim:storage` for it, so apps find every pod.
 
 While placed, a request first folds in what changed in the folder since the last look
-(`list_folder/continue` from the stored cursor), at most every 30 s per pod. Webhooks can
+(Dropbox `list_folder/continue`, Drive `changes.list`, from the stored cursor), at most every
+30 s per pod. Webhooks can
 replace the polling later; the reconcile path is the same.
 
-`STORAGE` names the provider people connect: `dropbox`, or `dev` in the
-dev config, which grants consent on the spot and keeps files in each pod's
-own SQLite.
+`STORAGE` lists the providers people may connect, in the order the connect page offers
+them: `dropbox`, `google-drive`, or `dev` in the dev config, which grants consent on the
+spot and keeps files in each pod's own SQLite.
 
 ## People opening a pod in a browser
 
