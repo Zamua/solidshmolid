@@ -5,6 +5,22 @@ Changes land through pull requests with CI green (`make typecheck`, `make test`,
 change to behavior updates it in the same pull request. Commit messages are
 single-line Conventional Commits.
 
+## Local development
+
+`make dev` keeps pod files in the Worker's own SQLite and offers a one-tap dev
+sign-in. Pods are created on first request at `http://<handle>.localhost:8787/`,
+and the local config trusts an `X-Dev-WebID` header as the signed-in agent:
+
+```
+curl -X PUT -H 'X-Dev-WebID: http://alice.localhost:8787/profile/card#me' \
+     -H 'Content-Type: text/turtle' --data-raw '<#a> <#b> "c".' \
+     http://alice.localhost:8787/notes/first.ttl
+```
+
+To try real Dropbox, Google Drive or Clerk sign-in locally, copy
+`.dev.vars.example` to `.dev.vars.local`, fill in what you have, delete
+`.dev.vars`, and run `make dev STORAGE=dev,dropbox,google-drive`.
+
 ## Principles
 
 ### The folder is the pod

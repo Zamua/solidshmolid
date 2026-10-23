@@ -1,4 +1,4 @@
-# Developer targets. Deploying is up to whoever runs it; see README.md.
+# Developer targets. Deploying is up to whoever runs it; see docs/self-hosting.md.
 SHELL := /bin/bash
 NODE  := npx
 
