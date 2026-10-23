@@ -9,7 +9,7 @@ import { escapeHtml, page, podCloud } from './shell.js';
 export function welcomePage(): Response {
   return page(
     'solidshmolid',
-    `<div style="margin-top:72px"><div class="row" style="gap:6px">${podCloud('D')}${podCloud('S')}${podCloud('M')}</div>
+    `<div style="margin-top:72px"><div class="row" style="gap:6px">${podCloud({ html: icon('image', 28) })}${podCloud({ html: icon('notepad', 28) })}${podCloud({ html: icon('calendarBlank', 28) })}</div>
 <h1>A home for your data, kept in your own cloud</h1>
 <p class="lede">Get a pod: a private space your apps can use with your permission. Its files live in your Dropbox, where you can always see them.</p></div>
 <ul class="plain card" style="margin-top:26px">
