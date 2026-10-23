@@ -1,4 +1,4 @@
-import type { PodObject } from './podObject.js';
+import type { PodObject } from './objects/podObject.js';
 
 export interface Env {
   POD: DurableObjectNamespace<PodObject>;

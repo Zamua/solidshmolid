@@ -16,6 +16,23 @@ import { SqlIndex } from '../../runtime/sqlIndex.js';
 // Vite does not know node:sqlite as a builtin and fails to resolve the import.
 const { DatabaseSync } = createRequire(import.meta.url)('node:sqlite') as typeof import('node:sqlite');
 
+/** A DO-style SQL runner over an in-memory node:sqlite database. */
+export function sqlRunner() {
+  const db = new DatabaseSync(':memory:');
+  return {
+    db,
+    exec(query: string, ...args: unknown[]) {
+      const parts = query.split(';').filter((s) => s.trim());
+      if (args.length === 0 && parts.length > 1) {
+        db.exec(query);
+        return { toArray: () => [] as Record<string, unknown>[] };
+      }
+      const rows = db.prepare(query).all(...(args as never[])) as Record<string, unknown>[];
+      return { toArray: () => rows };
+    },
+  };
+}
+
 export function sqliteIndex(): SqlIndex {
   const db = new DatabaseSync(':memory:');
   const sql = {

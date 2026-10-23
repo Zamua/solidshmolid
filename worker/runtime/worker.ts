@@ -7,9 +7,9 @@ import { profileDocument } from '../domain/profile.js';
 import { InvalidCredentials, SolidOidcVerifier, type VerifiedAgent } from './auth/solidOidc.js';
 import type { Env } from './env.js';
 import { withCors } from './http.js';
-import { AGENT_HEADER, BASE_HEADER, HANDLE_HEADER, INTERNAL_PREFIX, JTI_EXPIRES_HEADER, JTI_HEADER } from './podObject.js';
+import { AGENT_HEADER, BASE_HEADER, HANDLE_HEADER, INTERNAL_PREFIX, JTI_EXPIRES_HEADER, JTI_HEADER } from './objects/podObject.js';
 
-export { PodObject } from './podObject.js';
+export { PodObject } from './objects/podObject.js';
 
 // Module scope, so issuer keys and WebID lookups are cached across requests
 // in one isolate. An eviction costs a refetch, never a failure.

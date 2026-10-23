@@ -5,17 +5,17 @@
 // the Worker and stripped from every inbound request before forwarding.
 
 import { DurableObject } from 'cloudflare:workers';
-import { Conflict, Forbidden, StorageUnavailable } from '../app/errors.js';
-import { copyPod } from '../app/migrate.js';
-import { Pod } from '../app/pod.js';
-import type { FileLister, FileStore } from '../app/ports.js';
-import { DevFileStore } from './adapters/devFiles.js';
-import { DropboxFileStore } from './adapters/dropbox.js';
-import { type Grant, authorizeUrl, exchangeCode, pkce, refreshAccess } from './auth/dropboxOAuth.js';
-import type { Env } from './env.js';
-import { handleSolid, withCors } from './http.js';
-import { SqlIndex, type SqlRunner } from './sqlIndex.js';
-import { type LinkRow, StorageLinks } from './storageLink.js';
+import { Conflict, Forbidden, StorageUnavailable } from '../../app/errors.js';
+import { copyPod } from '../../app/migrate.js';
+import { Pod } from '../../app/pod.js';
+import type { FileLister, FileStore } from '../../app/ports.js';
+import { DevFileStore } from '../adapters/devFiles.js';
+import { DropboxFileStore } from '../adapters/dropbox.js';
+import { type Grant, authorizeUrl, exchangeCode, pkce, refreshAccess } from '../auth/dropboxOAuth.js';
+import type { Env } from '../env.js';
+import { handleSolid, withCors } from '../http.js';
+import { SqlIndex, type SqlRunner } from '../sqlIndex.js';
+import { type LinkRow, StorageLinks } from '../storageLink.js';
 
 export const BASE_HEADER = 'x-solidshmolid-base';
 export const HANDLE_HEADER = 'x-solidshmolid-handle';
