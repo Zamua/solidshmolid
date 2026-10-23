@@ -255,9 +255,10 @@ own SQLite.
 
 People sign in with Clerk. Every apex page loads clerk-js from the
 instance's Frontend API plus our own `/assets/clerk-boot.js`, which keeps the
-60-second session token fresh and mounts sign-in or sign-up where a page asks
-(`/sign-in`, `/sign-up`, `/sign-out`; a `return` parameter must name a page
-on the apex). Pages carry no inline script, and their CSP allows only the
+60-second session token fresh, mounts Clerk's sign-in on `/sign-in`, and runs
+our own sign-up form on `/sign-up` (an emailed code or Google; no
+passwords), including Clerk's bot check when Clerk asks for one. A `return`
+parameter must name a page on the apex. Pages carry no inline script, and their CSP allows only the
 Frontend API, Clerk's bot protection and Cloudflare Turnstile.
 
 The Worker settles who is signed in once per apex request
