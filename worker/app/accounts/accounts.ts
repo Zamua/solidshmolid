@@ -23,6 +23,9 @@ export class StorageInUse extends Error {
 /** A deletion either happened, or waits for the person to type `sentence`. */
 export type DeletionStep = { done: true } | { confirm: { token: string; sentence: string } };
 
+/** What typing the sentence did: deleted, or asks again under a new token. */
+export type Confirmation = { deleted: 'pod' | 'account' } | { retry: { token: string; sentence: string } };
+
 export interface AccountsDeps {
   directory: Directory;
   account: (key: string) => AccountRepository;
@@ -130,18 +133,25 @@ export class Accounts {
 
   /** Step two of deleting files: only the exact sentence deletes anything,
    * and any answer uses up the request. */
-  async confirmDeletion(person: string, token: string, typed: string): Promise<'pod' | 'account'> {
+  async confirmDeletion(person: string, token: string, typed: string): Promise<Confirmation> {
     const state = await this.signedUp(person);
-    const pending = await this.deps.account(state.key).takeDeletion(token);
-    if (!pending || !confirmsDeletion(typed, pending.sentence)) throw new NotConfirmed('the sentence did not match; start again and type it exactly');
+    const account = this.deps.account(state.key);
+    const pending = await account.takeDeletion(token);
+    if (!pending) throw new NotConfirmed('this confirmation expired; start again');
+    if (!confirmsDeletion(typed, pending.sentence)) {
+      // Every answer uses its token up; a wrong one gets a fresh try.
+      const retry = this.deps.ids.random();
+      await account.rememberDeletion(retry, pending);
+      return { retry: { token: retry, sentence: pending.sentence } };
+    }
     if (pending.podId === null) {
       await this.erase(person, state, true);
-      return 'account';
+      return { deleted: 'account' };
     }
     const pod = state.pods.find((p) => p.podId === pending.podId);
     if (!pod) throw new NotFound('no such pod');
     await this.removePod(state, pod, true);
-    return 'pod';
+    return { deleted: 'pod' };
   }
 
   /** Disconnects storage that no pod uses any more. */

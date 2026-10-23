@@ -26,7 +26,7 @@ test: ## unit tests
 # Google Drive client when GOOGLE_ENV_FILE exists, and the Clerk dev
 # instance's keys when CLERK_ENV_FILE exists.
 DROPBOX_APP_KEY_FILE ?= $(HOME)/keys/dropbox-solidshmolid-app-key
-GOOGLE_ENV_FILE ?= $(HOME)/keys/google-drive-solidshmolid.env
+GOOGLE_ENV_FILE ?= $(HOME)/keys/google-drive-solidshmolid-staging.env
 CLERK_ENV_FILE ?= $(HOME)/keys/clerk-solidshmolid-dev.env
 .dev.vars:
 	@printf 'TOKEN_KEY=%s\n' "$$(head -c 32 /dev/urandom | base64)" > .dev.vars

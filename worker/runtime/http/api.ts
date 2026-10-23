@@ -48,8 +48,14 @@ export async function apiRoute(request: Request, env: Env, url: URL, person: str
       path: /^\/api\/deletions\/confirm$/u,
       run: async (p) => {
         const form = await fields(request);
-        const what = await service().confirmDeletion(p, form.token ?? '', form.typed ?? '');
-        return done(html, what === 'account' ? '/sign-out' : '/', null, 204);
+        const outcome = await service().confirmDeletion(p, form.token ?? '', form.typed ?? '');
+        if ('retry' in outcome) {
+          const { token, sentence } = outcome.retry;
+          return html
+            ? confirmDeletionPage(token, sentence, "That didn't match. Copy the sentence above, or type it exactly.", 400)
+            : Response.json({ code: 'not_confirmed', confirmToken: token, sentence }, { status: 400 });
+        }
+        return done(html, outcome.deleted === 'account' ? '/sign-out' : '/', null, 204);
       },
     },
     {

@@ -189,19 +189,22 @@ ${files}
 }
 
 /** The last step before files are deleted: typing the sentence. */
-export function confirmDeletionPage(token: string, sentence: string): Response {
+export function confirmDeletionPage(token: string, sentence: string, problem: string | null = null, status = 200): Response {
   return page(
     'Delete files',
     `<h1>This deletes files for good</h1>
-<p class="lede">Type the sentence below exactly to delete the files from your storage. Anything else deletes nothing.</p>
+<p class="lede">Type or paste the sentence below to delete the files from your storage. Anything else deletes nothing.</p>
 <form method="post" action="/api/deletions/confirm" class="card">
 <p class="sentence">${escapeHtml(sentence)}</p>
+<div style="margin:-6px 0 16px"><button type="button" class="pill-btn copy-btn" data-copy="${escapeHtml(sentence)}" hidden>${icon('copy', 18)}${icon('check', 18)}<span data-label>Copy</span></button></div>
 <input type="hidden" name="token" value="${escapeHtml(token)}">
-<label class="label" for="typed">Type it here</label>
+<label class="label" for="typed">Type or paste it here</label>
 <input class="field" id="typed" name="typed" autocomplete="off" autocapitalize="off" spellcheck="false" required>
+${problem ? `<p class="small problem" role="alert">${escapeHtml(problem)}</p>` : ''}
 <button class="btn danger" style="margin-top:16px">Delete the files</button>
 <a class="btn quiet" href="/">Cancel</a>
 </form>`,
+    status,
   );
 }
 
