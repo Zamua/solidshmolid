@@ -67,6 +67,10 @@ make e2e         # wrangler dev on ::1: CSS WebIDs use a dev pod; our provider s
   fetches a dev pod host (the verifier, CSS) depends on it.
 - `worker/tests/tsconfig.json` sets `"exclude": []`: inheriting the base's
   `exclude: ["tests"]` silently skipped typechecking every test.
+- Clerk: app `solidshmolid` (`app_3L4g4ToFucNUwJdtcubuwAogbRp`), dev keys in
+  `~/keys/clerk-solidshmolid-dev.env`. `clerk api` reads a request body from
+  stdin when stdin is not a terminal, so scripted calls hang unless given
+  `< /dev/null`.
 - `curl --data '@prefix ...'` reads a file named `prefix ...`; use
   `--data-raw` for Turtle/N3 bodies.
 - Install scripts for esbuild/workerd are allow-listed in `package.json`

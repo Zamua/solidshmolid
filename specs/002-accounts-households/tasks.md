@@ -20,8 +20,8 @@ red-reachable check.
 
 ## Phase 1: Setup
 
-- [ ] T001 Operator creates the Clerk application `solidshmolid` (dev and prod instances): usernames on, email optional, passkeys on; keys into `~/keys` and `infra/solidshmolid/`
-- [ ] T002 Spike against the Clerk dev instance: create a username-only user via the Backend API, issue a 900 s sign-in token, sign in with it once, register a passkey, confirm a second use fails (research R3, R4); record results in research.md
+- [x] T001 Clerk application `solidshmolid` created via the CLI (dev instance now; the prod instance comes with the production domain at first deploy): passwords off, usernames on, email optional, passkeys on; dev keys in `~/keys/clerk-solidshmolid-dev.env`
+- [x] T002 Spike against the Clerk dev instance: create a username-only user via the Backend API, issue a 900 s sign-in token, sign in with it once, register a passkey, confirm a second use fails (research R3, R4); record results in research.md
 - [ ] T003 [P] Generate `OIDC_SIGNING_JWK` in `make .dev.vars`; add `CLERK_PUBLISHABLE_KEY`/`CLERK_SECRET_KEY` handling in Makefile
 - [x] T004 [P] Mobile-first mockups (sign-up, connect storage, dashboard, member card, consent, device setup QR, delete with typed confirmation) as static HTML at iPhone width with Phosphor icons; screenshots to the operator for approval before any page is built
 - [x] T005 Move `PodObject` to `worker/runtime/objects/` and register `HouseholdObject`, `AccountObject`, `DirectoryObject` with a v2 migration in `wrangler.jsonc` and `wrangler.dev.jsonc`
@@ -33,7 +33,8 @@ red-reachable check.
 - [x] T008 [P] Tests then code: `worker/domain/deletion.ts` (sentence for a provider display name; exact-match check) with a test that every other input is refused (SC-006) in `worker/tests/deletion.test.ts`
 - [ ] T009 Ports in `worker/app/ports.ts`: `Sessions` (current Clerk user), `ClerkAdmin` (create user, sign-in token, remove passkeys), `Approvals`, `Codes`, `RefreshFamilies`, `SigningKeys`, `ClientIds`, `Directory`, `Households`
 - [ ] T010 `worker/runtime/clerk.ts`: session verification against Clerk JWKS and the Backend API adapter; tests with a fake JWKS in `worker/tests/clerk.test.ts`
-- [x] T011 `DirectoryObject` (handles with 90-day release, account and provider-account lookups) with tests in `worker/tests/directory.test.ts`
+- [x] T011 `DirectoryObject` (account and provider-account lookups) with tests in `worker/tests/directory.test.ts`
+- [ ] T011b Directory assigns random pod ids (replaces handle reservation and the 90-day hold)
 - [ ] T012 Storage links move to `HouseholdObject`; `PodObject` gets access tokens over RPC and stores its folder (`root` = handle); update `worker/tests/link.test.ts` and `make live` to the subfolder layout
 
 ## Phase 3: User Story 1, sign up and get a pod (P1) 🎯 MVP
@@ -42,7 +43,7 @@ red-reachable check.
 
 **Independent Test**: signup + connect on wrangler dev; profile public, root private; returning folder adopted.
 
-- [ ] T013 [P] [US1] Tests: handle refused when taken/reserved/malformed; signup creates household with caller as manager; connect creates the pod in the link; existing folder adopted, in `worker/tests/households.test.ts`
+- [ ] T013 [P] [US1] Tests: signup assigns a fresh random pod id (alphabet, length, uniqueness, never reused); creates household with caller as manager; connect creates the pod in the link; existing folder adopted, in `worker/tests/households.test.ts`
 - [ ] T014 [US1] `worker/app/households.ts`: signup, connect storage, create own pod
 - [ ] T015 [US1] `/api/me`, `/api/signup`, `/api/storage/dropbox/start`, `/link/dropbox/callback` in `worker/runtime/api/`
 - [ ] T016 [US1] Pages: sign-up and connect-storage (from approved mockups) in `worker/runtime/pages/`
