@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import { Households, LinkExpired, NotAManager } from '../app/households/households.js';
-import type { Directory, HouseholdRepository, HouseholdState, LinkSummary, PendingLink, Placement, Pods } from '../app/households/ports.js';
+import { Households, LinkExpired, NoStorageYet, NotAManager } from '../app/households/households.js';
+import type { Directory, HouseholdRepository, HouseholdState, LinkSummary, Logins, PendingLink, PodPlacement, Placement, Pods } from '../app/households/ports.js';
+import { HouseholdRuleBroken, type Member } from '../domain/households/household.js';
 import type { StorageAuthorization } from '../app/storage/ports.js';
 
 class MemoryHousehold implements HouseholdRepository {
@@ -13,6 +14,15 @@ class MemoryHousehold implements HouseholdRepository {
   async create(state: HouseholdState) {
     this.state ??= structuredClone(state);
     return structuredClone(this.state);
+  }
+  failNextAdd = false;
+  async addMember(member: Member, pod: PodPlacement) {
+    if (this.failNextAdd) {
+      this.failNextAdd = false;
+      throw new Error('storage hiccup');
+    }
+    this.state!.members.push(member);
+    this.state!.pods.push(pod);
   }
   async addLink(link: LinkSummary, refreshToken: string) {
     this.state!.links.push(link);
@@ -68,6 +78,19 @@ function world() {
       return { refreshToken: 'refresh1', accountId: 'dbid:1', accessToken: 'a', expiresAt: 0 };
     },
   };
+  const created: { person: string; username: string; name: string }[] = [];
+  const removed: string[] = [];
+  const logins = {
+    created,
+    removed,
+    createManaged: async (username: string, name: string) => {
+      const person = `user_m${created.length + 1}`;
+      created.push({ person, username, name });
+      return person;
+    },
+    remove: async (person: string) => void removed.push(person),
+    nameOf: async (person: string) => (person === 'user_dana' ? 'Dana' : null),
+  } satisfies Logins & { created: unknown; removed: unknown };
   let n = 0;
   const service = new Households({
     directory,
@@ -77,11 +100,12 @@ function world() {
     },
     pods,
     identities: { bind: async (person, webid) => void bound.set(person, webid) },
+    logins,
     authorization,
     ids: { random: () => `r${++n}` },
     webidOf: (podId) => `https://${podId}.pods.example/profile/card#me`,
   });
-  return { service, households, directory, placed, bound };
+  return { service, households, directory, placed, bound, logins };
 }
 
 const stateOf = (url: string) => new URL(url).searchParams.get('state')!.split('.') as [string, string];
@@ -90,7 +114,9 @@ describe('signing up', () => {
   it('gives the person a household they manage and a pod waiting for storage', async () => {
     const { service, bound } = world();
     const h = await service.signup('user_dana');
-    expect(h.members).toEqual([{ clerkUserId: 'user_dana', role: 'manager', webid: 'https://pod1xxxx.pods.example/profile/card#me', handle: 'pod1xxxx' }]);
+    expect(h.members).toEqual([
+      { clerkUserId: 'user_dana', role: 'manager', kind: 'adult', name: 'Dana', webid: 'https://pod1xxxx.pods.example/profile/card#me', handle: 'pod1xxxx' },
+    ]);
     expect(h.pods).toEqual([{ podId: 'pod1xxxx', owner: 'user_dana', linkId: null, folder: 'pod1xxxx' }]);
     expect(bound.get('user_dana')).toBe('https://pod1xxxx.pods.example/profile/card#me');
   });
@@ -165,5 +191,51 @@ describe('connecting storage', () => {
       await service.completeLink('user_dana', id, nonce, 'code', 'https://x/cb');
     }
     expect(placed).toHaveLength(1);
+  });
+});
+
+describe('adding a managed member', () => {
+  async function connected() {
+    const w = world();
+    await w.service.signup('user_dana');
+    const [id, nonce] = stateOf(await w.service.beginLink('user_dana', 'https://x/cb'));
+    const h = await w.service.completeLink('user_dana', id, nonce, 'code', 'https://x/cb');
+    return { ...w, h };
+  }
+
+  it('gives them their own login, WebID and pod beside the manager, owned by them', async () => {
+    const { service, h, placed, bound, logins, directory } = await connected();
+    const after = await service.addManagedMember('user_dana', '  Leo ');
+    const leo = after.members.find((m) => m.name === 'Leo')!;
+    expect(leo).toEqual({ clerkUserId: 'user_m1', role: 'member', kind: 'managed', name: 'Leo', webid: 'https://pod2xxxx.pods.example/profile/card#me', handle: 'pod2xxxx' });
+    expect(logins.created).toEqual([{ person: 'user_m1', username: 'pod-pod2xxxx', name: 'Leo' }]);
+    expect(bound.get('user_m1')).toBe(leo.webid);
+    expect(await directory.householdOf('user_m1')).toBe(h.id);
+    expect(after.pods.find((p) => p.owner === 'user_m1')).toEqual({ podId: 'pod2xxxx', owner: 'user_m1', linkId: h.links[0]!.linkId, folder: 'pod2xxxx' });
+    expect(placed.at(-1)).toEqual({
+      podId: 'pod2xxxx',
+      placement: { householdId: h.id, linkId: h.links[0]!.linkId, provider: 'dropbox', folder: 'pod2xxxx' },
+      owner: leo.webid,
+      managers: [h.members[0]!.webid],
+    });
+  });
+
+  it('is for managers only, after storage is connected, with a real name', async () => {
+    const { service } = await connected();
+    await expect(service.addManagedMember('user_dana', '   ')).rejects.toThrow(HouseholdRuleBroken);
+    await service.addManagedMember('user_dana', 'Leo');
+    await expect(service.addManagedMember('user_m1', 'Mallory')).rejects.toThrow(NotAManager);
+    const fresh = world();
+    await fresh.service.signup('user_eve');
+    await expect(fresh.service.addManagedMember('user_eve', 'Kid')).rejects.toThrow(NoStorageYet);
+    expect(fresh.logins.created).toEqual([]);
+  });
+
+  it('removes the login it made when the household cannot record the member', async () => {
+    const { service, households, h, logins } = await connected();
+    households.get(h.id)!.failNextAdd = true;
+    await expect(service.addManagedMember('user_dana', 'Leo')).rejects.toThrow('storage hiccup');
+    expect(logins.removed).toEqual(['user_m1']);
+    expect((await service.mine('user_dana'))!.members).toHaveLength(1);
   });
 });

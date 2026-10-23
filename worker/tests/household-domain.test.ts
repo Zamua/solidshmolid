@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { HouseholdRuleBroken, type Member, checkManagers, familyGroup } from '../domain/households/household.js';
+import { HouseholdRuleBroken, type Member, checkManagers, familyGroup, memberName } from '../domain/households/household.js';
 import { podRootAcl as rootAcl } from '../domain/pods/starter.js';
 import { parseRdf } from '../domain/shared/rdf.js';
 import { authorizationsOf, grantedModes } from '../domain/pods/wac.js';
@@ -10,13 +10,20 @@ const ALEX = 'https://alex.example/profile/card#me';
 const STRANGER = 'https://x.example/#me';
 const POD = 'https://sam.example';
 
-const member = (webid: string, role: Member['role']): Member => ({ clerkUserId: webid, role, webid, handle: 'h' });
+const member = (webid: string, role: Member['role']): Member => ({ clerkUserId: webid, role, kind: 'adult', name: 'N', webid, handle: 'h' });
 
 describe('household rules', () => {
   it('needs a manager while anyone is in it', () => {
     expect(() => checkManagers([member(DANA, 'manager'), member(SAM, 'member')])).not.toThrow();
     expect(() => checkManagers([member(SAM, 'member')])).toThrow(HouseholdRuleBroken);
     expect(() => checkManagers([])).not.toThrow();
+  });
+
+  it('takes a member name as written, within limits', () => {
+    expect(memberName('  Leo \n Rivera ')).toBe('Leo Rivera');
+    expect(memberName('Zoë')).toBe('Zoë');
+    expect(memberName('x'.repeat(40))).toHaveLength(40);
+    for (const bad of ['', '   ', 'x'.repeat(41), 'a\u0000b']) expect(() => memberName(bad)).toThrow(HouseholdRuleBroken);
   });
 });
 

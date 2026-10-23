@@ -55,6 +55,17 @@ describe.skipIf(!live)('Clerk sign-in', () => {
     const me = (await (await fetch(`${APEX}/api/me`, { headers: auth })).json()) as { person: string; household: { pods: unknown[] } };
     expect(me.person).toBe(user.id);
     expect(me.household.pods).toHaveLength(1);
+
+    // Connect storage (the dev provider), then add a child: a real,
+    // username-only Clerk user.
+    const { authorizeUrl } = (await (await fetch(`${APEX}/api/storage/dev/start`, { method: 'POST', headers: { ...auth, origin: APEX! } })).json()) as { authorizeUrl: string };
+    expect((await fetch(authorizeUrl, { headers: auth, redirect: 'manual' })).status).toBe(303);
+    const added = await fetch(`${APEX}/api/members`, { method: 'POST', headers: { ...auth, origin: APEX!, 'content-type': 'application/json' }, body: JSON.stringify({ name: 'Leo' }) });
+    expect(added.status).toBe(201);
+    const leo = ((await added.json()) as { members: { name: string; person: string; pod: string }[] }).members.find((m) => m.name === 'Leo')!;
+    made.push(leo.person);
+    const login = await bapi(`/users/${leo.person}`);
+    expect(login).toMatchObject({ username: `pod-${leo.pod}`, first_name: 'Leo', email_addresses: [] });
   });
 
   it('refuses a session minted for another site, such as a pod', async () => {

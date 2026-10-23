@@ -7,9 +7,13 @@ PORT="${E2E_PORT:-8799}"
 # Pod hosts are *.localhost: macOS resolves those to ::1, Linux to 127.0.0.1.
 IP=$([ "$(uname)" = Darwin ] && echo ::1 || echo 127.0.0.1)
 log=$(mktemp)
-npx wrangler dev --config wrangler.dev.jsonc --ip "$IP" --port "$PORT" --persist-to "$(mktemp -d)" >"$log" 2>&1 &
+# The suite stays offline from Clerk: its keys are left out, so dev sign-in
+# and the dev stand-ins for logins are what it exercises.
+vars=$(mktemp)
+grep -v '^CLERK_' .dev.vars > "$vars"
+npx wrangler dev --config wrangler.dev.jsonc --ip "$IP" --port "$PORT" --env-file "$vars" --persist-to "$(mktemp -d)" >"$log" 2>&1 &
 dev=$!
-trap 'kill $dev 2>/dev/null || true; rm -f "$log"' EXIT
+trap 'kill $dev 2>/dev/null || true; rm -f "$log" "$vars"' EXIT
 for _ in $(seq 1 120); do
   curl -sf "http://localhost:$PORT/healthz" >/dev/null && break
   sleep 0.5

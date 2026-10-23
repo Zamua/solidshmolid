@@ -4,14 +4,32 @@ import { ACL, FOAF } from '../shared/vocab.js';
 
 export type Role = 'manager' | 'member';
 
+/** `adult`: signs in with their own identifiers. `managed`: has no email; a
+ * manager created their login and sets up their devices. */
+export type Kind = 'adult' | 'managed';
+
 export interface Member {
   clerkUserId: string;
   role: Role;
+  kind: Kind;
+  /** What the household calls them; display only. */
+  name: string;
   webid: string;
   handle: string;
 }
 
 export class HouseholdRuleBroken extends Error {}
+
+const NAME_MAX = 40;
+
+/** A member's name as given, trimmed; refuses an empty or overlong one. */
+export function memberName(raw: string): string {
+  const name = raw.normalize('NFC').replace(/\s+/gu, ' ').trim();
+  if (name.length === 0) throw new HouseholdRuleBroken('give them a name');
+  if ([...name].length > NAME_MAX) throw new HouseholdRuleBroken(`a name has at most ${NAME_MAX} characters`);
+  if (/\p{Cc}/u.test(name)) throw new HouseholdRuleBroken('a name cannot hold control characters');
+  return name;
+}
 
 /** Refuses a membership change that would leave members without a manager. */
 export function checkManagers(members: Member[]): void {

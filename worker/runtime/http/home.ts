@@ -3,10 +3,12 @@
 import { households } from '../composition.js';
 import type { Env } from '../env.js';
 import { hostsFor } from '../hosts.js';
-import { connectPage, householdPage, signupPage, welcomePage } from './pages/home.js';
+import { addMemberPage, connectPage, householdPage, signupPage, welcomePage } from './pages/home.js';
 
 export async function homeRoute(request: Request, env: Env, url: URL, person: string | null): Promise<Response | null> {
-  if (url.pathname !== '/' || request.method !== 'GET') return null;
+  if (request.method !== 'GET') return null;
+  if (url.pathname === '/members/new') return person ? addMemberPage() : Response.redirect(`${url.origin}/sign-in?return=%2Fmembers%2Fnew`, 302);
+  if (url.pathname !== '/') return null;
   if (!person) return welcomePage();
   const hosts = hostsFor(env, url);
   const state = await households(env, hosts).mine(person);

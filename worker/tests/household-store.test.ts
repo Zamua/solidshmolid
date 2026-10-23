@@ -11,7 +11,7 @@ const KEY = btoa(String.fromCharCode(...new Uint8Array(32).map((_, i) => i)));
 
 const STATE: HouseholdState = {
   id: 'h1',
-  members: [{ clerkUserId: 'user_dana', role: 'manager', webid: 'https://k3x9fqm7.pods.example/profile/card#me', handle: 'k3x9fqm7' }],
+  members: [{ clerkUserId: 'user_dana', role: 'manager', kind: 'adult', name: 'Dana', webid: 'https://k3x9fqm7.pods.example/profile/card#me', handle: 'k3x9fqm7' }],
   pods: [{ podId: 'k3x9fqm7', owner: 'user_dana', linkId: null, folder: 'k3x9fqm7' }],
   links: [],
 };
@@ -38,6 +38,18 @@ describe('a household store', () => {
     expect(await household.load()).toBeNull();
     expect(await household.create(STATE)).toEqual(STATE);
     expect(await household.create({ ...STATE, id: 'h2', pods: [] })).toEqual(STATE);
+  });
+
+  it('adds a member and their pod together, in order', async () => {
+    const { household } = store();
+    await household.create(STATE);
+    const leo = { clerkUserId: 'user_leo', role: 'member', kind: 'managed', name: 'Leo', webid: 'https://p2.pods.example/profile/card#me', handle: 'p2' } as const;
+    await household.addMember(leo, { podId: 'p2', owner: 'user_leo', linkId: null, folder: 'p2' });
+    const state = (await household.load())!;
+    expect(state.members.map((m) => m.name)).toEqual(['Dana', 'Leo']);
+    expect(state.pods.map((p) => p.podId)).toEqual(['k3x9fqm7', 'p2']);
+    await expect(household.addMember(leo, { podId: 'p3', owner: 'user_leo', linkId: null, folder: 'p3' })).rejects.toThrow();
+    expect((await household.load())!.pods).toHaveLength(2);
   });
 
   it('records where pods live', async () => {

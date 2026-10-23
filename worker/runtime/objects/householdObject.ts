@@ -3,7 +3,8 @@
 // hands its pods short-lived access tokens over RPC.
 
 import { DurableObject } from 'cloudflare:workers';
-import type { HouseholdState, LinkSummary, PendingLink } from '../../app/households/ports.js';
+import type { HouseholdState, LinkSummary, PendingLink, PodPlacement } from '../../app/households/ports.js';
+import type { Member } from '../../domain/households/household.js';
 import { type AccessToken, LinkTokens } from '../adapters/linkTokens.js';
 import { Sealer } from '../adapters/sealing.js';
 import type { SqlRunner } from '../adapters/sql.js';
@@ -27,6 +28,10 @@ export class HouseholdObject extends DurableObject<Env> {
 
   async create(state: HouseholdState): Promise<HouseholdState> {
     return this.store.create(state);
+  }
+
+  async addMember(member: Member, pod: PodPlacement): Promise<void> {
+    return this.store.addMember(member, pod);
   }
 
   async addLink(link: LinkSummary, refreshToken: string): Promise<void> {

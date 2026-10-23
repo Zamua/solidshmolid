@@ -45,5 +45,23 @@ describe.skipIf(!APEX)('sign up and connect storage', () => {
     const home = await (await fetch(`${APEX}/`, { headers: { cookie } })).text();
     expect(home).toContain('Your household');
     expect(home).toContain(new URL(pod!.url).host);
+
+    // A child of the household: their own login, WebID and pod, owned by them
+    // and fully open to the manager.
+    expect((await fetch(`${APEX}/members/new`, { headers: { cookie } })).status).toBe(200);
+    const json = { cookie, origin: APEX!, 'content-type': 'application/json' };
+    expect((await fetch(`${APEX}/api/members`, { method: 'POST', headers: json, body: JSON.stringify({ name: ' ' }) })).status).toBe(400);
+    const added = await fetch(`${APEX}/api/members`, { method: 'POST', headers: json, body: JSON.stringify({ name: 'Leo' }) });
+    expect(added.status).toBe(201);
+    const after = (await added.json()) as { members: { name: string; kind: string; webid: string; pod: string }[]; pods: { id: string; url: string; connected: boolean }[] };
+    const leo = after.members.find((m) => m.name === 'Leo')!;
+    expect(leo.kind).toBe('managed');
+    const leoPod = after.pods.find((p) => p.id === leo.pod)!;
+    expect(leoPod.connected).toBe(true);
+    expect((await fetch(new URL('/profile/card', leoPod.url))).status).toBe(200);
+    for (const [who, status] of [[leo.webid, 200], [webid, 200], ['https://stranger.example/#me', 403]] as const) {
+      expect((await fetch(leoPod.url, { headers: { 'X-Dev-WebID': who } })).status).toBe(status);
+    }
+    expect((await fetch(leoPod.url)).status).toBe(401);
   });
 });
