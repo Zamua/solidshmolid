@@ -283,8 +283,8 @@ private (with a link to the account site), or there is no pod at that
 address. A navigation to a WebID profile gets it rendered: name, WebID, pods,
 issuer. Apps never send that header and keep the protocol's own answers.
 
-The account site has a menu (pods, sign out). The pods page shows the WebID
-with a copy button (`/assets/page.js`, served from the apex like the Clerk
+The account site has a menu (pods, sign out). The pods page offers the WebID
+to view (its public profile) or copy, without printing the URL (`/assets/page.js`, served from the apex like the Clerk
 boot script, so pages carry no inline script). Its Files view lets a person
 browse their own pods' folders, reading as their WebID through the pod
 service, and download files: always as attachments (`application/octet-stream`,
