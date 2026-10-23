@@ -3,7 +3,8 @@ import { copyPod } from '../app/storage/migrate.js';
 import { Pod } from '../app/pods/pod.js';
 import { NO_CONDITIONS } from '../domain/pods/requests.js';
 import { DropboxFileStore } from '../runtime/adapters/dropbox.js';
-import { DropboxAuthError, authorizeUrl, exchangeCode, pkce, refreshAccess } from '../runtime/adapters/dropboxOAuth.js';
+import { DropboxAuthError, authorizeUrl, exchangeCode, refreshAccess } from '../runtime/adapters/dropboxOAuth.js';
+import { pkce } from '../runtime/adapters/pkce.js';
 import { FakeDropbox } from './support/fakeDropbox.js';
 import { ALICE, BASE, newPod, sqliteIndex, streamOf, textOf } from './support/fakes.js';
 

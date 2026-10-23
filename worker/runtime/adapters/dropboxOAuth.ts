@@ -3,22 +3,12 @@
 // holds no app secret at all.
 
 import type { Grant, StorageAuthorization } from '../../app/storage/ports.js';
+import { type PkcePair, pkce } from './pkce.js';
 
 const AUTHORIZE = 'https://www.dropbox.com/oauth2/authorize';
 const TOKEN = 'https://api.dropboxapi.com/oauth2/token';
 
 export class DropboxAuthError extends Error {}
-
-export interface PkcePair {
-  verifier: string;
-  challenge: string;
-}
-
-export async function pkce(): Promise<PkcePair> {
-  const verifier = base64url(crypto.getRandomValues(new Uint8Array(48)));
-  const digest = new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(verifier)));
-  return { verifier, challenge: base64url(digest) };
-}
 
 export function authorizeUrl(appKey: string, redirectUri: string, state: string, challenge: string): string {
   const q = new URLSearchParams({
@@ -96,12 +86,6 @@ async function tokenCall(fetcher: Fetch, form: Record<string, string>): Promise<
     throw new DropboxAuthError(String(body.error_description ?? body.error ?? `HTTP ${res.status}`));
   }
   return body;
-}
-
-function base64url(bytes: Uint8Array): string {
-  let s = '';
-  for (const b of bytes) s += String.fromCharCode(b);
-  return btoa(s).replace(/\+/gu, '-').replace(/\//gu, '_').replace(/=+$/u, '');
 }
 
 /** Dropbox behind the StorageAuthorization port. */
