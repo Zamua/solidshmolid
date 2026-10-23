@@ -23,7 +23,7 @@ red-reachable check.
 - [ ] T001 Operator creates the Clerk application `solidshmolid` (dev and prod instances): usernames on, email optional, passkeys on; keys into `~/keys` and `infra/solidshmolid/`
 - [ ] T002 Spike against the Clerk dev instance: create a username-only user via the Backend API, issue a 900 s sign-in token, sign in with it once, register a passkey, confirm a second use fails (research R3, R4); record results in research.md
 - [ ] T003 [P] Generate `OIDC_SIGNING_JWK` in `make .dev.vars`; add `CLERK_PUBLISHABLE_KEY`/`CLERK_SECRET_KEY` handling in Makefile
-- [ ] T004 [P] Mobile-first mockups (sign-up, connect storage, dashboard, member card, consent, device setup QR, delete with typed confirmation) as static HTML at iPhone width with Phosphor icons; screenshots to the operator for approval before any page is built
+- [x] T004 [P] Mobile-first mockups (sign-up, connect storage, dashboard, member card, consent, device setup QR, delete with typed confirmation) as static HTML at iPhone width with Phosphor icons; screenshots to the operator for approval before any page is built
 - [ ] T005 Move `PodObject` to `worker/runtime/objects/` and register `HouseholdObject`, `AccountObject`, `DirectoryObject` with a v2 migration in `wrangler.jsonc` and `wrangler.dev.jsonc`
 
 ## Phase 2: Foundational (blocks every story)

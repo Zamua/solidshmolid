@@ -1,0 +1,202 @@
+/* Mockup tokens: a morning sky. White clouds are the surfaces; one blue does the talking. */
+:root {
+  --sky-top: #cfe4ff;
+  --sky: #eaf4ff;
+  --cloud: #ffffff;
+  --mist: #f3f8ff;
+  --blue: #3d6fe0;
+  --blue-deep: #2a52b8;
+  --ink: #1f2d4d;
+  --ink-soft: #5a6b8c;
+  --line: #dbe7fa;
+  --sun: #ffd76a;
+  --leaf: #2f9e6e;
+  --berry: #c2415a;
+  --display: 'Fredoka', system-ui, sans-serif;
+  --body: 'Atkinson Hyperlegible', system-ui, sans-serif;
+}
+
+* { box-sizing: border-box; margin: 0; }
+
+html, body { height: 100%; }
+
+body {
+  font: 17px/1.5 var(--body);
+  color: var(--ink);
+  background: linear-gradient(180deg, var(--sky-top) 0%, var(--sky) 38%, var(--sky) 100%);
+  min-height: 100vh;
+  overflow: hidden;
+  position: relative;
+}
+
+/* Status bar stand-in so screenshots read as a phone. */
+.status {
+  height: 54px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 30px;
+  font: 600 16px var(--body);
+  color: var(--ink);
+}
+.status i { font-size: 18px; margin-left: 6px; }
+
+.sky-clouds { position: absolute; inset: 0 0 auto 0; height: 300px; pointer-events: none; z-index: 0; }
+
+.screen { position: relative; z-index: 1; padding: 8px 22px 140px; }
+
+.wordmark {
+  font: 600 22px var(--display);
+  color: var(--blue-deep);
+  letter-spacing: 0.2px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.wordmark svg { width: 34px; height: 22px; }
+
+h1 {
+  font: 600 34px/1.12 var(--display);
+  color: var(--ink);
+  margin: 18px 0 10px;
+  letter-spacing: -0.2px;
+}
+h2 { font: 600 22px/1.2 var(--display); margin: 0 0 6px; }
+p.lede { color: var(--ink-soft); font-size: 17px; max-width: 32ch; }
+.small { font-size: 14px; color: var(--ink-soft); }
+
+.card {
+  background: var(--cloud);
+  border-radius: 26px;
+  padding: 20px;
+  box-shadow: 0 1px 0 var(--line), 0 14px 30px -18px rgba(42, 82, 184, 0.35);
+}
+.card + .card { margin-top: 14px; }
+
+.row { display: flex; align-items: center; gap: 12px; }
+.grow { flex: 1; min-width: 0; }
+
+.btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  width: 100%;
+  height: 56px;
+  border: 0;
+  border-radius: 18px;
+  font: 600 18px var(--display);
+  cursor: pointer;
+}
+.btn i { font-size: 22px; }
+.btn.primary { background: var(--blue); color: #fff; box-shadow: 0 10px 20px -12px var(--blue); }
+.btn.quiet { background: transparent; color: var(--blue-deep); height: 48px; }
+.btn.danger { background: var(--berry); color: #fff; }
+.btn.disabled { background: #c9d6ee; color: #fff; box-shadow: none; }
+
+/* Sticky action bar with a soft fade so the call to action never sits on a hard edge. */
+.dock {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  padding: 26px 22px 30px;
+  background: linear-gradient(180deg, rgba(234, 244, 255, 0) 0%, var(--sky) 34%);
+  z-index: 3;
+}
+
+.field {
+  display: flex;
+  align-items: center;
+  background: var(--mist);
+  border: 2px solid var(--line);
+  border-radius: 16px;
+  height: 58px;
+  padding: 0 16px;
+  font: 18px var(--body);
+}
+.field.focus { border-color: var(--blue); background: #fff; }
+.field .suffix { color: var(--ink-soft); }
+.label { font: 600 15px var(--body); margin: 0 0 8px; display: block; }
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font: 600 13px var(--body);
+  padding: 3px 10px;
+  border-radius: 999px;
+  background: var(--mist);
+  color: var(--blue-deep);
+}
+.badge.you { background: var(--sun); color: #5c4300; }
+.badge.kid { background: #e3f6ec; color: #1c6b49; }
+
+.icon-tile {
+  width: 46px;
+  height: 46px;
+  border-radius: 14px;
+  display: grid;
+  place-items: center;
+  background: var(--mist);
+  color: var(--blue-deep);
+  font-size: 24px;
+  flex: none;
+}
+
+.ok { color: var(--leaf); }
+
+/* A pod drawn as a cloud carrying its person's initial. */
+.pod-cloud { position: relative; width: 92px; height: 64px; flex: none; }
+.pod-cloud svg { position: absolute; inset: 0; width: 100%; height: 100%; }
+.pod-cloud.small { width: 58px; height: 42px; }
+.pod-cloud.small span { inset: 9px 0 0 0; font-size: 17px; }
+.pod-cloud span {
+  position: absolute;
+  inset: 14px 0 0 0;
+  display: grid;
+  place-items: center;
+  font: 600 22px var(--display);
+  color: var(--blue-deep);
+}
+
+.meter { height: 8px; border-radius: 999px; background: var(--mist); overflow: hidden; }
+.meter b { display: block; height: 100%; background: var(--blue); border-radius: 999px; }
+
+.sheet-backdrop { position: absolute; inset: 0; background: rgba(31, 45, 77, 0.28); z-index: 4; }
+.sheet {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: #fff;
+  border-radius: 30px 30px 0 0;
+  padding: 12px 22px 34px;
+  z-index: 5;
+}
+.grabber { width: 44px; height: 5px; border-radius: 9px; background: var(--line); margin: 0 auto 18px; }
+
+.choice {
+  border: 2px solid var(--line);
+  border-radius: 20px;
+  padding: 14px 16px;
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+}
+.choice + .choice { margin-top: 10px; }
+.choice.on { border-color: var(--blue); background: var(--mist); }
+.choice .dot {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  border: 2px solid var(--line);
+  flex: none;
+  margin-top: 2px;
+}
+.choice.on .dot { border: 7px solid var(--blue); }
+
+ul.plain { list-style: none; padding: 0; }
+ul.plain.card { padding: 14px 20px; }
+ul.plain li { display: flex; gap: 10px; align-items: flex-start; padding: 6px 0; }
+ul.plain li i { font-size: 22px; color: var(--blue); flex: none; margin-top: 1px; }
