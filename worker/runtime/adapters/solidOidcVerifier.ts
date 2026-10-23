@@ -49,6 +49,9 @@ export const PROOF_WINDOW_S = 300;
 const CACHE_MS = 5 * 60_000;
 const FETCH_TIMEOUT_MS = 5_000;
 const FETCH_LIMIT = 256 * 1024;
+/** Issuers and WebIDs are the caller's choice, so the caches stay bounded. */
+const CACHE_ENTRIES = 256;
+const JWKS_KEYS = 20;
 
 interface Cached<T> {
   at: number;
@@ -98,7 +101,7 @@ export class SolidOidcVerifier {
 
   private async verifyToken(token: string, issuer: string, now: Date): Promise<JWTPayload> {
     const attempt = async (fresh: boolean) =>
-      (await jwtVerify(token, await this.keysOf(issuer, fresh), { issuer, algorithms: ALGORITHMS, currentDate: now, clockTolerance: 30 }))
+      (await jwtVerify(token, await this.keysOf(issuer, fresh), { issuer, algorithms: ALGORITHMS, currentDate: now, clockTolerance: 30, requiredClaims: ['exp'] }))
         .payload;
     try {
       return await attempt(false);
@@ -150,8 +153,10 @@ export class SolidOidcVerifier {
     if (!sameIssuer(String(config.issuer), issuer) || typeof config.jwks_uri !== 'string') {
       throw new InvalidCredentials(`${issuer} has no usable OpenID configuration`);
     }
-    const set = createLocalJWKSet((await this.fetchJson(config.jwks_uri)) as never);
-    this.keys.set(issuer, { at: this.deps.now(), value: set });
+    const jwks = await this.fetchJson(config.jwks_uri);
+    if (!Array.isArray(jwks.keys) || jwks.keys.length > JWKS_KEYS) throw new InvalidCredentials(`${issuer} publishes an unusable key set`);
+    const set = createLocalJWKSet(jwks as never);
+    remember(this.keys, issuer, { at: this.deps.now(), value: set });
     return set;
   }
 
@@ -165,7 +170,7 @@ export class SolidOidcVerifier {
       throw new InvalidCredentials(`${webid}: profile does not parse`);
     });
     const issuers = quads.filter((q) => q.subject.value === webid && q.predicate.value === SOLID('oidcIssuer')).map((q) => q.object.value);
-    this.webids.set(webid, { at: this.deps.now(), value: issuers });
+    remember(this.webids, webid, { at: this.deps.now(), value: issuers });
     return issuers;
   }
 
@@ -189,6 +194,13 @@ export class SolidOidcVerifier {
     if (!res.ok) throw new InvalidCredentials(`${url}: HTTP ${res.status}`);
     return res;
   }
+}
+
+/** Caches an entry, dropping the oldest once the cache is full. */
+function remember<T>(cache: Map<string, T>, key: string, value: T): void {
+  cache.delete(key);
+  if (cache.size >= CACHE_ENTRIES) cache.delete(cache.keys().next().value!);
+  cache.set(key, value);
 }
 
 async function limitedText(res: Response): Promise<string> {

@@ -59,6 +59,7 @@ export function parsePatch(text: string, baseIRI: string): Patch {
       if (isVariable(t) && !bound.has(t.value)) throw new InvalidPatch(`variable ?${t.value} is not bound by where`);
     }
   }
+  if (patch.where.length > WHERE_LIMIT) throw new InvalidPatch(`where may hold at most ${WHERE_LIMIT} patterns`);
   if ([...patch.where, ...patch.deletes].some((q) => termsOf(q).some((t) => t.termType === 'BlankNode'))) {
     throw new InvalidPatch('blank nodes are not allowed in where or deletes');
   }
@@ -94,8 +95,14 @@ export function applyPatch(target: Quad[], patch: Patch): Quad[] {
   return store.getQuads(null, null, null, null);
 }
 
+/** Bounds on a where clause: matching is a join, so an outsider's patch
+ * could otherwise make a pod enumerate every combination of its triples. */
+export const WHERE_LIMIT = 64;
+const BINDINGS_LIMIT = 1000;
+
 function matchAll(store: Store, patterns: Quad[], bindings: Binding[]): Binding[] {
   if (patterns.length === 0) return bindings;
+  if (bindings.length > BINDINGS_LIMIT) throw new PatchConflict('where matches in too many ways');
   const [first, ...rest] = patterns;
   const next: Binding[] = [];
   for (const b of bindings) {

@@ -19,10 +19,14 @@ import {
   UnsupportedMediaType,
 } from '../../app/shared/errors.js';
 import { type Access, type Agent, Pod, type ReadResult } from '../../app/pods/pod.js';
+import { readAll } from '../../app/shared/streams.js';
 import type { Conditions, EtagList, RangeRequest } from '../../domain/pods/requests.js';
 import { InvalidPath, type PodPath, aclPathOf, canonicalPath, isAclPath, isContainer } from '../../domain/pods/paths.js';
 import { LDP, PIM } from '../../domain/shared/vocab.js';
 import { wacAllow } from '../../domain/pods/wac.js';
+
+/** N3 Patch documents are small; anything bigger is refused unread. */
+const PATCH_LIMIT = 1024 * 1024;
 
 const EXPOSED = [
   'Accept-Patch',
@@ -84,7 +88,8 @@ async function dispatch(pod: Pod, request: Request, path: PodPath, agent: Agent)
       return writeResponse(pod, r.path, true, agent);
     }
     case 'PATCH': {
-      const r = await pod.patch(path, agent, await request.text(), h.get('Content-Type'), conditionsOf(h));
+      const text = new TextDecoder().decode(await readAll(bodyOf(request), PATCH_LIMIT));
+      const r = await pod.patch(path, agent, text, h.get('Content-Type'), conditionsOf(h));
       return writeResponse(pod, r.path, r.created, agent);
     }
     case 'DELETE':
@@ -106,6 +111,7 @@ function readResponse(pod: Pod, r: ReadResult): Response {
     ...acceptHeaders(r.path),
   });
   if (r.kind === 'document') headers.set('Accept-Ranges', 'bytes');
+  if (!r.access.public.has('read')) headers.set('Cache-Control', 'private, no-cache');
   if (r.range && r.size !== null) {
     headers.set('Content-Range', `bytes ${r.range.start}-${r.range.end}/${r.size}`);
     headers.set('Content-Length', String(r.range.end - r.range.start + 1));

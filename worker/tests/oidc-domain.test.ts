@@ -8,6 +8,7 @@ import {
   discovery,
   idTokenClaims,
   parseAuthorizeRequest,
+  parseRegistration,
   pkceMatches,
   publicClient,
   redirectAllowed,
@@ -123,5 +124,15 @@ describe('token claims', () => {
   it('carries the nonce into the ID token only when given', () => {
     expect(idTokenClaims({ ...ctx, nonce: 'n' })).toMatchObject({ aud: ctx.clientId, nonce: 'n', azp: ctx.clientId });
     expect(idTokenClaims({ ...ctx, nonce: null })).not.toHaveProperty('nonce');
+  });
+});
+
+describe('dynamic registration', () => {
+  it('keeps registrations small: a few short redirect URIs and a short name', () => {
+    const uri = 'https://notes.example/cb';
+    expect(parseRegistration({ redirect_uris: [uri], client_name: 'x'.repeat(500) }).client_name).toHaveLength(100);
+    expect(() => parseRegistration({ redirect_uris: Array(11).fill(uri) })).toThrow(OidcError);
+    expect(() => parseRegistration({ redirect_uris: [`${uri}?${'a'.repeat(2048)}`] })).toThrow(OidcError);
+    expect(() => parseRegistration({ redirect_uris: [] })).toThrow(OidcError);
   });
 });

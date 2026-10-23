@@ -296,3 +296,40 @@ describe('access control', () => {
     await expect(pod.read('/shared/doc.txt', bob, GET)).rejects.toThrow(Forbidden);
   });
 });
+
+describe('outsiders', () => {
+  const where = (n: number) =>
+    `${PRE}_:p a solid:InsertDeletePatch; solid:where { ${Array.from({ length: n }, (_, i) => `?s${i} ?p${i} ?o${i}.`).join(' ')} }.`;
+
+  it('cannot patch, or make a pod parse, a document they may only read', async () => {
+    const { pod, index } = await newPod();
+    const before = index.get('/profile/card')!.rev;
+    await expect(pod.patch('/profile/card', anon, where(1), N3, NO_CONDITIONS)).rejects.toThrow(Unauthenticated);
+    await expect(pod.patch('/profile/card', anon, 'not even n3 {{{', N3, NO_CONDITIONS)).rejects.toThrow(Unauthenticated);
+    expect(index.get('/profile/card')!.rev).toBe(before);
+  });
+
+  it('a patch that only tests its where clause changes nothing', async () => {
+    const { pod, index } = await newPod();
+    const before = index.get('/profile/card')!.rev;
+    await pod.patch('/profile/card', alice, `${PRE}_:p a solid:InsertDeletePatch; solid:where { <#me> a <http://xmlns.com/foaf/0.1/Person> }.`, N3, NO_CONDITIONS);
+    expect(index.get('/profile/card')!.rev).toBe(before);
+  });
+
+  it('refuses a where clause that would match in too many ways, quickly', async () => {
+    const { pod } = await newPod();
+    const started = Date.now();
+    await expect(pod.patch('/profile/card', alice, where(12), N3, NO_CONDITIONS)).rejects.toThrow(Conflict);
+    expect(Date.now() - started).toBeLessThan(500);
+    await expect(pod.patch('/profile/card', alice, where(65), N3, NO_CONDITIONS)).rejects.toThrow(Unprocessable);
+  });
+
+  it('cannot learn whether a private resource exists from preconditions', async () => {
+    const { pod } = await newPod();
+    await pod.put('/private/a.txt', alice, body('secret'), 'text/plain', NO_CONDITIONS);
+    const exists = { ifMatch: null, ifNoneMatch: '*' as const };
+    await expect(pod.put('/private/a.txt', anon, body('x'), 'text/plain', exists)).rejects.toThrow(Unauthenticated);
+    await expect(pod.put('/private/none.txt', anon, body('x'), 'text/plain', exists)).rejects.toThrow(Unauthenticated);
+    await expect(pod.remove('/private/a.txt', anon, { ifMatch: ['nope'], ifNoneMatch: null })).rejects.toThrow(Unauthenticated);
+  });
+});

@@ -81,8 +81,13 @@ async function withAccountMenu(response: Response, env: Env, url: URL, person: s
 }
 
 async function pod(request: Request, env: Env, url: URL, handle: string): Promise<Response> {
-  const stub = env.POD.get(env.POD.idFromName(handle));
   const base = url.origin;
+  // Outside dev only pod ids name pods; anything else is turned away before
+  // it can bring a Durable Object into being.
+  if (!isDev(env) && !isPodId(handle)) {
+    return isNavigation(request) ? podLandingPage(404, `${base}/`, hostsFor(env, url).issuer, handle) : new Response('not found\n', { status: 404 });
+  }
+  const stub = env.POD.get(env.POD.idFromName(handle));
   // Named pods are a development convenience; pods with random ids belong to
   // accounts and exist once their storage is connected.
   if (isDev(env) && !isPodId(handle)) {

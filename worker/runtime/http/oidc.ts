@@ -6,7 +6,11 @@ import { verifyDpopProof } from '../adapters/dpopProof.js';
 import { provider, tokenSigner } from '../composition.js';
 import type { Env } from '../env.js';
 import { consentPage } from './pages/oidcPages.js';
+import { readAll } from '../../app/shared/streams.js';
 import { problemPage } from './pages/problem.js';
+
+/** A registration is a few URLs and a name; bigger bodies are refused unread. */
+const REGISTRATION_BODY_LIMIT = 16 * 1024;
 
 /** Handles provider paths; null when the path is not the provider's. */
 export async function oidcRoute(request: Request, env: Env, url: URL, person: string | null): Promise<Response | null> {
@@ -45,7 +49,7 @@ export async function oidcRoute(request: Request, env: Env, url: URL, person: st
       return cors(Response.json(tokens, { headers: { 'Cache-Control': 'no-store' } }));
     }
     if (path === '/.oidc/reg' && request.method === 'POST') {
-      return cors(Response.json(await op.register(await request.json().catch(() => null)), { status: 201 }));
+      return cors(Response.json(await op.register(await registrationBody(request)), { status: 201 }));
     }
     if (path === '/.oidc/session/end') return Response.redirect(`${url.origin}/sign-out`, 302);
     return new Response('not found\n', { status: 404 });
@@ -67,4 +71,14 @@ function cors(response: Response): Response {
   out.headers.set('Access-Control-Allow-Headers', 'Content-Type, DPoP, Authorization');
   out.headers.set('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
   return out;
+}
+
+/** The registration JSON, or null when it is missing, too big or not JSON. */
+async function registrationBody(request: Request): Promise<unknown> {
+  if (!request.body) return null;
+  try {
+    return JSON.parse(new TextDecoder().decode(await readAll(request.body, REGISTRATION_BODY_LIMIT)));
+  } catch {
+    return null;
+  }
 }
