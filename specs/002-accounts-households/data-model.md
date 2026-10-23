@@ -54,7 +54,7 @@ move commits (FR-017).
 
 | table | purpose |
 | --- | --- |
-| handles | `handle` -> `householdId`, `state` (`active` or `released`), `releasedAt`; a released handle is not reusable for 90 days |
+| pod ids | `podId` -> `householdId`, `state` (`active` or `deleted`); ids are random, unique, never reused |
 | accounts | `clerkUserId` -> `householdId` |
 | providerAccounts | `provider`, `providerAccount` -> `householdId`, `linkId` |
 
@@ -69,12 +69,13 @@ come from the household over RPC. Root ACL shape per FR-012.
 PodPlacement:  (none) -> active -> moving -> active        (move or handover)
                                 \-> deleted               (FR-019; files kept unless confirmed)
 Member:        invited -> member -> (handover) -> adult with own household
-Handle:        free -> active -> released (90 days) -> free
+Pod id:        assigned -> active -> deleted (never reassigned)
 ```
 
 ## Validation rules from the spec
 
-- Handles: existing handle rules, unique in `DirectoryObject.handles` (FR-009).
+- Pod ids: 8 characters from `23456789abcdefghjkmnpqrstuvwxyz`, assigned by the directory,
+  unique and never reused (FR-009).
 - Deleting files: `deleteFiles` requires the first-step token and the exact sentence
   `yes, delete my data in <displayName>` (FR-019, SC-006).
 - Setup codes: single use, 15 minutes, one member (FR-014).

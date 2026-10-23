@@ -25,6 +25,12 @@ any Solid app."
 - Q: When a pod or account is deleted, what happens to its storage folder? → A: The user chooses
   at deletion time; the default leaves it untouched. Deleting the files takes several
   confirmation steps, including typing a sentence naming the storage provider.
+- Q: How do staging pods get HTTPS on a single domain? → A: Staging pod hosts are
+  `stg-<id>.solidshmolid.com` (one level, covered by the free certificate); no Advanced
+  Certificate Manager.
+- Q: Do people pick their pod's address? → A: No. Each pod gets a short random id
+  (`k3x9fqm7.solidshmolid.com`) so names cannot be squatted; people are shown by display name
+  everywhere else.
 
 ## User Scenarios & Testing *(mandatory)*
 
@@ -32,8 +38,8 @@ Running example: Dana (manager), her spouse Alex, and their kids Sam (8), Maya (
 
 ### User Story 1 - Sign up, connect storage, get a pod (Priority: P1)
 
-Dana visits solidshmolid.com, signs up, picks the handle `dana`, connects her Dropbox, and has a
-pod at `dana.solidshmolid.com` with her WebID, its files in her Dropbox.
+Dana visits solidshmolid.com, signs up, connects her Dropbox, and has a pod at a short random
+address such as `k3x9fqm7.solidshmolid.com` with her WebID, its files in her Dropbox.
 
 **Why this priority**: The minimum product: a person can get a pod without operator help.
 
@@ -42,13 +48,11 @@ profile is publicly readable at its WebID while its root is private.
 
 **Acceptance Scenarios**:
 
-1. **Given** a new visitor, **When** they sign up and choose a free handle, **Then** a pod and
-   WebID are created for that handle.
-2. **Given** a taken, reserved or malformed handle, **When** it is chosen, **Then** it is refused
-   with the reason before anything is created.
-3. **Given** a signed-up user without connected storage, **When** they finish connecting
+1. **Given** a new visitor, **When** they sign up, **Then** a pod and WebID are created at a
+   newly assigned random id that no other pod has ever used.
+2. **Given** a signed-up user without connected storage, **When** they finish connecting
    storage, **Then** the pod's files are in a folder named for the pod in that storage.
-4. **Given** a storage folder that already holds a pod for that handle (a returning user),
+3. **Given** a storage folder that already holds a pod for that id (a returning user),
    **When** it is connected, **Then** that pod is adopted rather than overwritten.
 
 ---
@@ -196,8 +200,7 @@ move or delete first.
 
 ### Edge Cases
 
-- A handle that once belonged to a deleted pod: not reusable for 90 days, so old links do not
-  silently point at someone else.
+- Ids are never reused, so an old link to a deleted pod can never point at someone else.
 - A member who belongs to two households: not supported in v1; one household per member.
 - Storage revoked from the provider's side while pods live there: every affected pod reports
   "storage disconnected" and the manager is shown a reconnect action.
@@ -228,7 +231,9 @@ move or delete first.
 
 **Pods and households**
 
-- **FR-009**: Handles MUST be unique service-wide, follow the handle rules, and exclude reserved names.
+- **FR-009**: Pod addresses MUST be assigned by the service as random ids of 8 characters from an
+  unambiguous lowercase alphabet (no `0`, `1`, `i`, `l`, `o`), unique service-wide and never
+  reused. People never choose them.
 - **FR-010**: A household MUST have at least one manager; managers can add member pods.
 - **FR-011**: Each pod MUST live in its own folder inside one storage link; several pods MAY
   share one link.

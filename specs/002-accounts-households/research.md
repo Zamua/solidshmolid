@@ -27,9 +27,10 @@
   as kcal) and calls Clerk's Backend API with `CLERK_SECRET_KEY` for creating managed members,
   issuing sign-in tokens and removing passkeys.
 - **Rationale**: Matches the operator's other apps; no passwords stored here (FR-001).
-- **Risk to verify first (spike task)**: managed members need username-only users with no email.
-  Clerk allows it only when the instance makes email optional and usernames enabled; confirm on
-  a dev instance before building the member flow.
+- **Spike result (2026-10-23, dev instance)**: with email optional, usernames on (minimum
+  length 1) and passwords off, the Backend API creates a username-only user
+  (`skip_password_requirement`) with no email and no password. Instance sign-in is passwordless:
+  email code, Google, passkeys.
 
 ## R4. Device setup codes
 
@@ -39,6 +40,10 @@
   device to register a passkey.
 - **Rationale**: Clerk sign-in tokens are single-use by design and accept a custom lifetime,
   which is exactly FR-014. Putting the token in the URL fragment keeps it out of server logs.
+- **Spike result (2026-10-23)**: a 900 s token for the username-only user signed a fresh
+  browser in on first use; the second use was refused ("This sign in token has already been
+  used"). Passkey registration needs a real authenticator: checked on a device, or with a
+  virtual authenticator in e2e.
 
 ## R5. Where state lives
 
