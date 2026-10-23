@@ -82,7 +82,7 @@ change that added more pods per person.
 ## Phase 11: Polish
 
 - [ ] T037 Update `docs/SPEC.md`, `CLAUDE.md`, README for accounts and the provider
-- [ ] T038 `infra/solidshmolid/`: wrangler per-environment files (`*-stg.solidshmolid.page` route, `stg.solidshmolid.com` custom domain), secrets contract, DEPLOY.md, smoke; first staging deploy from a tag
+- [x] T038 `infra/solidshmolid/`: wrangler per-environment files (`*-stg.solidshmolid.page` route, `stg.solidshmolid.com` custom domain), secrets contract, DEPLOY.md, smoke; first staging deploy from a tag
 - [ ] T039 Run quickstart.md by hand on staging with a real Clerk instance and Dropbox
 
 ## Dependencies
