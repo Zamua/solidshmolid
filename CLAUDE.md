@@ -10,17 +10,22 @@ Layers and bounded contexts, enforced by `worker/tests/layering.test.ts`:
 
 ```
 worker/domain/{shared,pods,identity,households}   pure rules, no I/O
-worker/app/{shared,pods,storage,identity}         services + their ports (ports.ts per context)
+worker/app/{shared,pods,storage,identity,households}  services + their ports (ports.ts per context)
 worker/runtime/
   composition.ts    the one place that picks adapters and builds services
   worker.ts         entry: routes by host
-  http/             translation only (solid.ts, oidc.ts, link.ts, dev.ts, pages/)
-  adapters/         SQL stores, Dropbox, OAuth, token signer/verifier, sessions
-  objects/          Durable Objects as thin shells (Pod, Account, Directory)
+  hosts.ts          pod origins, WebIDs and the issuer, from the apex URL
+  http/             translation only (solid.ts, oidc.ts, api.ts, home.ts, dev.ts, pages/)
+  adapters/         SQL stores, Dropbox, OAuth, token signer/verifier, sessions, RPC
+  objects/          Durable Objects as thin shells (Pod, Household, Account, Directory)
 ```
 
-- One `PodObject` per handle; `AccountObject` per person (provider state);
-  one `DirectoryObject` (account keys, handles, registered clients).
+- One `PodObject` per pod id; one `HouseholdObject` per household (members,
+  pods, storage links with sealed refresh tokens, access tokens over RPC);
+  `AccountObject` per person (provider state); one `DirectoryObject`
+  (account keys, households, pod ids, registered clients).
+- Pod ids are random (`domain/households/podIds.ts`); each pod lives in its
+  own folder of the household's storage (`Apps/solidshmolid/<id>/`).
 - The user's storage holds every resource; the pod index and a small RDF cache
   live in the pod's SQLite. Writes: storage first, index second, under the
   pod's `Serial` queue.
@@ -37,12 +42,15 @@ make dev         # wrangler dev on 127.0.0.1:8787, pods at http://<handle>.local
 POD_URL=http://smoke.localhost:8787 DEV_WEBID='http://smoke.localhost:8787/profile/card#me' make smoke
 make build       # wrangler dry-run bundle
 make compat      # a stock CSS 7.2 serves a folder we wrote, and its tokens verify (CSS in ~/.cache/solidshmolid)
-make e2e         # wrangler dev on ::1: CSS WebIDs use a dev pod; our provider signs a client in; CSS accepts our token
+make e2e         # wrangler dev on ::1: CSS WebIDs use a dev pod; our provider signs a client in; CSS accepts our token; signup + connect
 ```
 
-`wrangler.dev.jsonc` sets `DEV_MODE=1`: pods are created on first request,
-`X-Dev-WebID` names the agent, and files go to the DO's own SQLite
-(`DevFileStore`, 2 MB per file). Deployed configs never set it.
+`wrangler.dev.jsonc` sets `DEV_MODE=1` and `STORAGE=dev`: named pods
+(`dana.localhost:8787`) are created on first request, `X-Dev-WebID` names the
+agent, files go to the DO's own SQLite (`DevFileStore`, 2 MB per file), and
+connecting storage grants consent on the spot. `/dev/sign-in?person=<id>`
+stands in for Clerk. Deployed configs never set any of it.
+`make dev STORAGE=dropbox` connects real Dropbox instead.
 `wrangler.jsonc` is the deploy contract; per-environment files live in
 `infra/solidshmolid/`.
 
@@ -78,8 +86,8 @@ make e2e         # wrangler dev on ::1: CSS WebIDs use a dev pod; our provider s
 
 ## State
 
-M1 (core resource server on a dev store) is done and smoke-tested on wrangler
-dev; JSON-LD, the CSS compatibility test and Solid-OIDC verification are in.
-Next in M2: the Dropbox adapter and link flow (waiting on the Dropbox app
-registration), then reconcile. Not deployed anywhere
-yet; deploying waits for M2 since a pod without auth or storage is useless.
+The resource server, Dropbox storage, reconcile, our Solid-OIDC provider,
+and signup with connecting storage (households) are in; `make e2e` covers
+signup on the dev provider. Next: Clerk sign-in (spec 002 T010), then
+members and device setup, then the first staging deploy. Not deployed
+anywhere yet.

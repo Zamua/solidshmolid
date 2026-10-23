@@ -27,6 +27,7 @@ import {
 import { InvalidRdf, N3, RDF_TYPES, TURTLE, isRdfType, parseRdf, serializeRdf } from '../../domain/shared/rdf.js';
 import { type Authorization, type Mode, MODES, authorizationsOf, grantedModes } from '../../domain/pods/wac.js';
 import { MA } from '../../domain/shared/vocab.js';
+import { podRootAcl, profileAcl } from '../../domain/pods/starter.js';
 import {
   type Conditions,
   type RangeRequest,
@@ -128,34 +129,17 @@ export class Pod {
 
   // ---- provisioning ----------------------------------------------------
 
-  /** Creates the root container, its ACL and the owner's profile document. */
-  provision(owner: string, profile: string): Promise<void> {
+  /** Creates the root container, its ACL and the owner's profile document.
+   * `controllers` also get full access (a household's managers). */
+  provision(owner: string, profile: string, controllers: string[] = []): Promise<void> {
     return this.writes.run(async () => {
       const { index, files } = this.deps;
       if (index.state()) throw new Conflict('pod already exists');
       await files.makeFolder('');
       index.atomically(() => index.upsert(this.containerRow('/')));
-      const rootAcl = `@prefix acl: <http://www.w3.org/ns/auth/acl#>.
-<#owner> a acl:Authorization;
-  acl:agent <${owner}>;
-  acl:accessTo <./>;
-  acl:default <./>;
-  acl:mode acl:Read, acl:Write, acl:Control.
-`;
-      const profileAcl = `@prefix acl: <http://www.w3.org/ns/auth/acl#>.
-@prefix foaf: <http://xmlns.com/foaf/0.1/>.
-<#owner> a acl:Authorization;
-  acl:agent <${owner}>;
-  acl:accessTo <./card>;
-  acl:mode acl:Read, acl:Write, acl:Control.
-<#public> a acl:Authorization;
-  acl:agentClass foaf:Agent;
-  acl:accessTo <./card>;
-  acl:mode acl:Read.
-`;
-      await this.storeRdf('/.acl', ACL_TYPE, rootAcl, null);
+      await this.storeRdf('/.acl', ACL_TYPE, podRootAcl(owner, controllers), null);
       await this.storeRdf('/profile/card', TURTLE, profile, null);
-      await this.storeRdf('/profile/card.acl', ACL_TYPE, profileAcl, null);
+      await this.storeRdf('/profile/card.acl', ACL_TYPE, profileAcl(owner), null);
       index.setState({ owner, created: this.deps.now().toISOString() });
     });
   }

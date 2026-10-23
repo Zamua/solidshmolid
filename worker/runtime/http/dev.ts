@@ -1,37 +1,48 @@
-// Development-only routes on the apex: sign in as anyone, and give that
-// person a pod, standing in for Clerk and signup until they exist.
+// Development-only routes on the apex: sign in as anyone, standing in for
+// Clerk. `pod=<name>` also gives that person a named dev pod to sign in to
+// apps as, without a household.
 
 import { DEV_PERSON_COOKIE } from '../adapters/sessions.js';
 import { isDev } from '../composition.js';
 import type { Env } from '../env.js';
+import { isPodId } from '../../domain/households/podIds.js';
 import { isValidHandle } from '../../domain/pods/handles.js';
+import { rpcIdentities } from '../adapters/householdRpc.js';
 import { profileDocument } from '../../domain/pods/profile.js';
-import { podBase } from './link.js';
+import { hostsFor } from '../hosts.js';
 import { page } from './pages/shell.js';
 
 export async function devRoute(request: Request, env: Env, url: URL): Promise<Response | null> {
   if (!isDev(env)) return null;
   if (url.pathname === '/dev/sign-in') return signIn(env, url);
   if (url.pathname === '/sign-in') {
-    return page('Sign in', `<h1>Sign in</h1><p class="lede">Development: <a href="/dev/sign-in?person=dana&amp;pod=dana&amp;return=${encodeURIComponent(url.searchParams.get('return') ?? '/')}">continue as dana</a>.</p>`);
+    const back = encodeURIComponent(url.searchParams.get('return') ?? '/');
+    return page(
+      'Sign in',
+      `<h1>Sign in</h1><p class="lede">Development sign-in.</p><div class="dock"><div><a class="btn primary" href="/dev/sign-in?person=dana&amp;return=${back}">Continue as dana</a></div></div>`,
+    );
   }
   return null;
 }
 
-/** `/dev/sign-in?person=<id>&pod=<handle>&return=<url>` */
+/** `/dev/sign-in?person=<id>[&pod=<name>][&return=<url>]` */
 async function signIn(env: Env, url: URL): Promise<Response> {
   const person = url.searchParams.get('person') ?? '';
-  const handle = url.searchParams.get('pod') ?? '';
-  if (!/^[\w-]{1,64}$/u.test(person) || !isValidHandle(handle)) return new Response('bad person or pod\n', { status: 400 });
-  const base = podBase(env, url, handle);
-  const webid = `${base}/profile/card#me`;
-  await env.POD.get(env.POD.idFromName(handle)).ensureProvisioned(handle, base, webid, profileDocument(`${base}/`, `${url.origin}/`));
-  const key = await env.DIRECTORY.get(env.DIRECTORY.idFromName('directory')).accountKeyFor(person);
-  const account = env.ACCOUNT.get(env.ACCOUNT.idFromName(key));
-  await account.ensure(key);
-  await account.bindWebid(webid);
+  const handle = url.searchParams.get('pod');
+  if (!/^[\w-]{1,64}$/u.test(person) || (handle !== null && (!isValidHandle(handle) || isPodId(handle)))) {
+    return new Response('bad person or pod\n', { status: 400 });
+  }
+  const hosts = hostsFor(env, url);
+  let landing = '/';
+  if (handle !== null) {
+    const base = hosts.podOrigin(handle);
+    const webid = hosts.webidOf(handle);
+    await env.POD.get(env.POD.idFromName(handle)).ensureProvisioned(base, webid, profileDocument(`${base}/`, hosts.issuer));
+    await rpcIdentities(env).bind(person, webid);
+    landing = `${base}/`;
+  }
   const back = url.searchParams.get('return');
-  const location = back && back.startsWith(url.origin) ? back : `${base}/`;
+  const location = back && (back.startsWith(`${url.origin}/`) || (back.startsWith('/') && !back.startsWith('//'))) ? back : landing;
   return new Response(null, {
     status: 302,
     headers: { Location: location, 'Set-Cookie': `${DEV_PERSON_COOKIE}=${person}; Path=/; HttpOnly; SameSite=Lax` },

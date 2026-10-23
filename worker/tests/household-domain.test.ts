@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { HouseholdRuleBroken, type Member, checkManagers, familyGroup, rootAcl } from '../domain/households/household.js';
+import { HouseholdRuleBroken, type Member, checkManagers, familyGroup } from '../domain/households/household.js';
+import { podRootAcl as rootAcl } from '../domain/pods/starter.js';
 import { parseRdf } from '../domain/shared/rdf.js';
 import { authorizationsOf, grantedModes } from '../domain/pods/wac.js';
 

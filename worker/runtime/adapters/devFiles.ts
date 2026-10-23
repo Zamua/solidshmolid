@@ -1,14 +1,15 @@
 // A FileStore inside the pod's own SQLite database. LOCAL DEVELOPMENT ONLY:
 // it keeps user data on our side, which is exactly what deployments must not
-// do, so the deployed configs never select it.
+// do, so the deployed configs never select it. Nothing else can edit it, so
+// its change feed is always empty.
 
-import { type ByteRange, type FileInfo, type FileStore, RevisionConflict, type StoredFile, type WriteOptions } from '../../app/storage/ports.js';
+import { type ByteRange, type FileInfo, type FileLister, type FileStore, type Listing, RevisionConflict, type StoredFile, type WriteOptions } from '../../app/storage/ports.js';
 import type { SqlRunner } from './sql.js';
 
 /** Durable Object SQLite rows top out near 2 MB. */
 const DEV_FILE_LIMIT = 2 * 1024 * 1024;
 
-export class DevFileStore implements FileStore {
+export class DevFileStore implements FileStore, FileLister {
   constructor(private readonly sql: SqlRunner) {
     this.sql.exec(`
       CREATE TABLE IF NOT EXISTS dev_file(file TEXT PRIMARY KEY, body BLOB NOT NULL, rev TEXT NOT NULL, modified TEXT NOT NULL);
@@ -58,4 +59,22 @@ export class DevFileStore implements FileStore {
     this.sql.exec('DELETE FROM dev_folder WHERE folder = ?', folder);
     this.sql.exec("DELETE FROM dev_file WHERE file LIKE ? ESCAPE '\\'", `${folder.replace(/[\\%_]/gu, (c) => `\\${c}`)}%`);
   }
+
+  async listAll(): Promise<Listing> {
+    const folders = this.sql.exec("SELECT folder FROM dev_folder WHERE folder != ''").toArray();
+    const files = this.sql.exec('SELECT file, rev, length(body) AS size, modified FROM dev_file').toArray();
+    return {
+      entries: [
+        ...folders.map((r) => ({ kind: 'folder' as const, path: String(r.folder).replace(/\/?$/u, '/'), rev: null, size: 0, modified: null })),
+        ...files.map((r) => ({ kind: 'file' as const, path: String(r.file), rev: String(r.rev), size: Number(r.size), modified: String(r.modified) })),
+      ],
+      cursor: DEV_CURSOR,
+    };
+  }
+
+  async changes(): Promise<Listing> {
+    return { entries: [], cursor: DEV_CURSOR };
+  }
 }
+
+const DEV_CURSOR = 'dev';

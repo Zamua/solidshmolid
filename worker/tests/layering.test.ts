@@ -18,6 +18,7 @@ const ALLOWED: Record<string, string[]> = {
   'app/pods': ['app/pods', 'app/shared', 'app/storage/ports.ts', 'domain'],
   'app/storage': ['app/storage', 'app/shared', 'app/pods', 'domain'],
   'app/identity': ['app/identity', 'app/shared', 'domain'],
+  'app/households': ['app/households', 'app/shared', 'app/storage/ports.ts', 'domain'],
 };
 
 const BANNED_SPECIFIERS = [/^cloudflare:/, /^node:/];

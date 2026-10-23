@@ -15,4 +15,4 @@ for _ in $(seq 1 120); do
   sleep 0.5
 done
 curl -sf "http://localhost:$PORT/healthz" >/dev/null || { cat "$log"; exit 1; }
-E2E_POD_URL="http://e2e.localhost:$PORT" E2E_APEX_URL="http://localhost:$PORT" npx vitest run --root worker tests/e2e.test.ts tests/e2e-signin.test.ts
+E2E_POD_URL="http://e2e.localhost:$PORT" E2E_APEX_URL="http://localhost:$PORT" npx vitest run --root worker tests/e2e.test.ts tests/e2e-signin.test.ts tests/e2e-signup.test.ts
