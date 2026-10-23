@@ -102,14 +102,14 @@ beside dev storage (their keys come from `~/keys`, see the Makefile).
 
 ## State
 
-The resource server, Dropbox storage, reconcile, our Solid-OIDC provider,
-signup with connecting storage, and more pods per person are in; `make e2e` covers
-signup on the dev provider, and `make clerk-live` a real Clerk session.
-Households and children's accounts were dropped on 2026-10-23. The app list,
-disconnect, delete, the WebID with a copy button, and browsing a pod's files
-are in.
-Staging runs on `stg.solidshmolid.com` with pods on
-`<id>-stg.solidshmolid.page` (see SPEC "URLs" and `infra/solidshmolid/DEPLOY.md`).
-Production is not deployed: it waits on Dropbox production approval and
-Google leaving Testing. The Clerk production instance and Google OAuth client
-exist (keys in `~/keys`). Moving pods between storage links comes later.
+The resource server, Dropbox and Google Drive storage, reconcile, our
+Solid-OIDC provider, signup with connecting storage, and more pods per person
+(each in storage the person picks) are in; `make e2e` covers signup on the dev
+provider, and `make clerk-live` a real Clerk session. Households and children's
+accounts were dropped on 2026-10-23. The app list, Connections (connect and
+disconnect storage), delete, the WebID card, and browsing a pod's files are in.
+Staging runs on `stg.solidshmolid.com` (pods on `<id>-stg.solidshmolid.page`)
+and production on `solidshmolid.com` (pods on `<id>.solidshmolid.page`); see
+SPEC "URLs" and `infra/solidshmolid/DEPLOY.md`. Still to come: Dropbox
+production approval (before 50 people connect), Google brand verification,
+moving pods between storage links.
