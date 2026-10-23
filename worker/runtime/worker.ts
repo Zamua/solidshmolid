@@ -115,7 +115,7 @@ async function pod(request: Request, env: Env, url: URL, handle: string): Promis
   const response = await stub.fetch(new Request(request, { headers }));
   if (!isNavigation(request)) return response;
   if (response.status === 401 || response.status === 403 || response.status === 404) {
-    return podLandingPage(response.status, `${base}/`, hostsFor(env, url).issuer);
+    return podLandingPage(response.status, `${base}/`, hostsFor(env, url).issuer, handle);
   }
   if (viewingProfile && response.status === 200) {
     const webid = `${base}/profile/card#me`;

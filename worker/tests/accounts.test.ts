@@ -91,6 +91,8 @@ function world() {
   const retired: { podId: string; deleteFiles: boolean }[] = [];
   const profileNames = new Map<string, string>();
   const pods: Pods = {
+    list: async (podId, owner, path) => [{ path: `${path}hello.txt`, kind: 'document', contentType: 'text/plain', size: 5, modified: `${podId} ${owner}` }],
+    open: async (podId) => ({ body: new Response(podId).body!, contentType: 'text/plain', size: podId.length }),
     profileName: async (podId) => profileNames.get(podId) ?? null,
     setProfileName: async (podId, _owner, name) => void profileNames.set(podId, name),
     place: async (podId, placement, owner, withProfile) => {
@@ -326,5 +328,22 @@ describe('the profile', () => {
     const { service } = world();
     await service.signup('user_dana');
     await expect(service.rename('user_dana', 'Dana')).rejects.toThrow(NoStorageYet);
+  });
+});
+
+describe('browsing files', () => {
+  it('lists and opens files in the person\'s own placed pods, as their WebID', async () => {
+    const { service, state } = await connected();
+    expect(await service.files('user_dana', 'pod1xxxx', '/notes/')).toEqual([
+      { path: '/notes/hello.txt', kind: 'document', contentType: 'text/plain', size: 5, modified: `pod1xxxx ${state.webid}` },
+    ]);
+    expect(await new Response((await service.file('user_dana', 'pod1xxxx', '/notes/hello.txt')).body).text()).toBe('pod1xxxx');
+  });
+
+  it("refuses someone else's pod and a pod still waiting for storage", async () => {
+    const { service } = await connected();
+    await service.signup('user_eve');
+    await expect(service.files('user_eve', 'pod1xxxx', '/')).rejects.toThrow(NotFound);
+    await expect(service.files('user_eve', 'pod2xxxx', '/')).rejects.toThrow(NoStorageYet);
   });
 });

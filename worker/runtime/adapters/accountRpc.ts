@@ -96,6 +96,8 @@ export function rpcPods(env: Env, hosts: Hosts): Pods {
     dropStorage: (webidPodId: string, owner: string, storagePodId: string) =>
       stub(webidPodId).dropStorage(hosts.podOrigin(webidPodId), owner, `${hosts.podOrigin(storagePodId)}/`),
     retire: (podId: string, deleteFiles: boolean) => stub(podId).retire(hosts.podOrigin(podId), deleteFiles),
+    list: (podId: string, owner: string, path: string) => stub(podId).list(hosts.podOrigin(podId), owner, path),
+    open: (podId: string, owner: string, path: string) => stub(podId).readFile(hosts.podOrigin(podId), owner, path),
   };
 }
 

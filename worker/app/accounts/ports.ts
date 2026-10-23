@@ -81,6 +81,21 @@ export interface Placement {
   folder: string;
 }
 
+/** One entry of a folder, for people browsing a pod. */
+export interface FileEntry {
+  path: string;
+  kind: 'container' | 'document';
+  contentType: string | null;
+  size: number;
+  modified: string;
+}
+
+export interface FileContent {
+  body: ReadableStream<Uint8Array>;
+  contentType: string;
+  size: number | null;
+}
+
 /** The pods themselves, wherever they run. */
 export interface Pods {
   /** Serves the pod from `placement`: creates it in an empty folder (with a
@@ -93,6 +108,10 @@ export interface Pods {
   setProfileName(webidPodId: string, owner: string, name: string): Promise<void>;
   /** Takes `storagePodId` out of that list. */
   dropStorage(webidPodId: string, owner: string, storagePodId: string): Promise<void>;
+  /** A folder's entries, read as `owner`. */
+  list(podId: string, owner: string, path: string): Promise<FileEntry[]>;
+  /** A file's content, read as `owner`. */
+  open(podId: string, owner: string, path: string): Promise<FileContent>;
   /** Stops serving the pod; with `deleteFiles`, also deletes its folder. */
   retire(podId: string, deleteFiles: boolean): Promise<void>;
 }

@@ -8,7 +8,9 @@
 
 import { DurableObject } from 'cloudflare:workers';
 import type { Placement } from '../../app/accounts/ports.js';
-import { Conflict } from '../../app/shared/errors.js';
+import type { FileContent, FileEntry } from '../../app/accounts/ports.js';
+import { BadRequest, Conflict } from '../../app/shared/errors.js';
+import { InvalidPath, canonicalPath } from '../../domain/pods/paths.js';
 import { addStoragePatch, removeStoragePatch, renamePatch, summarizeProfile } from '../../domain/pods/profile.js';
 import { parseRdf } from '../../domain/shared/rdf.js';
 import { NO_CONDITIONS } from '../../domain/pods/requests.js';
@@ -107,6 +109,19 @@ export class PodObject extends DurableObject<Env> {
     await pod.patch('/profile/card', { webid: owner }, renamePatch(current, name), 'text/n3', NO_CONDITIONS);
   }
 
+  /** A folder's entries, for the owner browsing on the account site. */
+  async list(base: string, owner: string, path: string): Promise<FileEntry[]> {
+    return this.open(base).pod.listing(podPath(path), { webid: owner });
+  }
+
+  /** A file, for the owner browsing on the account site. */
+  async readFile(base: string, owner: string, path: string): Promise<FileContent> {
+    const read = await this.open(base).pod.read(podPath(path), { webid: owner }, { accept: null, range: null, head: false });
+    if (read.kind !== 'document') throw new BadRequest(`${path} is a folder`);
+    const body = typeof read.body === 'string' ? new Response(read.body).body! : read.body!;
+    return { body, contentType: read.contentType, size: read.size };
+  }
+
   /** Takes another of the owner's pods out of this pod's profile; already
    * gone is fine, so a retried deletion goes through. */
   async dropStorage(base: string, owner: string, storage: string): Promise<void> {
@@ -134,5 +149,14 @@ export class PodObject extends DurableObject<Env> {
       this.servicesFor = base;
     }
     return this.services;
+  }
+}
+
+function podPath(path: string): string {
+  try {
+    return canonicalPath(path);
+  } catch (e) {
+    if (e instanceof InvalidPath) throw new BadRequest(e.message);
+    throw e;
   }
 }

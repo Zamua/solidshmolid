@@ -1,11 +1,13 @@
 // The apex home page, for whoever is looking at it.
 
-import type { AccountState } from '../../app/accounts/ports.js';
+import { NoStorageYet, NotFound } from '../../app/accounts/accounts.js';
+import type { AccountState, FileContent } from '../../app/accounts/ports.js';
+import { PodError } from '../../app/shared/errors.js';
 import { providerDisplayName } from '../../domain/accounts/deletion.js';
 import { accounts, provider } from '../composition.js';
 import type { Env } from '../env.js';
 import { hostsFor } from '../hosts.js';
-import { connectPage, deletePage, podsPage, profilePage, removeAppPage, signupPage, welcomePage } from './pages/home.js';
+import { connectPage, deletePage, filesPage, podsPage, profilePage, refusalPage, removeAppPage, signupPage, welcomePage } from './pages/home.js';
 import { privacyPage } from './pages/privacy.js';
 
 export async function homeRoute(request: Request, env: Env, url: URL, person: string | null): Promise<Response | null> {
@@ -17,7 +19,8 @@ export async function homeRoute(request: Request, env: Env, url: URL, person: st
     return app ? removeAppPage(app) : Response.redirect(`${url.origin}/`, 302);
   }
   const deletingPod = /^\/pods\/([a-z0-9]{1,32})\/delete$/u.exec(url.pathname)?.[1];
-  if (url.pathname !== '/' && url.pathname !== '/account/delete' && url.pathname !== '/profile' && !deletingPod) return null;
+  const [, browsing, browseAction] = /^\/pods\/([a-z0-9]{1,32})\/(files|download)$/u.exec(url.pathname) ?? [];
+  if (url.pathname !== '/' && url.pathname !== '/account/delete' && url.pathname !== '/profile' && !deletingPod && !browsing) return null;
   if (!person) return url.pathname === '/' ? welcomePage() : Response.redirect(`${url.origin}/sign-in?return=${encodeURIComponent(url.pathname)}`, 302);
   const hosts = hostsFor(env, url);
   const state = await accounts(env, hosts).mine(person);
@@ -27,6 +30,16 @@ export async function homeRoute(request: Request, env: Env, url: URL, person: st
     if (!pod || pod === state.pods[0]) return Response.redirect(`${url.origin}/`, 302);
     return deletePage('pod', `/api/pods/${pod.podId}/delete`, providerNames(state, [pod.linkId]));
   }
+  if (browsing) {
+    const path = url.searchParams.get('path') ?? '/';
+    try {
+      if (browseAction === 'download') return download(await accounts(env, hosts).file(person, browsing, path), path);
+      return filesPage(state, browsing, path, await accounts(env, hosts).files(person, browsing, path), hosts);
+    } catch (e) {
+      if (e instanceof NotFound || e instanceof NoStorageYet || e instanceof PodError) return refusalPage('Not found', 'that file or folder is not there', 404);
+      throw e;
+    }
+  }
   if (url.pathname === '/profile') {
     const { webid, name } = await accounts(env, hosts).profile(person);
     return profilePage(webid, name);
@@ -34,6 +47,27 @@ export async function homeRoute(request: Request, env: Env, url: URL, person: st
   if (url.pathname === '/account/delete') return deletePage('account', '/api/account/delete', providerNames(state, state.pods.map((p) => p.linkId)));
   if (state.links.length === 0) return connectPage(env.STORAGE);
   return podsPage(state, await (await provider(env, `${url.origin}/`)).apps(person), hosts);
+}
+
+/** A file handed to the browser to save, never to render: pods hold
+ * anything, and the account site must not run it. */
+function download(file: FileContent, path: string): Response {
+  const last = path.split('/').pop() || 'file';
+  let name = last;
+  try {
+    name = decodeURIComponent(last);
+  } catch {
+    // keep the raw segment
+  }
+  const headers = new Headers({
+    'Content-Type': 'application/octet-stream',
+    'Content-Disposition': `attachment; filename*=UTF-8''${encodeURIComponent(name)}`,
+    'X-Content-Type-Options': 'nosniff',
+    'Content-Security-Policy': "sandbox; default-src 'none'",
+    'Cache-Control': 'private, no-store',
+  });
+  if (file.size !== null) headers.set('Content-Length', String(file.size));
+  return new Response(file.body, { headers });
 }
 
 /** The providers holding these links, as the delete page names them; null when none. */
