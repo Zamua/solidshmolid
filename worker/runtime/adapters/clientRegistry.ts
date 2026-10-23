@@ -36,17 +36,36 @@ export class HttpClientRegistry implements ClientRegistry {
   private async fetchDocument(url: string): Promise<unknown> {
     let res: Response;
     try {
-      res = await this.fetcher(url, { headers: { Accept: 'application/ld+json, application/json' }, signal: AbortSignal.timeout(TIMEOUT_MS) });
+      // No redirects: the document must live at the URL the client named.
+      res = await this.fetcher(url, { headers: { Accept: 'application/ld+json, application/json' }, redirect: 'manual', signal: AbortSignal.timeout(TIMEOUT_MS) });
     } catch (e) {
       throw new OidcError('invalid_client', `client document unreachable: ${(e as Error).message}`);
     }
     if (!res.ok) throw new OidcError('invalid_client', `client document answered ${res.status}`);
-    const text = await res.text();
-    if (text.length > DOC_LIMIT) throw new OidcError('invalid_client', 'client document is too large');
+    const text = await limitedText(res);
     try {
       return JSON.parse(text);
     } catch {
       throw new OidcError('invalid_client', 'client document is not JSON');
     }
   }
+}
+
+/** The body, refused once it passes DOC_LIMIT bytes, without reading more. */
+async function limitedText(res: Response): Promise<string> {
+  const reader = res.body?.getReader();
+  if (!reader) return '';
+  const chunks: Uint8Array[] = [];
+  let size = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    size += value.byteLength;
+    if (size > DOC_LIMIT) {
+      await reader.cancel();
+      throw new OidcError('invalid_client', 'client document is too large');
+    }
+    chunks.push(value);
+  }
+  return new TextDecoder().decode(await new Blob(chunks).arrayBuffer());
 }
