@@ -67,8 +67,8 @@ ${podCloud(String(i + 1), true)}
   const appRows = apps
     .map(
       (a, i) => `<div class="row" style="padding:10px 0${i ? ';border-top:1px solid var(--line)' : ''}">
-<div class="grow"><b>${escapeHtml(a.clientName ?? hostOf(a.clientId))}</b><div class="small">${escapeHtml(hostOf(a.clientId))}</div></div>
-<form method="post" action="/api/apps/revoke"><input type="hidden" name="clientId" value="${escapeHtml(a.clientId)}"><button class="chip-btn">Remove</button></form></div>`,
+<div class="grow"><b>${escapeHtml(appName(a))}</b><div class="small">${escapeHtml(a.site ?? 'Signed in with your WebID')}</div></div>
+<a class="chip-btn" href="/apps/remove?client=${encodeURIComponent(a.clientId)}">Remove</a></div>`,
     )
     .join('');
   const storage = state.links
@@ -85,10 +85,9 @@ ${podCloud(String(i + 1), true)}
 <p class="lede">Each pod is its own folder in your storage. Apps you allow can use them.</p>
 <div class="card" style="padding:6px 16px">${rows}</div>
 ${storage}
-<div class="card row"><div class="icon-tile">${icon('identificationCard')}</div><div class="grow"><b>Your WebID</b><div class="small">${escapeHtml(state.webid)}</div><div class="small">Apps ask for this when you sign in with Solid.</div></div></div>
 <div class="card"><h2>Apps</h2>${appRows ? `<div style="margin-top:4px">${appRows}</div>` : '<p class="small">No apps yet. When you sign in to a Solid app with solidshmolid, it shows up here, and you can remove it.</p>'}</div>
 <p class="small center" style="margin-top:22px"><a href="/account/delete">Delete account</a></p>
-<div class="dock"><div><form method="post" action="/api/pods"><button class="btn primary">${icon('plus')}Add a pod</button></form><a class="btn quiet" href="/sign-out">${icon('signOut')}Sign out</a></div></div>`,
+<div class="dock"><div><form method="post" action="/api/pods"><button class="btn primary">${icon('plus')}Add a pod</button></form></div></div>`,
   );
 }
 
@@ -136,12 +135,22 @@ export function confirmDeletionPage(token: string, sentence: string): Response {
   );
 }
 
-function hostOf(clientId: string): string {
-  try {
-    return new URL(clientId).host;
-  } catch {
-    return clientId;
-  }
+function appName(a: Approval): string {
+  return a.clientName ?? a.site ?? 'An app';
+}
+
+/** Removing an app, asked once more: it loses access until approved again. */
+export function removeAppPage(a: Approval): Response {
+  return page(
+    'Remove app',
+    `<h1 style="margin-top:40px">Remove ${escapeHtml(appName(a))}?</h1>
+<p class="lede">${escapeHtml(a.site ?? 'This app')} will no longer be able to use your pods. If you sign in to it again, it will ask for your permission again.</p>
+<form method="post" action="/api/apps/revoke" class="card stack">
+<input type="hidden" name="clientId" value="${escapeHtml(a.clientId)}">
+<button class="btn danger">Remove</button>
+<a class="btn quiet" href="/">Cancel</a>
+</form>`,
+  );
 }
 
 /** A request the service refused, with the way back. */
@@ -177,4 +186,36 @@ export function signUpPage(back: string): Response {
 </div>
 <p class="small center" style="margin-top:18px">Already have an account? <a href="${escapeHtml(signIn)}">Sign in</a></p>`,
   );
+}
+
+/** The person's profile: their WebID and the name apps read. */
+export function profilePage(webid: string, name: string | null, problem: string | null = null): Response {
+  const card = webid.split('#')[0]!;
+  return page(
+    'Your profile',
+    `<h1 style="margin-top:40px">Your profile</h1>
+<p class="lede">This is what Solid apps know about you. Anyone can read it.</p>
+<form method="post" action="/api/profile" class="card">
+<label class="label" for="name">Your name</label>
+<input class="field" id="name" name="name" value="${escapeHtml(name ?? '')}" maxlength="60" autocomplete="name" placeholder="How apps should call you" required>
+${problem ? `<p class="small problem" role="alert">${escapeHtml(problem)}</p>` : ''}
+<button class="btn primary" style="margin-top:16px">Save</button>
+</form>
+<div class="card row"><div class="icon-tile">${icon('identificationCard')}</div><div class="grow"><b>Your WebID</b><div class="small">${escapeHtml(webid)}</div><div class="small">Apps ask for this when you sign in with Solid.</div></div></div>
+<p class="small center" style="margin-top:18px"><a href="${escapeHtml(card)}">See your public profile</a></p>`,
+  );
+}
+
+/** The avatar chip and its menu, for every page someone signed in sees. */
+export function accountMenu(name: string | null): string {
+  const initial = name ? [...name][0]!.toUpperCase() : null;
+  return `<details class="account-menu">
+<summary aria-label="Your account"><span class="user-chip">${initial ? escapeHtml(initial) : icon('user', 20)}</span></summary>
+<div class="menu">
+${name ? `<p class="menu-name">${escapeHtml(name)}</p>` : ''}
+<a href="/">Your pods</a>
+<a href="/profile">Profile</a>
+<a href="/sign-out">Sign out</a>
+</div>
+</details>`;
 }

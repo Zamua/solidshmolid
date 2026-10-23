@@ -9,7 +9,7 @@ const STYLE = `
 :root{--sky-top:#cfe4ff;--sky:#eaf4ff;--cloud:#fff;--mist:#f3f8ff;--blue:#3d6fe0;--blue-deep:#2a52b8;--ink:#1f2d4d;--ink-soft:#5a6b8c;--line:#dbe7fa;--sun:#ffd76a;--leaf:#2f9e6e;--berry:#c2415a;
 --display:'Fredoka',system-ui,sans-serif;--body:'Atkinson Hyperlegible',system-ui,sans-serif}
 *{box-sizing:border-box;margin:0}
-html{touch-action:manipulation}
+html{touch-action:manipulation;background:var(--sky-top)}
 body{font:17px/1.5 var(--body);color:var(--ink);background:linear-gradient(180deg,var(--sky-top) 0%,var(--sky) 38%,var(--sky) 100%);min-height:100vh}
 .sky{position:absolute;inset:0 0 auto 0;height:300px;overflow:hidden;pointer-events:none}
 .sky svg{position:absolute}
@@ -17,6 +17,17 @@ body{font:17px/1.5 var(--body);color:var(--ink);background:linear-gradient(180de
 .sky .far{display:none;width:220px;height:120px}
 main{max-width:440px;margin:0 auto;padding:28px 22px 170px;position:relative}
 .wordmark{font:600 22px var(--display);color:var(--blue-deep);display:flex;align-items:center;gap:8px}
+.masthead{display:flex;align-items:center;justify-content:space-between;gap:12px}
+.account-menu{position:relative}
+.account-menu summary{list-style:none;cursor:pointer}
+.account-menu summary::-webkit-details-marker{display:none}
+.account-menu summary::marker{content:''}
+.user-chip{display:grid;place-items:center;width:40px;height:40px;border-radius:50%;background:#fff;color:var(--blue-deep);font:600 17px var(--display);box-shadow:0 1px 0 var(--line),0 8px 18px -12px rgba(42,82,184,.5)}
+.account-menu summary:focus-visible .user-chip{outline:3px solid var(--sun);outline-offset:2px}
+.menu{position:absolute;right:0;top:48px;z-index:10;min-width:200px;background:#fff;border-radius:18px;padding:8px;box-shadow:0 18px 40px -16px rgba(31,45,77,.35)}
+.menu a{display:block;padding:10px 12px;border-radius:12px;color:var(--ink);text-decoration:none;font-weight:700}
+.menu a:hover{background:var(--mist)}
+.menu-name{padding:8px 12px 6px;font:600 15px var(--display);color:var(--ink-soft);border-bottom:1px solid var(--line);margin-bottom:4px}
 h1{font:600 32px/1.12 var(--display);margin:28px 0 10px}
 h2{font:600 22px/1.2 var(--display);margin:0 0 6px}
 p.lede{color:var(--ink-soft);max-width:34ch}
@@ -140,11 +151,12 @@ export function pageCsp(allow: CspAllow = {}): string {
 export function page(title: string, body: string, status = 200): Response {
   const html = `<!doctype html><html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#cfe4ff">
 <title>${escapeHtml(title)}</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:wght@400;700&family=Fredoka:wght@500;600&display=swap" rel="stylesheet">
 <style>${STYLE}</style></head><body>${SKY}<main>
-<div class="wordmark">${LOGO} solidshmolid</div>
+<header class="masthead"><div class="wordmark">${LOGO} solidshmolid</div></header>
 ${body}
 </main></body></html>`;
   return new Response(html, {

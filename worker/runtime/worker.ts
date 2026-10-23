@@ -7,7 +7,7 @@ import { isPodId } from '../domain/accounts/podIds.js';
 import { handleFromHost } from '../domain/pods/handles.js';
 import { profileDocument } from '../domain/pods/profile.js';
 import { InvalidCredentials, type VerifiedAgent } from './adapters/solidOidcVerifier.js';
-import { clerkChrome, isDev, sessions, tokenVerifier } from './composition.js';
+import { accounts, clerkChrome, isDev, sessions, tokenVerifier } from './composition.js';
 import { hostsFor } from './hosts.js';
 import { withOwnHosts } from './ownHosts.js';
 import type { Env } from './env.js';
@@ -17,7 +17,10 @@ import { withClerk } from './http/clerkChrome.js';
 import { homeRoute } from './http/home.js';
 import { signInRoute } from './http/signIn.js';
 import { oidcRoute } from './http/oidc.js';
-import { isNavigation, podLandingPage } from './http/pages/podPages.js';
+import { accountMenu } from './http/pages/home.js';
+import { isNavigation, podLandingPage, publicProfilePage } from './http/pages/podPages.js';
+import { summarizeProfile } from '../domain/pods/profile.js';
+import { parseRdf } from '../domain/shared/rdf.js';
 import { withCors } from './http/solid.js';
 import { AGENT_HEADER, BASE_HEADER, INTERNAL_PREFIX, JTI_EXPIRES_HEADER, JTI_HEADER } from './objects/podObject.js';
 
@@ -55,8 +58,21 @@ async function apex(request: Request, env: Env, url: URL): Promise<Response> {
     response = new Response(response.body, response);
     for (const [name, value] of session.headers) response.headers.append(name, value);
   }
+  if (session.person && isHtml(response)) response = await withAccountMenu(response, env, url, session.person);
   const clerk = clerkChrome(env);
   return clerk ? withClerk(response, clerk) : response;
+}
+
+function isHtml(response: Response): boolean {
+  return (response.headers.get('Content-Type') ?? '').startsWith('text/html');
+}
+
+/** Puts the account menu in the masthead of a signed-in person's page. */
+async function withAccountMenu(response: Response, env: Env, url: URL, person: string): Promise<Response> {
+  const state = await accounts(env, hostsFor(env, url)).mine(person);
+  if (!state) return response;
+  const menu = accountMenu(state.name);
+  return new HTMLRewriter().on('header.masthead', { element: (e) => void e.append(menu, { html: true }) }).transform(response);
 }
 
 async function pod(request: Request, env: Env, url: URL, handle: string): Promise<Response> {
@@ -71,6 +87,9 @@ async function pod(request: Request, env: Env, url: URL, handle: string): Promis
   const headers = new Headers(request.headers);
   for (const name of [...headers.keys()]) if (name.toLowerCase().startsWith(INTERNAL_PREFIX)) headers.delete(name);
   headers.set(BASE_HEADER, base);
+  // A person opening the profile gets it rendered (below), so ask the pod for the data.
+  const viewingProfile = isNavigation(request) && request.method === 'GET' && url.pathname === '/profile/card';
+  if (viewingProfile) headers.set('Accept', 'text/turtle');
 
   if (request.method !== 'OPTIONS') {
     let agent: VerifiedAgent | null;
@@ -94,8 +113,14 @@ async function pod(request: Request, env: Env, url: URL, handle: string): Promis
     }
   }
   const response = await stub.fetch(new Request(request, { headers }));
-  if (isNavigation(request) && (response.status === 401 || response.status === 403 || response.status === 404)) {
+  if (!isNavigation(request)) return response;
+  if (response.status === 401 || response.status === 403 || response.status === 404) {
     return podLandingPage(response.status, `${base}/`, hostsFor(env, url).issuer);
+  }
+  if (viewingProfile && response.status === 200) {
+    const webid = `${base}/profile/card#me`;
+    const quads = await parseRdf(await response.text(), response.headers.get('Content-Type') ?? 'text/turtle', `${base}/profile/card`);
+    return publicProfilePage(webid, summarizeProfile(quads, webid));
   }
   return response;
 }

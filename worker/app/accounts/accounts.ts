@@ -5,6 +5,7 @@
 // belong to the same WebID and are listed in its profile.
 
 import { confirmationSentence, confirmsDeletion, providerDisplayName } from '../../domain/accounts/deletion.js';
+import { personName } from '../../domain/accounts/names.js';
 import type { StorageAuthorization } from '../storage/ports.js';
 import type { AccountRepository, AccountState, Directory, Identities, Ids, Logins, PodRecord, Pods } from './ports.js';
 
@@ -46,7 +47,7 @@ export class Accounts {
     let state = await account.load();
     if (!state) {
       const podId = await this.deps.directory.allocatePodId(key);
-      state = await account.create({ key, webid: this.deps.webidOf(podId), pods: [{ podId, linkId: null, folder: podId }], links: [] });
+      state = await account.create({ key, webid: this.deps.webidOf(podId), name: null, pods: [{ podId, linkId: null, folder: podId }], links: [] });
     }
     await this.deps.identities.bind(person, state.webid);
     return state;
@@ -93,6 +94,26 @@ export class Accounts {
     await this.placeWaiting(state.key, link.linkId, link.provider);
     await this.deps.pods.declareStorage(first.podId, state.webid, podId);
     return (await account.load())!;
+  }
+
+  /** The person's WebID and the name its profile gives, read from the
+   * profile itself (apps may have changed it). */
+  async profile(person: string): Promise<{ webid: string; name: string | null }> {
+    const state = await this.signedUp(person);
+    const first = state.pods[0]!;
+    const name = first.linkId ? await this.deps.pods.profileName(first.podId) : state.name;
+    if (name !== state.name) await this.deps.account(state.key).setName(name);
+    return { webid: state.webid, name };
+  }
+
+  /** Sets the name apps read from the person's profile. */
+  async rename(person: string, raw: string): Promise<void> {
+    const name = personName(raw);
+    const state = await this.signedUp(person);
+    const first = state.pods[0]!;
+    if (!first.linkId) throw new NoStorageYet('connect storage before naming your profile');
+    await this.deps.pods.setProfileName(first.podId, state.webid, name);
+    await this.deps.account(state.key).setName(name);
   }
 
   /** Deletes a pod other than the first (which holds the WebID; deleting the

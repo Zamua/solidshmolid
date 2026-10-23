@@ -69,8 +69,17 @@ describe.skipIf(!APEX)('sign up and connect storage', () => {
     expect([nowhere.status, nowhere.body]).toEqual([404, expect.stringContaining("There's no pod here")]);
     expect((await fetch(pod!.url, { headers: { accept: 'text/html' } })).headers.get('content-type')).toContain('text/plain');
 
+    // The name apps see: set on the profile page, read by anyone.
+    const named = await fetch(`${APEX}/api/profile`, { method: 'POST', headers: { cookie, origin: APEX!, 'content-type': 'application/json' }, body: JSON.stringify({ name: 'E2E Person' }) });
+    expect(named.status).toBe(204);
+    expect(await (await fetch(new URL('/profile/card', pod!.url))).text()).toContain('"E2E Person"');
+    const profileView = await navigate(new URL('/profile/card', pod!.url).href);
+    expect([profileView.status, profileView.type]).toEqual([200, 'text/html; charset=utf-8']);
+    expect(profileView.body).toContain('E2E Person');
+
     const home = await (await fetch(`${APEX}/`, { headers: { cookie } })).text();
     expect(home).toContain('Your pods');
+    expect(home).toContain('class="account-menu"');
     expect(home).toContain(new URL(pod!.url).host);
 
     // A second pod: owned by the same WebID, without a profile of its own,

@@ -86,6 +86,20 @@ export interface ClientInfo {
   isPublic: boolean;
 }
 
+/** The site a client belongs to, as people would recognise it: its Client ID
+ * Document's host, else its first redirect's host; null for the public client. */
+export function clientSite(client: ClientInfo): string | null {
+  if (client.isPublic) return null;
+  for (const candidate of [client.clientId, client.redirectUris[0]]) {
+    try {
+      if (candidate) return new URL(candidate).host;
+    } catch {
+      // a registered client's id is not a URL
+    }
+  }
+  return null;
+}
+
 /** Validates a dereferenced Client ID Document. Its `client_id` must equal
  * the URL it was fetched from, so a document cannot speak for another client. */
 export function clientFromDocument(clientId: string, doc: unknown): ClientInfo {

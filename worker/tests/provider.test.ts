@@ -194,12 +194,24 @@ describe('token', () => {
     const w = world();
     await signedInWithPod(w);
     const first = await exchange(w, await code(w), 'jkt');
-    expect((await w.provider.apps('clerk_sam')).map((a) => [a.clientId, a.clientName, a.webid])).toEqual([[CLIENT, 'Sketchpad', WEBID]]);
+    expect((await w.provider.apps('clerk_sam')).map((a) => [a.clientId, a.clientName, a.site, a.webid])).toEqual([[CLIENT, 'Sketchpad', new URL(CLIENT).host, WEBID]]);
     await w.provider.revokeApp('clerk_sam', CLIENT);
     expect(await w.provider.apps('clerk_sam')).toEqual([]);
     await expect(
       w.provider.token(new URLSearchParams({ grant_type: 'refresh_token', refresh_token: String(first.refresh_token) }), 'jkt'),
     ).rejects.toMatchObject({ code: 'invalid_grant' });
     expect((await w.provider.authorize(authQuery(), 'clerk_sam')).kind).toBe('consent');
+  });
+});
+
+describe('stored approvals', () => {
+  it('take the site column on a table made before it existed', async () => {
+    const sql = sqlRunner();
+    sql.exec('CREATE TABLE approval(client_id TEXT NOT NULL, webid TEXT NOT NULL, client_name TEXT, approved INTEGER NOT NULL, PRIMARY KEY (client_id, webid))');
+    sql.exec("INSERT INTO approval VALUES ('reg_old', 'https://w.example/#me', 'old', 1)");
+    const store = new SqlAccountStore(sql, () => 'k', () => 2);
+    new SqlAccountStore(sql, () => 'k', () => 2);
+    await store.approve({ clientId: 'reg_new', name: 'new', site: 'new.example' }, 'https://w.example/#me');
+    expect((await store.approvals()).map((a) => [a.clientId, a.site])).toEqual([['reg_new', 'new.example'], ['reg_old', null]]);
   });
 });

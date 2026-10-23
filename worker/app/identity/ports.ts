@@ -8,7 +8,7 @@ export interface AccountStore {
   /** The WebID this person signs in as, or null before they have a pod. */
   webid(): Promise<string | null>;
   hasApproval(clientId: string, webid: string): Promise<boolean>;
-  approve(clientId: string, clientName: string | null, webid: string): Promise<void>;
+  approve(client: { clientId: string; name: string | null; site: string | null }, webid: string): Promise<void>;
   /** Apps the person approved, newest first. */
   approvals(): Promise<Approval[]>;
   /** Removes an app's approval and ends every refresh token it holds. */
@@ -30,6 +30,8 @@ export interface AccountStore {
 export interface Approval {
   clientId: string;
   clientName: string | null;
+  /** The host people know the app by; null when unknown. */
+  site: string | null;
   webid: string;
   /** Unix seconds. */
   approved: number;

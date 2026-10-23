@@ -3,7 +3,7 @@
 
 import type { AccountStore, Approval, CodeGrant, RefreshFamily } from '../../app/identity/ports.js';
 import type { AuthorizeRequest, ClientInfo } from '../../domain/identity/oidc.js';
-import type { SqlRunner } from './sql.js';
+import { type SqlRunner, addColumn } from './sql.js';
 
 const SCHEMA = `
 CREATE TABLE IF NOT EXISTS account(id INTEGER PRIMARY KEY CHECK (id = 1), key TEXT NOT NULL, webid TEXT);
@@ -22,6 +22,7 @@ export class SqlAccountStore implements AccountStore {
     private readonly now: () => number,
   ) {
     this.sql.exec(SCHEMA);
+    addColumn(this.sql, 'approval', 'site TEXT');
     const row = this.sql.exec('SELECT key FROM account WHERE id = 1').toArray()[0];
     if (row) {
       this.key = String(row.key);
@@ -44,12 +45,13 @@ export class SqlAccountStore implements AccountStore {
     return this.sql.exec('SELECT 1 FROM approval WHERE client_id = ? AND webid = ?', clientId, webid).toArray().length > 0;
   }
 
-  async approve(clientId: string, clientName: string | null, webid: string): Promise<void> {
+  async approve(client: { clientId: string; name: string | null; site: string | null }, webid: string): Promise<void> {
     this.sql.exec(
-      'INSERT INTO approval(client_id, webid, client_name, approved) VALUES (?, ?, ?, ?) ON CONFLICT DO NOTHING',
-      clientId,
+      'INSERT INTO approval(client_id, webid, client_name, site, approved) VALUES (?, ?, ?, ?, ?) ON CONFLICT DO NOTHING',
+      client.clientId,
       webid,
-      clientName,
+      client.name,
+      client.site,
       this.now(),
     );
   }
@@ -66,9 +68,15 @@ export class SqlAccountStore implements AccountStore {
 
   async approvals(): Promise<Approval[]> {
     return this.sql
-      .exec('SELECT client_id, client_name, webid, approved FROM approval ORDER BY approved DESC')
+      .exec('SELECT client_id, client_name, site, webid, approved FROM approval ORDER BY approved DESC')
       .toArray()
-      .map((r) => ({ clientId: String(r.client_id), clientName: r.client_name === null ? null : String(r.client_name), webid: String(r.webid), approved: Number(r.approved) }));
+      .map((r) => ({
+        clientId: String(r.client_id),
+        clientName: r.client_name === null ? null : String(r.client_name),
+        site: r.site === null || r.site === undefined ? null : String(r.site),
+        webid: String(r.webid),
+        approved: Number(r.approved),
+      }));
   }
 
   async savePending(id: string, request: AuthorizeRequest, client: ClientInfo, expires: number): Promise<void> {

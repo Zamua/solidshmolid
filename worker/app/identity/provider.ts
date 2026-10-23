@@ -10,6 +10,7 @@ import {
   type AuthorizeRequest,
   CODE_TTL_S,
   type ClientInfo,
+  clientSite,
   OidcError,
   accessTokenClaims,
   idTokenClaims,
@@ -67,7 +68,7 @@ export class Provider {
     if (!approve) return redirectWith(request.redirectUri, { error: 'access_denied', state: request.state, iss: this.deps.issuer });
     const webid = await account.webid();
     if (!webid) throw new OidcError('invalid_request', 'no pod for this account');
-    await account.approve(client.clientId, client.name, webid);
+    await account.approve({ clientId: client.clientId, name: client.name, site: clientSite(client) }, webid);
     return this.issueCode(account, request, webid);
   }
 
