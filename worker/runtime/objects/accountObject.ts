@@ -63,8 +63,8 @@ export class AccountObject extends DurableObject<Env> {
     return this.open().hasApproval(clientId, webid);
   }
 
-  async approve(clientId: string, clientName: string | null, webid: string): Promise<void> {
-    return this.open().approve(clientId, clientName, webid);
+  async approve(client: { clientId: string; name: string | null; site: string | null }, webid: string): Promise<void> {
+    return this.open().approve(client, webid);
   }
 
   async approvals() {
@@ -123,6 +123,10 @@ export class AccountObject extends DurableObject<Env> {
 
   async addPod(pod: PodRecord): Promise<void> {
     return this.pods.addPod(pod);
+  }
+
+  async setName(name: string | null): Promise<void> {
+    return this.pods.setName(name);
   }
 
   async addLink(link: LinkSummary, refreshToken: string): Promise<void> {

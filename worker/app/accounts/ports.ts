@@ -21,6 +21,8 @@ export interface LinkSummary {
 export interface AccountState {
   key: string;
   webid: string;
+  /** The name the WebID's profile gives, as last seen; null when it has none. */
+  name: string | null;
   pods: PodRecord[];
   links: LinkSummary[];
 }
@@ -42,6 +44,7 @@ export interface AccountRepository {
   /** Stores `state` unless the account has pods already; returns what is stored. */
   create(state: AccountState): Promise<AccountState>;
   addPod(pod: PodRecord): Promise<void>;
+  setName(name: string | null): Promise<void>;
   /** Stores a new storage link; the grant stays inside the repository. */
   addLink(link: LinkSummary, refreshToken: string): Promise<void>;
   placePod(podId: string, linkId: string): Promise<void>;
@@ -85,6 +88,9 @@ export interface Pods {
   place(podId: string, placement: Placement, owner: string, withProfile: boolean): Promise<PlacementOutcome>;
   /** Lists `storagePodId` as a storage of the WebID that `webidPodId` holds. */
   declareStorage(webidPodId: string, owner: string, storagePodId: string): Promise<void>;
+  /** The name the WebID's profile gives, if any. */
+  profileName(webidPodId: string): Promise<string | null>;
+  setProfileName(webidPodId: string, owner: string, name: string): Promise<void>;
   /** Takes `storagePodId` out of that list. */
   dropStorage(webidPodId: string, owner: string, storagePodId: string): Promise<void>;
   /** Stops serving the pod; with `deleteFiles`, also deletes its folder. */

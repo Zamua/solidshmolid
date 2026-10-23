@@ -1,4 +1,8 @@
-// The WebID profile document a new pod starts with.
+// The WebID profile document: what a new pod starts with, what it says, and
+// the patches that change it.
+
+import type { Quad } from 'n3';
+import { FOAF, PIM, SOLID } from '../shared/vocab.js';
 
 /** Turtle for `/profile/card`. `issuer` is the Solid-OIDC issuer trusted to
  * authenticate this WebID; null until the pod's owner has one. */
@@ -36,5 +40,28 @@ export function removeStoragePatch(storage: string): string {
 @prefix pim: <http://www.w3.org/ns/pim/space#>.
 _:remove a solid:InsertDeletePatch;
   solid:deletes { <#me> pim:storage <${storage}>. }.
+`;
+}
+
+export interface ProfileSummary {
+  name: string | null;
+  storages: string[];
+  issuers: string[];
+}
+
+/** What a profile says about `webid`. */
+export function summarizeProfile(quads: Quad[], webid: string): ProfileSummary {
+  const about = (predicate: string) => quads.filter((q) => q.subject.value === webid && q.predicate.value === predicate).map((q) => q.object.value);
+  return { name: about(FOAF('name'))[0] ?? null, storages: about(PIM('storage')), issuers: about(SOLID('oidcIssuer')) };
+}
+
+/** An N3 Patch for `/profile/card` setting `<#me>`'s name. */
+export function renamePatch(current: string | null, next: string): string {
+  const literal = (s: string) => JSON.stringify(s);
+  const deletes = current === null ? '' : `\n  solid:deletes { <#me> foaf:name ${literal(current)}. };`;
+  return `@prefix solid: <http://www.w3.org/ns/solid/terms#>.
+@prefix foaf: <http://xmlns.com/foaf/0.1/>.
+_:rename a solid:InsertDeletePatch;${deletes}
+  solid:inserts { <#me> foaf:name ${literal(next)}. }.
 `;
 }

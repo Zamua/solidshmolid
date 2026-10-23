@@ -3,7 +3,7 @@
 import { readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
-const NAMES = ['calendar-blank', 'check-circle', 'door-open', 'dropbox-logo', 'eye', 'folder-simple-lock', 'google-logo', 'identification-card', 'image', 'notepad', 'plugs', 'plus', 'sign-out', 'stack', 'trash'];
+const NAMES = ['calendar-blank', 'check-circle', 'door-open', 'dropbox-logo', 'eye', 'folder-simple-lock', 'google-logo', 'identification-card', 'image', 'notepad', 'plugs', 'plus', 'sign-out', 'stack', 'trash', 'user'];
 
 const root = 'node_modules/@phosphor-icons/core';
 const camel = (name) => name.replace(/-(\w)/gu, (_, c) => c.toUpperCase());

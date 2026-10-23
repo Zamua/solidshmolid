@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  clientSite,
   OidcError,
   PUBLIC_CLIENT,
   accessTokenClaims,
@@ -86,6 +87,15 @@ describe('clients and redirects', () => {
     expect(redirectAllowed(c, 'http://evil.example/cb')).toBe(false);
     expect(redirectAllowed(c, 'https://any.example/cb#frag')).toBe(false);
     expect(redirectAllowed(c, 'javascript:alert(1)')).toBe(false);
+  });
+});
+
+describe('client sites', () => {
+  it('names the host people know an app by', () => {
+    expect(clientSite({ clientId: 'https://app.example/id', name: 'App', redirectUris: ['https://cb.example/'], isPublic: false })).toBe('app.example');
+    expect(clientSite({ clientId: 'reg_abc', name: 'hostthis', redirectUris: ['https://hostthis.dev/_solid/cb'], isPublic: false })).toBe('hostthis.dev');
+    expect(clientSite({ clientId: 'reg_abc', name: null, redirectUris: [], isPublic: false })).toBeNull();
+    expect(clientSite(publicClient())).toBeNull();
   });
 });
 

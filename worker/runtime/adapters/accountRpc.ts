@@ -34,7 +34,7 @@ function accountStore(stub: DurableObjectStub<AccountObject>, key: string): Acco
     key,
     webid: () => stub.webid(),
     hasApproval: (clientId, webid) => stub.hasApproval(clientId, webid),
-    approve: (clientId, name, webid) => stub.approve(clientId, name, webid),
+    approve: (client, webid) => stub.approve(client, webid),
     approvals: () => stub.approvals(),
     revokeApp: (clientId) => stub.revokeApp(clientId),
     savePending: (id, request, client, expires) => stub.savePending(id, request, client, expires),
@@ -69,6 +69,7 @@ export function rpcAccountPods(env: Env, key: string): AccountRepository {
       return stub.createPods(state);
     },
     addPod: (pod) => stub.addPod(pod),
+    setName: (name) => stub.setName(name),
     addLink: (link, refreshToken) => stub.addLink(link, refreshToken),
     placePod: (podId, linkId) => stub.placePod(podId, linkId),
     rememberPending: (nonce, pending) => stub.rememberLinkPending(nonce, pending),
@@ -90,6 +91,8 @@ export function rpcPods(env: Env, hosts: Hosts): Pods {
     },
     declareStorage: (webidPodId: string, owner: string, storagePodId: string) =>
       stub(webidPodId).declareStorage(hosts.podOrigin(webidPodId), owner, `${hosts.podOrigin(storagePodId)}/`),
+    profileName: (webidPodId: string) => stub(webidPodId).profileName(hosts.podOrigin(webidPodId), hosts.webidOf(webidPodId)),
+    setProfileName: (webidPodId: string, owner: string, name: string) => stub(webidPodId).setProfileName(hosts.podOrigin(webidPodId), owner, name),
     dropStorage: (webidPodId: string, owner: string, storagePodId: string) =>
       stub(webidPodId).dropStorage(hosts.podOrigin(webidPodId), owner, `${hosts.podOrigin(storagePodId)}/`),
     retire: (podId: string, deleteFiles: boolean) => stub(podId).retire(hosts.podOrigin(podId), deleteFiles),

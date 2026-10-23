@@ -256,9 +256,12 @@ own SQLite.
 
 A top-level browser navigation (`Sec-Fetch-Mode: navigate`) that a pod would
 answer with 401, 403 or 404 gets a short page for people instead: the pod is
-private (with links to open it in a Solid app and to the account site), or
-there is no pod at that address. Apps never send that header and keep the
-protocol's own answers.
+private (with a link to the account site), or there is no pod at that
+address. A navigation to a WebID profile gets it rendered: name, WebID, pods,
+issuer. Apps never send that header and keep the protocol's own answers.
+
+The account site has a menu (pods, profile, sign out) and a profile page that
+sets the WebID's `foaf:name`, the name apps show.
 
 ## Signing in (people, on the apex)
 

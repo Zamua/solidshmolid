@@ -9,7 +9,8 @@ import type { AccountState } from '../../app/accounts/ports.js';
 import { accounts, provider } from '../composition.js';
 import type { Env } from '../env.js';
 import { hostsFor } from '../hosts.js';
-import { confirmDeletionPage, refusalPage } from './pages/home.js';
+import { InvalidName } from '../../domain/accounts/names.js';
+import { confirmDeletionPage, profilePage, refusalPage } from './pages/home.js';
 import { escapeHtml, page } from './pages/shell.js';
 
 interface Route {
@@ -29,6 +30,20 @@ export async function apiRoute(request: Request, env: Env, url: URL, person: str
     { method: 'POST', path: /^\/api\/pods$/u, run: async (p) => done(html, '/', view(await service().addPod(p), env, url), 201) },
     { method: 'POST', path: new RegExp(`^/api/storage/${provider}/start$`, 'u'), run: (p) => start(html, env, url, p, callback) },
     { method: 'GET', path: new RegExp(`^${callback}$`, 'u'), run: (p) => finish(env, url, p, callback) },
+    {
+      method: 'POST',
+      path: /^\/api\/profile$/u,
+      run: async (p) => {
+        try {
+          await service().rename(p, (await fields(request)).name ?? '');
+        } catch (e) {
+          if (!(e instanceof InvalidName) || !html) throw e;
+          const { webid, name } = await service().profile(p);
+          return profilePage(webid, name, e.message);
+        }
+        return done(html, '/profile', null, 204);
+      },
+    },
     { method: 'GET', path: /^\/api\/apps$/u, run: async (p) => Response.json(await (await identityProvider(env, url)).apps(p)) },
     {
       method: 'POST',
@@ -75,6 +90,7 @@ export async function apiRoute(request: Request, env: Env, url: URL, person: str
 
 /** The service's refusals, as HTTP answers. */
 function refusal(e: unknown): { status: number; code: string; title: string; message: string; extra?: Record<string, unknown> } | null {
+  if (e instanceof InvalidName) return { status: 400, code: 'invalid_name', title: 'Not saved', message: e.message };
   if (e instanceof NotSignedUp) return { status: 404, code: 'not_signed_up', title: 'No pod yet', message: e.message };
   if (e instanceof LinkExpired) return { status: 400, code: 'link_expired', title: 'Not connected', message: e.message };
   if (e instanceof NoStorageYet) return { status: 409, code: 'no_storage', title: 'Connect storage first', message: e.message };
