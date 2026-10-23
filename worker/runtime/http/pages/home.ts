@@ -51,18 +51,23 @@ export function connectPage(provider: string): Response {
 }
 
 export function householdPage(state: HouseholdState, person: string, hosts: Hosts): Response {
-  const rows = state.pods
-    .map((p, i) => {
-      const member = state.members.find((m) => m.clerkUserId === p.owner);
-      const you = p.owner === person;
-      const host = new URL(hosts.podOrigin(p.podId)).host;
+  const me = state.members.find((m) => m.clerkUserId === person);
+  const rows = state.members
+    .map((m, i) => {
+      const you = m.clerkUserId === person;
+      const pod = state.pods.find((p) => p.owner === m.clerkUserId);
+      const origin = pod ? hosts.podOrigin(pod.podId) : null;
+      const name = m.name || (you ? 'You' : 'Member');
+      const badges = [you && m.name ? '<span class="badge you">You</span>' : '', m.role === 'manager' ? '<span class="badge">Manager</span>' : '', m.kind === 'managed' ? '<span class="badge kid">Child</span>' : '']
+        .filter(Boolean)
+        .join(' ');
+      const where = !origin ? '' : pod!.linkId ? `<a href="${escapeHtml(origin)}/">${escapeHtml(new URL(origin).host)}</a>` : 'Waiting for storage';
       return `<div class="row" style="padding:12px 0${i ? ';border-top:1px solid var(--line)' : ''}">
-${podCloud(you ? 'Me' : '?', true)}
-<div class="grow"><div class="row" style="gap:8px">${you ? '<span class="badge you">You</span>' : '<b>Member</b>'}${member?.role === 'manager' ? ' <span class="badge">Manager</span>' : ''}</div>
-<div class="small"><a href="${escapeHtml(hosts.podOrigin(p.podId))}/">${escapeHtml(host)}</a></div></div></div>`;
+${podCloud([...name][0]!.toUpperCase(), true)}
+<div class="grow"><div class="row" style="gap:8px;flex-wrap:wrap"><b>${escapeHtml(name)}</b> ${badges}</div>
+<div class="small">${where}</div></div></div>`;
     })
     .join('');
-  const me = state.members.find((m) => m.clerkUserId === person);
   const storage = state.links
     .map(
       (l) => `<div class="card row">
@@ -71,14 +76,35 @@ ${podCloud(you ? 'Me' : '?', true)}
 <span class="ok">${icon('checkCircle')}</span></div>`,
     )
     .join('');
+  const manager = me?.role === 'manager';
   return page(
     'Your household',
     `<h1 style="margin-top:40px">Your household</h1>
-<p class="lede">Everyone signs in as themselves.</p>
+<p class="lede">${state.pods.length === 1 ? 'One pod' : `${state.pods.length} pods`}. Everyone signs in as themselves.</p>
 <div class="card" style="padding:6px 16px">${rows}</div>
 ${storage}
 ${me ? `<div class="card row"><div class="icon-tile">${icon('identificationCard')}</div><div class="grow"><b>Your WebID</b><div class="small">${escapeHtml(me.webid)}</div><div class="small">Apps ask for this when you sign in with Solid.</div></div></div>` : ''}
-<div class="dock"><div><a class="btn quiet" href="/sign-out">${icon('signOut')}Sign out</a></div></div>`,
+<div class="dock"><div>${manager ? `<a class="btn primary" href="/members/new">${icon('userPlus')}Add someone</a>` : ''}<a class="btn quiet" href="/sign-out">${icon('signOut')}Sign out</a></div></div>`,
+  );
+}
+
+export function addMemberPage(problem: string | null = null, name = ''): Response {
+  return page(
+    'Add someone',
+    `<h1 style="margin-top:40px">Add someone to the household</h1>
+<p class="lede">Their pod lives in your storage, in a folder of its own.</p>
+<form method="post" action="/api/members" class="card" style="margin-top:22px">
+<label class="label" for="name">Their name</label>
+<input class="field" id="name" name="name" value="${escapeHtml(name)}" maxlength="40" autocomplete="off" required autofocus>
+${problem ? `<p class="small problem" role="alert">${escapeHtml(problem)}</p>` : ''}
+<div style="margin-top:16px">
+<label class="choice on"><input type="radio" name="kind" value="managed" checked><span class="dot"></span><span class="grow"><b>A child</b><span class="small" style="display:block">You set up their device with a code. No email needed.</span></span></label>
+<label class="choice off"><input type="radio" name="kind" value="adult" disabled><span class="dot"></span><span class="grow"><b>An adult</b><span class="small" style="display:block">Coming soon: they get an invite and sign in on their own.</span></span></label>
+</div>
+<button class="btn primary" style="margin-top:18px">${icon('userPlus')}Add</button>
+<a class="btn quiet" href="/">Cancel</a>
+</form>`,
+    problem ? 400 : 200,
   );
 }
 

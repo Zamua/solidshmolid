@@ -3,7 +3,7 @@
 // needs from here.
 
 import { Households } from '../app/households/households.js';
-import type { Placement } from '../app/households/ports.js';
+import type { Logins, Placement } from '../app/households/ports.js';
 import { Provider } from '../app/identity/provider.js';
 import { Pod } from '../app/pods/pod.js';
 import { StorageUnavailable } from '../app/shared/errors.js';
@@ -17,6 +17,7 @@ import { DropboxFileStore } from './adapters/dropbox.js';
 import { DropboxAuthorization, refreshAccess } from './adapters/dropboxOAuth.js';
 import { rpcDirectory, rpcHousehold, rpcIdentities, rpcPods } from './adapters/householdRpc.js';
 import type { AccessToken, Refresher } from './adapters/linkTokens.js';
+import { ClerkLogins, devLogins } from './adapters/clerkLogins.js';
 import { type ClerkKeys, ClerkSessions, frontendApiOf } from './adapters/clerkSessions.js';
 import { type Sessions, devSessions, firstOf, noSessions } from './adapters/sessions.js';
 import type { SqlRunner } from './adapters/sql.js';
@@ -80,6 +81,14 @@ export function sessions(env: Env, apexOrigin: string): Sessions {
   return clerk ?? noSessions;
 }
 
+/** People's sign-ins: Clerk when configured, else (dev only) a stand-in. */
+function logins(env: Env): Logins {
+  const keys = clerkKeys(env);
+  if (keys) return new ClerkLogins(keys);
+  if (isDev(env)) return devLogins;
+  throw new Error('CLERK_PUBLISHABLE_KEY and CLERK_SECRET_KEY are not configured');
+}
+
 /** What apex pages need to load Clerk, or null when it is not configured. */
 export function clerkChrome(env: Env): ClerkChrome | null {
   const keys = clerkKeys(env);
@@ -118,6 +127,7 @@ export function households(env: Env, hosts: Hosts): Households {
     household: (id) => rpcHousehold(env, id),
     pods: rpcPods(env, hosts),
     identities: rpcIdentities(env),
+    logins: logins(env),
     authorization: storageAuthorization(env),
     ids: { random: randomId },
     webidOf: hosts.webidOf,

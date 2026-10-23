@@ -52,7 +52,10 @@ agent, files go to the DO's own SQLite (`DevFileStore`, 2 MB per file), and
 connecting storage grants consent on the spot. `/dev/sign-in?person=<id>`
 signs in without Clerk (its cookie wins over a Clerk session). `make
 .dev.vars` copies the Clerk dev keys from `~/keys/clerk-solidshmolid-dev.env`
-when present; without them `/sign-in` offers only the dev stand-in. Deployed
+when present; without them `/sign-in` offers only the dev stand-in. With
+them, adding a member creates a real user in the Clerk dev instance, even
+for a dev sign-in person; `make e2e` leaves the Clerk keys out so it never
+does. Deployed
 configs never set any of the dev switches.
 `make dev STORAGE=dropbox` connects real Dropbox instead.
 `wrangler.jsonc` is the deploy contract; per-environment files live in

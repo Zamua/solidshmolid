@@ -249,6 +249,13 @@ last look (`list_folder/continue` from the stored cursor), at most every 30 s
 per pod. Webhooks can replace the polling later; the reconcile path is the
 same.
 
+A manager adds a child (`POST /api/members`, the `/members/new` page): the
+child gets a username-only Clerk user (`pod-<pod id>`, no email; a manager
+sets up their devices), a pod id and WebID of their own, and a pod placed in
+its own folder of the manager's storage, owned by the child with full access
+for the household's managers. Their account signs in to apps as their own
+WebID. If the household cannot record the member, the new login is removed.
+
 `STORAGE` names the provider households connect: `dropbox`, or `dev` in the
 dev config, which grants consent on the spot and keeps files in each pod's
 own SQLite.
@@ -300,7 +307,7 @@ config also accepts an `X-Dev-WebID` header.
   token, encrypted at rest); link flow; Dropbox change feed into reconcile.
 - **M3**: our own Solid-OIDC identity provider (done; `make e2e` shows a
   stock CSS accepting its tokens); households, signup and connecting storage
-  (done; Clerk sign-in done); members, device setup,
+  (done; Clerk sign-in done; managed members done); device setup,
   handover, deletion.
 - **M4**: Solid Notifications (WebSocketChannel2023 on hibernating DO
   sockets); OneDrive, Drive, WebDAV adapters; conformance suite in CI.

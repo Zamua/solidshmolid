@@ -20,6 +20,7 @@ export function rpcHousehold(env: Env, id: string): HouseholdRepository {
   return {
     load: () => stub.load(),
     create: (state) => stub.create(state),
+    addMember: (member, pod) => stub.addMember(member, pod),
     addLink: (link, refreshToken) => stub.addLink(link, refreshToken),
     placePod: (podId, linkId) => stub.placePod(podId, linkId),
     rememberPending: (nonce, pending) => stub.rememberPending(nonce, pending),

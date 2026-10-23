@@ -4,11 +4,13 @@
 //
 // Pages post plain HTML forms here; those get a redirect, scripts get JSON.
 
-import { LinkExpired, NotAManager } from '../../app/households/households.js';
+import { LinkExpired, NoStorageYet, NotAManager } from '../../app/households/households.js';
+import { HouseholdRuleBroken } from '../../domain/households/household.js';
 import type { HouseholdState } from '../../app/households/ports.js';
 import { households } from '../composition.js';
 import type { Env } from '../env.js';
 import { hostsFor } from '../hosts.js';
+import { addMemberPage } from './pages/home.js';
 import { escapeHtml, page } from './pages/shell.js';
 
 export async function apiRoute(request: Request, env: Env, url: URL, person: string | null): Promise<Response | null> {
@@ -17,6 +19,7 @@ export async function apiRoute(request: Request, env: Env, url: URL, person: str
   const routes: Record<string, { method: string; run: (person: string) => Promise<Response> }> = {
     '/api/me': { method: 'GET', run: (person) => me(env, url, person) },
     '/api/signup': { method: 'POST', run: (person) => signup(request, env, url, person) },
+    '/api/members': { method: 'POST', run: (person) => addMember(request, env, url, person) },
     [`/api/storage/${provider}/start`]: { method: 'POST', run: (person) => start(request, env, url, person, callback) },
     [callback]: { method: 'GET', run: (person) => finish(env, url, person, callback) },
   };
@@ -34,6 +37,8 @@ export async function apiRoute(request: Request, env: Env, url: URL, person: str
   } catch (e) {
     if (e instanceof NotAManager) return error(403, 'not_a_manager', e.message);
     if (e instanceof LinkExpired) return error(400, 'link_expired', e.message);
+    if (e instanceof NoStorageYet) return error(409, 'no_storage', e.message);
+    if (e instanceof HouseholdRuleBroken) return wantsHtml(request) ? addMemberPage(e.message) : error(400, 'invalid', e.message);
     throw e;
   }
 }
@@ -46,6 +51,23 @@ async function me(env: Env, url: URL, person: string): Promise<Response> {
 async function signup(request: Request, env: Env, url: URL, person: string): Promise<Response> {
   const household = await households(env, hostsFor(env, url)).signup(person);
   return wantsHtml(request) ? redirect('/') : Response.json(view(household, env, url), { status: 201 });
+}
+
+async function addMember(request: Request, env: Env, url: URL, person: string): Promise<Response> {
+  const form = await fields(request);
+  if ((form.kind ?? 'managed') !== 'managed') return error(501, 'not_yet', 'inviting an adult is not available yet');
+  const household = await households(env, hostsFor(env, url)).addManagedMember(person, form.name ?? '');
+  return wantsHtml(request) ? redirect('/') : Response.json(view(household, env, url), { status: 201 });
+}
+
+/** Form or JSON fields, as strings. */
+async function fields(request: Request): Promise<Record<string, string | undefined>> {
+  if ((request.headers.get('Content-Type') ?? '').includes('application/json')) {
+    const body = (await request.json().catch(() => ({}))) as Record<string, unknown>;
+    return Object.fromEntries(Object.entries(body).map(([k, v]) => [k, typeof v === 'string' ? v : undefined]));
+  }
+  const form = await request.formData();
+  return Object.fromEntries([...form.entries()].map(([k, v]) => [k, typeof v === 'string' ? v : undefined]));
 }
 
 async function start(request: Request, env: Env, url: URL, person: string, callback: string): Promise<Response> {
@@ -72,7 +94,7 @@ function view(h: HouseholdState, env: Env, url: URL) {
   const hosts = hostsFor(env, url);
   return {
     id: h.id,
-    members: h.members.map((m) => ({ role: m.role, webid: m.webid, person: m.clerkUserId })),
+    members: h.members.map((m) => ({ name: m.name, role: m.role, kind: m.kind, webid: m.webid, person: m.clerkUserId, pod: m.handle })),
     pods: h.pods.map((p) => ({ id: p.podId, url: `${hosts.podOrigin(p.podId)}/`, connected: p.linkId !== null })),
     storage: h.links.map((l) => ({ id: l.linkId, provider: l.provider })),
   };

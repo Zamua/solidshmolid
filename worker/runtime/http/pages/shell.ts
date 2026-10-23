@@ -26,6 +26,11 @@ a{color:var(--blue-deep)}
 .grow{flex:1;min-width:0}
 .badge{display:inline-flex;align-items:center;font:600 13px var(--body);padding:3px 10px;border-radius:999px;background:var(--mist);color:var(--blue-deep)}
 .badge.you{background:var(--sun);color:#5c4300}
+.badge.kid{background:#e3f6ec;color:#1c6b49}
+.label{display:block;font:600 15px var(--body);margin:0 0 8px}
+.field{display:block;width:100%;height:58px;padding:0 16px;font:18px var(--body);color:var(--ink);background:var(--mist);border:2px solid var(--line);border-radius:16px}
+.field:focus{outline:none;border-color:var(--blue);background:#fff}
+.problem{color:var(--berry);margin-top:8px}
 .icon-tile{width:46px;height:46px;border-radius:14px;display:grid;place-items:center;background:var(--mist);color:var(--blue-deep);flex:none}
 .ok{color:var(--leaf)}
 .pod-cloud{position:relative;width:92px;height:64px;flex:none}
@@ -39,6 +44,9 @@ a{color:var(--blue-deep)}
 .choice.on{border-color:var(--blue);background:var(--mist)}
 .choice.off{opacity:.55}
 .choice .dot{width:22px;height:22px;border-radius:50%;border:2px solid var(--line);flex:none}
+label.choice{cursor:pointer}
+.choice input{position:absolute;opacity:0;pointer-events:none}
+.choice:has(input:focus-visible){outline:3px solid var(--sun);outline-offset:2px}
 .choice.on .dot{border:7px solid var(--blue)}
 ul.plain{list-style:none;padding:0}
 ul.plain.card{padding:14px 20px}

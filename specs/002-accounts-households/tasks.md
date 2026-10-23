@@ -65,8 +65,8 @@ red-reachable check.
 
 ## Phase 5: User Story 3, member pods (P2)
 
-- [ ] T025 [P] [US3] Tests: manager adds a managed member; Clerk user created (fake ClerkAdmin); pod in manager's link; member owns it, manager has Read/Write/Control, in `worker/tests/households.test.ts`
-- [ ] T026 [US3] `POST /api/members` and the member card on the dashboard
+- [x] T025 [P] [US3] Tests: manager adds a managed member; Clerk user created (fake ClerkAdmin); pod in manager's link; member owns it, manager has Read/Write/Control, in `worker/tests/households.test.ts`
+- [x] T026 [US3] `POST /api/members` and the member card on the dashboard
 
 ## Phase 6: User Story 4, child device setup (P2)
 

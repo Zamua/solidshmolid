@@ -4,8 +4,8 @@
 // A link's refresh token is the one long-lived credential the service holds
 // for someone's storage: it is stored sealed, bound to its household and link.
 
-import type { HouseholdRepository, HouseholdState, LinkSummary, PendingLink } from '../../app/households/ports.js';
-import type { Role } from '../../domain/households/household.js';
+import type { HouseholdRepository, HouseholdState, LinkSummary, PendingLink, PodPlacement } from '../../app/households/ports.js';
+import type { Kind, Member, Role } from '../../domain/households/household.js';
 import type { Sealer } from './sealing.js';
 import type { SqlRunner } from './sql.js';
 
@@ -13,7 +13,7 @@ const PENDING_TTL_S = 15 * 60;
 
 const SCHEMA = `
 CREATE TABLE IF NOT EXISTS household(id INTEGER PRIMARY KEY CHECK (id = 1), household_id TEXT NOT NULL, created TEXT NOT NULL);
-CREATE TABLE IF NOT EXISTS member(person TEXT PRIMARY KEY, role TEXT NOT NULL, webid TEXT NOT NULL, handle TEXT NOT NULL, seq INTEGER NOT NULL);
+CREATE TABLE IF NOT EXISTS member(person TEXT PRIMARY KEY, role TEXT NOT NULL, kind TEXT NOT NULL, name TEXT NOT NULL, webid TEXT NOT NULL, handle TEXT NOT NULL, seq INTEGER NOT NULL);
 CREATE TABLE IF NOT EXISTS pod(pod_id TEXT PRIMARY KEY, owner TEXT NOT NULL, link_id TEXT, folder TEXT NOT NULL, seq INTEGER NOT NULL);
 CREATE TABLE IF NOT EXISTS link(link_id TEXT PRIMARY KEY, provider TEXT NOT NULL, account TEXT NOT NULL, refresh TEXT NOT NULL, created TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS pending(nonce TEXT PRIMARY KEY, verifier TEXT NOT NULL, person TEXT NOT NULL, expires INTEGER NOT NULL);
@@ -34,9 +34,11 @@ export class SqlHousehold implements HouseholdRepository {
     if (!id) return null;
     return {
       id,
-      members: this.sql.exec('SELECT person, role, webid, handle FROM member ORDER BY seq').toArray().map((r) => ({
+      members: this.sql.exec('SELECT person, role, kind, name, webid, handle FROM member ORDER BY seq').toArray().map((r) => ({
         clerkUserId: String(r.person),
         role: String(r.role) as Role,
+        kind: String(r.kind) as Kind,
+        name: String(r.name),
         webid: String(r.webid),
         handle: String(r.handle),
       })),
@@ -58,10 +60,17 @@ export class SqlHousehold implements HouseholdRepository {
     this.atomically(() => {
       if (this.id()) return;
       this.sql.exec('INSERT INTO household(id, household_id, created) VALUES (1, ?, ?)', state.id, new Date(this.nowMs()).toISOString());
-      state.members.forEach((m, i) => this.sql.exec('INSERT INTO member(person, role, webid, handle, seq) VALUES (?, ?, ?, ?, ?)', m.clerkUserId, m.role, m.webid, m.handle, i));
-      state.pods.forEach((p, i) => this.sql.exec('INSERT INTO pod(pod_id, owner, link_id, folder, seq) VALUES (?, ?, ?, ?, ?)', p.podId, p.owner, p.linkId, p.folder, i));
+      state.members.forEach((m) => this.insertMember(m));
+      state.pods.forEach((p) => this.insertPod(p));
     });
     return (await this.load())!;
+  }
+
+  async addMember(member: Member, pod: PodPlacement): Promise<void> {
+    this.atomically(() => {
+      this.insertMember(member);
+      this.insertPod(pod);
+    });
   }
 
   async addLink(link: LinkSummary, refreshToken: string): Promise<void> {
@@ -99,6 +108,22 @@ export class SqlHousehold implements HouseholdRepository {
     const row = this.sql.exec('SELECT provider, refresh FROM link WHERE link_id = ?', linkId).toArray()[0];
     if (!row) return null;
     return { provider: String(row.provider), refreshToken: await this.sealer.open(String(row.refresh), this.recordId(linkId)) };
+  }
+
+  private insertMember(m: Member): void {
+    this.sql.exec(
+      'INSERT INTO member(person, role, kind, name, webid, handle, seq) VALUES (?, ?, ?, ?, ?, ?, (SELECT COUNT(*) FROM member))',
+      m.clerkUserId,
+      m.role,
+      m.kind,
+      m.name,
+      m.webid,
+      m.handle,
+    );
+  }
+
+  private insertPod(p: PodPlacement): void {
+    this.sql.exec('INSERT INTO pod(pod_id, owner, link_id, folder, seq) VALUES (?, ?, ?, ?, (SELECT COUNT(*) FROM pod))', p.podId, p.owner, p.linkId, p.folder);
   }
 
   private id(): string | null {

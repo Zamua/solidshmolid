@@ -36,6 +36,8 @@ export interface HouseholdRepository {
   load(): Promise<HouseholdState | null>;
   /** Stores `state` unless the household exists; returns what is stored. */
   create(state: HouseholdState): Promise<HouseholdState>;
+  /** Adds a member and their pod (waiting for storage) together. */
+  addMember(member: Member, pod: PodPlacement): Promise<void>;
   /** Stores a new storage link; the grant stays inside the repository. */
   addLink(link: LinkSummary, refreshToken: string): Promise<void>;
   placePod(podId: string, linkId: string): Promise<void>;
@@ -66,6 +68,16 @@ export interface Pods {
   /** Serves the pod from `placement`: creates it in an empty folder, adopts
    * the pod already in a non-empty one. */
   place(podId: string, placement: Placement, owner: string, managers: string[]): Promise<PlacementOutcome>;
+}
+
+/** People's sign-ins (the identity service). */
+export interface Logins {
+  /** A sign-in for a member without email, under a unique username; returns
+   * the new person's id. */
+  createManaged(username: string, name: string): Promise<string>;
+  remove(person: string): Promise<void>;
+  /** How the person is called there, when known. */
+  nameOf(person: string): Promise<string | null>;
 }
 
 /** Which WebID a person signs in to Solid apps as. */
