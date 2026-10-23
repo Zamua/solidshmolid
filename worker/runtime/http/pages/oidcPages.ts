@@ -4,9 +4,11 @@ import type { ClientInfo } from '../../../domain/identity/oidc.js';
 import { icon } from './icons.js';
 import { escapeHtml, page } from './shell.js';
 
-export function consentPage(c: { pendingId: string; client: ClientInfo; webid: string }): Response {
+/** Names the host that receives the sign-in: the request's own redirect,
+ * which is where the code goes, whatever else the client lists. */
+export function consentPage(c: { pendingId: string; client: ClientInfo; webid: string; redirectUri: string }): Response {
   const name = c.client.name ?? 'An app';
-  const origin = c.client.isPublic ? 'An app without a registered name' : hostOf(c.client.redirectUris[0] ?? c.client.clientId);
+  const origin = `Signs you in at ${hostOf(c.redirectUri)}`;
   return page(
     `${name} wants to use your pod`,
     `<div class="consent-head"><div class="icon-tile">${icon('squaresFour')}</div>

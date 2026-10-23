@@ -32,7 +32,7 @@ export interface ProviderDeps {
 export type AuthorizeOutcome =
   | { kind: 'sign-in' }
   | { kind: 'no-pod' }
-  | { kind: 'consent'; pendingId: string; client: ClientInfo; webid: string }
+  | { kind: 'consent'; pendingId: string; client: ClientInfo; webid: string; redirectUri: string }
   | { kind: 'redirect'; location: string };
 
 const REFRESH_TTL_S = 30 * 24 * 3600;
@@ -51,12 +51,14 @@ export class Provider {
     const account = await this.deps.accounts.forPerson(personId);
     const webid = await account.webid();
     if (!webid) return { kind: 'no-pod' };
-    if (request.prompt !== 'consent' && (await account.hasApproval(client.clientId, webid))) {
+    // Every public-client app shares one id and may name any redirect, so an
+    // approval says nothing about who would receive the code: always ask.
+    if (request.prompt !== 'consent' && !client.isPublic && (await account.hasApproval(client.clientId, webid))) {
       return { kind: 'redirect', location: await this.issueCode(account, request, webid) };
     }
     const pendingId = this.deps.secrets.random();
     await account.savePending(pendingId, request, client, this.deps.clock.now() + PENDING_TTL_S);
-    return { kind: 'consent', pendingId, client, webid };
+    return { kind: 'consent', pendingId, client, webid, redirectUri: request.redirectUri };
   }
 
   /** Step two: the person's answer on the consent page. */

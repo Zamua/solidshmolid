@@ -1,7 +1,7 @@
 import { SignJWT, calculateJwkThumbprint, exportJWK, generateKeyPair } from 'jose';
 import { beforeAll, describe, expect, it } from 'vitest';
 import { Provider } from '../app/identity/provider.js';
-import { OidcError, clientFromDocument, publicClient } from '../domain/identity/oidc.js';
+import { OidcError, PUBLIC_CLIENT, clientFromDocument, publicClient } from '../domain/identity/oidc.js';
 import { SqlAccountStore } from '../runtime/adapters/sqlAccountStore.js';
 import { SolidOidcVerifier } from '../runtime/adapters/solidOidcVerifier.js';
 import { newSigningJwk, signerFromJwk, type Signer } from '../runtime/adapters/tokenSigner.js';
@@ -101,6 +101,17 @@ describe('authorize', () => {
     expect(back.searchParams.get('iss')).toBe(ISSUER);
     expect((await w.provider.authorize(authQuery(), 'clerk_sam')).kind).toBe('redirect');
     expect((await w.provider.authorize(authQuery({ prompt: 'consent' }), 'clerk_sam')).kind).toBe('consent');
+  });
+
+  it('never skips consent for the shared public client, and names where the code goes', async () => {
+    const w = world();
+    await signedInWithPod(w);
+    const pub = (redirect: string) => authQuery({ client_id: PUBLIC_CLIENT, redirect_uri: redirect });
+    const first = await w.provider.authorize(pub('https://notes.example/cb'), 'clerk_sam');
+    if (first.kind !== 'consent') throw new Error(first.kind);
+    await w.provider.decide('clerk_sam', first.pendingId, true);
+    const again = await w.provider.authorize(pub('https://evil.example/cb'), 'clerk_sam');
+    expect(again).toMatchObject({ kind: 'consent', redirectUri: 'https://evil.example/cb' });
   });
 
   it('returns access_denied when the person declines', async () => {
