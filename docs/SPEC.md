@@ -260,8 +260,9 @@ private (with a link to the account site), or there is no pod at that
 address. A navigation to a WebID profile gets it rendered: name, WebID, pods,
 issuer. Apps never send that header and keep the protocol's own answers.
 
-The account site has a menu (pods, profile, sign out) and a profile page that
-sets the WebID's `foaf:name`, the name apps show. Its Files view lets a person
+The account site has a menu (pods, sign out). The pods page shows the WebID
+with a copy button (`/assets/page.js`, served from the apex like the Clerk
+boot script, so pages carry no inline script). Its Files view lets a person
 browse their own pods' folders, reading as their WebID through the pod
 service, and download files: always as attachments (`application/octet-stream`,
 a sandbox CSP), so nothing a pod holds ever runs on the account site.

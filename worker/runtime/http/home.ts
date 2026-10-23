@@ -7,12 +7,16 @@ import { providerDisplayName } from '../../domain/accounts/deletion.js';
 import { accounts, provider } from '../composition.js';
 import type { Env } from '../env.js';
 import { hostsFor } from '../hosts.js';
-import { connectPage, deletePage, filesPage, podsPage, profilePage, refusalPage, removeAppPage, signupPage, welcomePage } from './pages/home.js';
+import { connectPage, deletePage, filesPage, podsPage, refusalPage, removeAppPage, signupPage, welcomePage } from './pages/home.js';
+import { PAGE_SCRIPT, PAGE_SCRIPT_PATH } from './assets/pageScript.js';
 import { privacyPage } from './pages/privacy.js';
 
 export async function homeRoute(request: Request, env: Env, url: URL, person: string | null): Promise<Response | null> {
   if (request.method !== 'GET') return null;
   if (url.pathname === '/privacy') return privacyPage();
+  if (url.pathname === PAGE_SCRIPT_PATH) {
+    return new Response(PAGE_SCRIPT, { headers: { 'Content-Type': 'text/javascript; charset=utf-8', 'Cache-Control': 'max-age=300' } });
+  }
   if (url.pathname === '/apps/remove') {
     if (!person) return Response.redirect(`${url.origin}/sign-in?return=%2F`, 302);
     const app = (await (await provider(env, `${url.origin}/`)).apps(person)).find((a) => a.clientId === url.searchParams.get('client'));
@@ -20,7 +24,7 @@ export async function homeRoute(request: Request, env: Env, url: URL, person: st
   }
   const deletingPod = /^\/pods\/([a-z0-9]{1,32})\/delete$/u.exec(url.pathname)?.[1];
   const [, browsing, browseAction] = /^\/pods\/([a-z0-9]{1,32})\/(files|download)$/u.exec(url.pathname) ?? [];
-  if (url.pathname !== '/' && url.pathname !== '/account/delete' && url.pathname !== '/profile' && !deletingPod && !browsing) return null;
+  if (url.pathname !== '/' && url.pathname !== '/account/delete' && !deletingPod && !browsing) return null;
   if (!person) return url.pathname === '/' ? welcomePage() : Response.redirect(`${url.origin}/sign-in?return=${encodeURIComponent(url.pathname)}`, 302);
   const hosts = hostsFor(env, url);
   const state = await accounts(env, hosts).mine(person);
@@ -39,10 +43,6 @@ export async function homeRoute(request: Request, env: Env, url: URL, person: st
       if (e instanceof NotFound || e instanceof NoStorageYet || e instanceof PodError) return refusalPage('Not found', 'that file or folder is not there', 404);
       throw e;
     }
-  }
-  if (url.pathname === '/profile') {
-    const { webid, name } = await accounts(env, hosts).profile(person);
-    return profilePage(webid, name);
   }
   if (url.pathname === '/account/delete') return deletePage('account', '/api/account/delete', providerNames(state, state.pods.map((p) => p.linkId)));
   if (state.links.length === 0) return connectPage(env.STORAGE);

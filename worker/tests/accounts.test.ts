@@ -2,7 +2,6 @@ import { describe, expect, it } from 'vitest';
 import { Accounts, HoldsWebid, LinkExpired, NoStorageYet, NotConfirmed, NotFound, NotSignedUp, StorageInUse } from '../app/accounts/accounts.js';
 import type { AccountRepository, AccountState, Directory, LinkSummary, PendingDeletion, PendingLink, Placement, PodRecord, Pods } from '../app/accounts/ports.js';
 import type { StorageAuthorization } from '../app/storage/ports.js';
-import { InvalidName } from '../domain/accounts/names.js';
 
 class MemoryAccount implements AccountRepository {
   state: AccountState | null = null;
@@ -17,9 +16,6 @@ class MemoryAccount implements AccountRepository {
   }
   async addPod(pod: PodRecord) {
     this.state!.pods.push(pod);
-  }
-  async setName(name: string | null) {
-    this.state!.name = name;
   }
   async addLink(link: LinkSummary, refreshToken: string) {
     this.state!.links.push(link);
@@ -89,12 +85,9 @@ function world() {
   const declared: { webidPodId: string; owner: string; storagePodId: string }[] = [];
   const dropped: string[] = [];
   const retired: { podId: string; deleteFiles: boolean }[] = [];
-  const profileNames = new Map<string, string>();
   const pods: Pods = {
     list: async (podId, owner, path) => [{ path: `${path}hello.txt`, kind: 'document', contentType: 'text/plain', size: 5, modified: `${podId} ${owner}` }],
     open: async (podId) => ({ body: new Response(podId).body!, contentType: 'text/plain', size: podId.length }),
-    profileName: async (podId) => profileNames.get(podId) ?? null,
-    setProfileName: async (podId, _owner, name) => void profileNames.set(podId, name),
     place: async (podId, placement, owner, withProfile) => {
       placed.push({ podId, placement, owner, withProfile });
       return 'created';
@@ -128,7 +121,7 @@ function world() {
     ids: { random: () => `r${++n}` },
     webidOf: (podId) => `https://${podId}.pods.example/profile/card#me`,
   });
-  return { service, accounts, directory, placed, declared, dropped, retired, removedLogins, bound, profileNames };
+  return { service, accounts, directory, placed, declared, dropped, retired, removedLogins, bound };
 }
 
 const stateOf = (url: string) => new URL(url).searchParams.get('state')!.split('.') as [string, string];
@@ -145,7 +138,7 @@ describe('signing up', () => {
   it('gives the person a WebID and a first pod waiting for storage', async () => {
     const { service, bound } = world();
     const a = await service.signup('user_dana');
-    expect(a).toEqual({ key: 'key-user_dana', webid: 'https://pod1xxxx.pods.example/profile/card#me', name: null, pods: [{ podId: 'pod1xxxx', linkId: null, folder: 'pod1xxxx' }], links: [] });
+    expect(a).toEqual({ key: 'key-user_dana', webid: 'https://pod1xxxx.pods.example/profile/card#me', pods: [{ podId: 'pod1xxxx', linkId: null, folder: 'pod1xxxx' }], links: [] });
     expect(bound.get('user_dana')).toBe(a.webid);
   });
 
@@ -304,30 +297,6 @@ describe('disconnecting storage', () => {
     const after = await service.disconnect('user_dana', spare);
     expect(after.links.map((l) => l.linkId)).toEqual([state.links[0]!.linkId]);
     expect(accounts.get(state.key)!.revokedLinks).toEqual([spare]);
-  });
-});
-
-describe('the profile', () => {
-  it('sets the name apps read, in the WebID pod, and remembers it', async () => {
-    const { service, profileNames } = await connected();
-    await service.rename('user_dana', '  Dana   Rivera ');
-    expect(profileNames.get('pod1xxxx')).toBe('Dana Rivera');
-    expect((await service.mine('user_dana'))!.name).toBe('Dana Rivera');
-    expect(await service.profile('user_dana')).toEqual({ webid: 'https://pod1xxxx.pods.example/profile/card#me', name: 'Dana Rivera' });
-  });
-
-  it('follows a name changed elsewhere, and refuses an empty one', async () => {
-    const { service, profileNames } = await connected();
-    profileNames.set('pod1xxxx', 'Changed in an app');
-    expect((await service.profile('user_dana')).name).toBe('Changed in an app');
-    expect((await service.mine('user_dana'))!.name).toBe('Changed in an app');
-    await expect(service.rename('user_dana', '   ')).rejects.toThrow(InvalidName);
-  });
-
-  it('needs storage before there is a profile to name', async () => {
-    const { service } = world();
-    await service.signup('user_dana');
-    await expect(service.rename('user_dana', 'Dana')).rejects.toThrow(NoStorageYet);
   });
 });
 

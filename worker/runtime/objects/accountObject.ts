@@ -125,10 +125,6 @@ export class AccountObject extends DurableObject<Env> {
     return this.pods.addPod(pod);
   }
 
-  async setName(name: string | null): Promise<void> {
-    return this.pods.setName(name);
-  }
-
   async addLink(link: LinkSummary, refreshToken: string): Promise<void> {
     return this.pods.addLink(link, refreshToken);
   }
