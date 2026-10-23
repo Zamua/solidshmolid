@@ -29,6 +29,13 @@ export interface PendingLink {
   verifier: string;
 }
 
+/** A deletion waiting for its typed confirmation. */
+export interface PendingDeletion {
+  /** A pod id, or null for the whole account. */
+  podId: string | null;
+  sentence: string;
+}
+
 /** One account's records (its AccountObject). */
 export interface AccountRepository {
   load(): Promise<AccountState | null>;
@@ -41,6 +48,15 @@ export interface AccountRepository {
   rememberPending(nonce: string, pending: PendingLink): Promise<void>;
   /** Consumed on read; null when absent or expired. */
   takePending(nonce: string): Promise<PendingLink | null>;
+  rememberDeletion(token: string, pending: PendingDeletion): Promise<void>;
+  /** Consumed on read; null when absent or expired. */
+  takeDeletion(token: string): Promise<PendingDeletion | null>;
+  removePod(podId: string): Promise<void>;
+  /** Removes the link and gives up its grant with the provider. */
+  removeLink(linkId: string): Promise<void>;
+  /** Removes everything the account holds, provider state included; grants
+   * are given up with their providers first. */
+  erase(): Promise<void>;
 }
 
 /** Service-wide lookups (the directory). */
@@ -49,6 +65,10 @@ export interface Directory {
   accountKeyFor(person: string): Promise<string>;
   /** A pod id no pod has ever had, now belonging to the account. */
   allocatePodId(accountKey: string): Promise<string>;
+  /** Marks a pod id deleted; it is never handed out again. */
+  retirePodId(podId: string): Promise<void>;
+  /** Forgets the person's account key. */
+  forget(person: string): Promise<void>;
 }
 
 export interface Placement {
@@ -65,6 +85,15 @@ export interface Pods {
   place(podId: string, placement: Placement, owner: string, withProfile: boolean): Promise<PlacementOutcome>;
   /** Lists `storagePodId` as a storage of the WebID that `webidPodId` holds. */
   declareStorage(webidPodId: string, owner: string, storagePodId: string): Promise<void>;
+  /** Takes `storagePodId` out of that list. */
+  dropStorage(webidPodId: string, owner: string, storagePodId: string): Promise<void>;
+  /** Stops serving the pod; with `deleteFiles`, also deletes its folder. */
+  retire(podId: string, deleteFiles: boolean): Promise<void>;
+}
+
+/** People's sign-ins (the identity service). */
+export interface Logins {
+  remove(person: string): Promise<void>;
 }
 
 /** Which WebID a person signs in to Solid apps as. */

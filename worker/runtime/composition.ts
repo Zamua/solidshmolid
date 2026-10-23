@@ -3,7 +3,7 @@
 // needs from here.
 
 import { Accounts } from '../app/accounts/accounts.js';
-import type { Placement } from '../app/accounts/ports.js';
+import type { Logins, Placement } from '../app/accounts/ports.js';
 import { Provider } from '../app/identity/provider.js';
 import { Pod } from '../app/pods/pod.js';
 import { StorageUnavailable } from '../app/shared/errors.js';
@@ -12,10 +12,11 @@ import { FolderSync } from '../app/storage/sync.js';
 import { RpcAccounts, rpcAccountPods, rpcDirectory, rpcIdentities, rpcPods } from './adapters/accountRpc.js';
 import { HttpClientRegistry } from './adapters/clientRegistry.js';
 import { DevFileStore } from './adapters/devFiles.js';
-import { DEV_PROVIDER, devAuthorization, devRefresher } from './adapters/devStorage.js';
+import { DEV_PROVIDER, devAuthorization, devGrants } from './adapters/devStorage.js';
 import { DropboxFileStore } from './adapters/dropbox.js';
-import { DropboxAuthorization, refreshAccess } from './adapters/dropboxOAuth.js';
-import type { AccessToken, Refresher } from './adapters/linkTokens.js';
+import { DropboxAuthorization, refreshAccess, revokeGrant } from './adapters/dropboxOAuth.js';
+import type { AccessToken, GrantKeeper } from './adapters/linkTokens.js';
+import { ClerkLogins } from './adapters/clerkLogins.js';
 import { type ClerkKeys, ClerkSessions, frontendApiOf } from './adapters/clerkSessions.js';
 import { type Sessions, devSessions, firstOf, noSessions } from './adapters/sessions.js';
 import type { SqlRunner } from './adapters/sql.js';
@@ -97,18 +98,29 @@ export function storageAuthorization(env: Env): StorageAuthorization {
   throw new Error(`STORAGE=${env.STORAGE} is not a provider this deployment can connect`);
 }
 
-/** How an account mints access tokens for each provider it may hold. */
-export function storageRefreshers(env: Env): Record<string, Refresher> {
-  const refreshers: Record<string, Refresher> = {};
+/** How an account keeps the grants of each provider it may hold. */
+export function storageGrants(env: Env): Record<string, GrantKeeper> {
+  const keepers: Record<string, GrantKeeper> = {};
   if (env.DROPBOX_APP_KEY) {
     const appKey = env.DROPBOX_APP_KEY;
-    refreshers.dropbox = async (refreshToken) => {
-      const fresh = await refreshAccess(fetcher, appKey, refreshToken, Date.now());
-      return { token: fresh.accessToken, expiresAt: fresh.expiresAt };
+    keepers.dropbox = {
+      refresh: async (refreshToken) => {
+        const fresh = await refreshAccess(fetcher, appKey, refreshToken, Date.now());
+        return { token: fresh.accessToken, expiresAt: fresh.expiresAt };
+      },
+      revoke: (refreshToken) => revokeGrant(fetcher, appKey, refreshToken, Date.now()),
     };
   }
-  if (isDev(env)) refreshers[DEV_PROVIDER] = devRefresher;
-  return refreshers;
+  if (isDev(env)) keepers[DEV_PROVIDER] = devGrants;
+  return keepers;
+}
+
+/** People's sign-ins: Clerk when configured, else (dev only) nobody to remove. */
+function logins(env: Env): Logins {
+  const keys = clerkKeys(env);
+  if (keys) return new ClerkLogins(keys);
+  if (isDev(env)) return { remove: async () => {} };
+  throw new Error('CLERK_PUBLISHABLE_KEY and CLERK_SECRET_KEY are not configured');
 }
 
 export function accounts(env: Env, hosts: Hosts): Accounts {
@@ -117,6 +129,7 @@ export function accounts(env: Env, hosts: Hosts): Accounts {
     account: (key) => rpcAccountPods(env, key),
     pods: rpcPods(env, hosts),
     identities: rpcIdentities(env),
+    logins: logins(env),
     authorization: storageAuthorization(env),
     ids: { random: randomId },
     webidOf: hosts.webidOf,
@@ -158,6 +171,14 @@ export function podServices(env: Env, storage: DurableObjectStorage, base: strin
 function placedStorage(env: Env, sql: SqlRunner, p: Placement): FileStore & FileLister {
   if (p.provider === DEV_PROVIDER && isDev(env)) return new DevFileStore(sql);
   if (p.provider === 'dropbox') return new DropboxFileStore({ fetch: fetcher, root: p.folder, accessToken: accountTokens(env, p) });
+  throw new StorageUnavailable(`this pod's storage (${p.provider}) is not reachable here`);
+}
+
+/** The storage around a placed pod's folder, for deleting that folder whole;
+ * null where the pod's files live in the pod's own SQLite. */
+export function storageAround(env: Env, p: Placement): FileStore | null {
+  if (p.provider === DEV_PROVIDER) return null;
+  if (p.provider === 'dropbox') return new DropboxFileStore({ fetch: fetcher, root: '', accessToken: accountTokens(env, p) });
   throw new StorageUnavailable(`this pod's storage (${p.provider}) is not reachable here`);
 }
 

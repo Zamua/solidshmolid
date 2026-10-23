@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { Accounts, LinkExpired, NoStorageYet, NotSignedUp } from '../app/accounts/accounts.js';
-import type { AccountRepository, AccountState, Directory, LinkSummary, PendingLink, Placement, PodRecord, Pods } from '../app/accounts/ports.js';
+import { Accounts, HoldsWebid, LinkExpired, NoStorageYet, NotConfirmed, NotFound, NotSignedUp, StorageInUse } from '../app/accounts/accounts.js';
+import type { AccountRepository, AccountState, Directory, LinkSummary, PendingDeletion, PendingLink, Placement, PodRecord, Pods } from '../app/accounts/ports.js';
 import type { StorageAuthorization } from '../app/storage/ports.js';
 
 class MemoryAccount implements AccountRepository {
@@ -32,6 +32,29 @@ class MemoryAccount implements AccountRepository {
     this.pending.delete(nonce);
     return p;
   }
+  deletions = new Map<string, PendingDeletion>();
+  revokedLinks: string[] = [];
+  erased = false;
+  async rememberDeletion(token: string, p: PendingDeletion) {
+    this.deletions.set(token, p);
+  }
+  async takeDeletion(token: string) {
+    const p = this.deletions.get(token) ?? null;
+    this.deletions.delete(token);
+    return p;
+  }
+  async removePod(podId: string) {
+    this.state!.pods = this.state!.pods.filter((p) => p.podId !== podId);
+  }
+  async removeLink(linkId: string) {
+    this.revokedLinks.push(linkId);
+    this.state!.links = this.state!.links.filter((l) => l.linkId !== linkId);
+  }
+  async erase() {
+    this.revokedLinks.push(...this.state!.links.map((l) => l.linkId));
+    this.state = null;
+    this.erased = true;
+  }
 }
 
 class MemoryDirectory implements Directory {
@@ -46,6 +69,13 @@ class MemoryDirectory implements Directory {
     this.podIds.set(id, accountKey);
     return id;
   }
+  retired = new Set<string>();
+  async retirePodId(podId: string) {
+    this.retired.add(podId);
+  }
+  async forget(person: string) {
+    this.keys.delete(person);
+  }
 }
 
 function world() {
@@ -53,13 +83,18 @@ function world() {
   const directory = new MemoryDirectory();
   const placed: { podId: string; placement: Placement; owner: string; withProfile: boolean }[] = [];
   const declared: { webidPodId: string; owner: string; storagePodId: string }[] = [];
+  const dropped: string[] = [];
+  const retired: { podId: string; deleteFiles: boolean }[] = [];
   const pods: Pods = {
     place: async (podId, placement, owner, withProfile) => {
       placed.push({ podId, placement, owner, withProfile });
       return 'created';
     },
     declareStorage: async (webidPodId, owner, storagePodId) => void declared.push({ webidPodId, owner, storagePodId }),
+    dropStorage: async (_webidPodId, _owner, storagePodId) => void dropped.push(storagePodId),
+    retire: async (podId, deleteFiles) => void retired.push({ podId, deleteFiles }),
   };
+  const removedLogins: string[] = [];
   const bound = new Map<string, string>();
   const authorization: StorageAuthorization = {
     provider: 'dropbox',
@@ -79,11 +114,12 @@ function world() {
     },
     pods,
     identities: { bind: async (person, webid) => void bound.set(person, webid) },
+    logins: { remove: async (person) => void removedLogins.push(person) },
     authorization,
     ids: { random: () => `r${++n}` },
     webidOf: (podId) => `https://${podId}.pods.example/profile/card#me`,
   });
-  return { service, accounts, directory, placed, declared, bound };
+  return { service, accounts, directory, placed, declared, dropped, retired, removedLogins, bound };
 }
 
 const stateOf = (url: string) => new URL(url).searchParams.get('state')!.split('.') as [string, string];
@@ -173,5 +209,91 @@ describe('adding a pod', () => {
     await service.signup('user_dana');
     await expect(service.addPod('user_dana')).rejects.toThrow(NoStorageYet);
     expect(directory.podIds.size).toBe(1);
+  });
+});
+
+describe('deleting', () => {
+  async function withTwoPods() {
+    const w = await connected();
+    const state = await w.service.addPod('user_dana');
+    return { ...w, state, second: state.pods[1]!.podId };
+  }
+
+  it('deletes a pod keeping its files: out of the profile, retired, its id never reused', async () => {
+    const { service, second, dropped, retired, directory } = await withTwoPods();
+    expect(await service.deletePod('user_dana', second, false)).toEqual({ done: true });
+    expect(dropped).toEqual([second]);
+    expect(retired).toEqual([{ podId: second, deleteFiles: false }]);
+    expect(directory.retired.has(second)).toBe(true);
+    expect((await service.mine('user_dana'))!.pods.map((p) => p.podId)).toEqual(['pod1xxxx']);
+  });
+
+  it('deletes files only after the exact sentence, and any answer uses the request up', async () => {
+    const { service, second, retired } = await withTwoPods();
+    const step = await service.deletePod('user_dana', second, true);
+    if (!('confirm' in step)) throw new Error('expected a confirmation step');
+    expect(step.confirm.sentence).toBe('yes, delete my data in Dropbox');
+    await expect(service.confirmDeletion('user_dana', step.confirm.token, 'yes, delete my data in dropbox')).rejects.toThrow(NotConfirmed);
+    expect(retired).toEqual([]);
+    await expect(service.confirmDeletion('user_dana', step.confirm.token, step.confirm.sentence)).rejects.toThrow(NotConfirmed);
+    const again = await service.deletePod('user_dana', second, true);
+    if (!('confirm' in again)) throw new Error('expected a confirmation step');
+    expect(await service.confirmDeletion('user_dana', again.confirm.token, again.confirm.sentence)).toBe('pod');
+    expect(retired).toEqual([{ podId: second, deleteFiles: true }]);
+  });
+
+  it('will not confirm someone else\'s deletion', async () => {
+    const { service, second } = await withTwoPods();
+    await service.signup('user_eve');
+    const step = await service.deletePod('user_dana', second, true);
+    if (!('confirm' in step)) throw new Error('expected a confirmation step');
+    await expect(service.confirmDeletion('user_eve', step.confirm.token, step.confirm.sentence)).rejects.toThrow(NotConfirmed);
+  });
+
+  it('keeps the WebID pod, and refuses pods that are not yours', async () => {
+    const { service, state } = await withTwoPods();
+    await expect(service.deletePod('user_dana', state.pods[0]!.podId, false)).rejects.toThrow(HoldsWebid);
+    await expect(service.deletePod('user_dana', 'nopenope', false)).rejects.toThrow(NotFound);
+  });
+
+  it('deletes the account: every pod retired, grants given up, the login removed', async () => {
+    const { service, state, retired, directory, accounts, removedLogins } = await withTwoPods();
+    expect(await service.deleteAccount('user_dana', false)).toEqual({ done: true });
+    expect(retired.map((r) => r.podId).sort()).toEqual(state.pods.map((p) => p.podId).sort());
+    expect(retired.every((r) => !r.deleteFiles)).toBe(true);
+    expect([...directory.retired].sort()).toEqual(state.pods.map((p) => p.podId).sort());
+    expect(accounts.get(state.key)!.erased).toBe(true);
+    expect(accounts.get(state.key)!.revokedLinks).toEqual([state.links[0]!.linkId]);
+    expect(removedLogins).toEqual(['user_dana']);
+    expect(directory.keys.has('user_dana')).toBe(false);
+  });
+
+  it('asks for the sentence before deleting the account with its files', async () => {
+    const { service, retired } = await withTwoPods();
+    const step = await service.deleteAccount('user_dana', true);
+    if (!('confirm' in step)) throw new Error('expected a confirmation step');
+    expect(retired).toEqual([]);
+    expect(await service.confirmDeletion('user_dana', step.confirm.token, step.confirm.sentence)).toBe('account');
+    expect(retired.every((r) => r.deleteFiles)).toBe(true);
+  });
+});
+
+describe('disconnecting storage', () => {
+  it('is refused while pods live there, naming them', async () => {
+    const { service, state } = await connected();
+    const linkId = state.links[0]!.linkId;
+    const refused = await service.disconnect('user_dana', linkId).catch((e: unknown) => e);
+    expect(refused).toBeInstanceOf(StorageInUse);
+    expect((refused as StorageInUse).podIds).toEqual(['pod1xxxx']);
+  });
+
+  it('gives up a link no pod uses', async () => {
+    const { service, accounts, state } = await connected();
+    const [key, nonce] = stateOf(await service.beginLink('user_dana', 'https://x/cb'));
+    const two = await service.completeLink('user_dana', key, nonce, 'code', 'https://x/cb');
+    const spare = two.links[1]!.linkId;
+    const after = await service.disconnect('user_dana', spare);
+    expect(after.links.map((l) => l.linkId)).toEqual([state.links[0]!.linkId]);
+    expect(accounts.get(state.key)!.revokedLinks).toEqual([spare]);
   });
 });

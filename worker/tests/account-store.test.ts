@@ -29,7 +29,12 @@ function store(nowMs = () => 100_000) {
       throw e;
     }
   };
-  return { sql, account: new SqlAccountPods(sql, new Sealer(KEY), atomically, nowMs) };
+  const ended = { revoked: [] as string[], wiped: 0 };
+  const endings = {
+    revoke: async (linkId: string) => void ended.revoked.push(linkId),
+    wipe: async () => void ended.wiped++,
+  };
+  return { sql, ended, account: new SqlAccountPods(sql, new Sealer(KEY), atomically, endings, nowMs) };
 }
 
 describe("an account's pods", () => {
@@ -84,13 +89,48 @@ describe("an account's pods", () => {
   });
 });
 
+describe('ending things', () => {
+  it('lets a deletion request be answered once, before it expires', async () => {
+    let now = 100_000;
+    const { account } = store(() => now);
+    await account.create(STATE);
+    await account.rememberDeletion('t1', { podId: 'p2', sentence: 'yes, delete my data in Dropbox' });
+    expect(await account.takeDeletion('t1')).toEqual({ podId: 'p2', sentence: 'yes, delete my data in Dropbox' });
+    expect(await account.takeDeletion('t1')).toBeNull();
+    await account.rememberDeletion('t2', { podId: null, sentence: 's' });
+    now += 11 * 60 * 1000;
+    expect(await account.takeDeletion('t2')).toBeNull();
+  });
+
+  it('gives a link up with its provider before forgetting it', async () => {
+    const { account, ended } = store();
+    await account.create(STATE);
+    await account.addLink({ linkId: 'l1', provider: 'dropbox', account: 'dbid:1' }, 'r1');
+    await account.removeLink('l1');
+    expect(ended.revoked).toEqual(['l1']);
+    expect((await account.load())!.links).toEqual([]);
+  });
+
+  it('gives every link up, then wipes, when the account is erased', async () => {
+    const { account, ended } = store();
+    await account.create(STATE);
+    await account.addLink({ linkId: 'l1', provider: 'dropbox', account: 'a' }, 'r1');
+    await account.addLink({ linkId: 'l2', provider: 'dropbox', account: 'b' }, 'r2');
+    await account.removePod('k3x9fqm7');
+    expect((await account.load())!.pods).toEqual([]);
+    await account.erase();
+    expect(ended.revoked.sort()).toEqual(['l1', 'l2']);
+    expect(ended.wiped).toBe(1);
+  });
+});
+
 describe('link access tokens', () => {
   const grant = async (linkId: string) => (linkId === 'l1' ? { provider: 'dropbox', refreshToken: 'r1' } : null);
 
   it('mints once and shares the token until shortly before it expires', async () => {
     let now = 0;
     let minted = 0;
-    const tokens = new LinkTokens(grant, { dropbox: async () => ({ token: `a${++minted}`, expiresAt: now + 4 * 3600_000 }) }, () => now);
+    const tokens = new LinkTokens(grant, { dropbox: { refresh: async () => ({ token: `a${++minted}`, expiresAt: now + 4 * 3600_000 }), revoke: async () => {} } }, () => now);
     const [a, b] = await Promise.all([tokens.accessToken('l1', false), tokens.accessToken('l1', false)]);
     expect([a.token, b.token, minted]).toEqual(['a1', 'a1', 1]);
     now += 4 * 3600_000 - 30_000;
@@ -101,15 +141,34 @@ describe('link access tokens', () => {
   it('reports a refused or missing link as unavailable storage, and retries later', async () => {
     let fail = true;
     const tokens = new LinkTokens(grant, {
-      dropbox: async () => {
-        if (fail) throw new Error('invalid_grant');
-        return { token: 'ok', expiresAt: Number.MAX_SAFE_INTEGER };
+      dropbox: {
+        refresh: async () => {
+          if (fail) throw new Error('invalid_grant');
+          return { token: 'ok', expiresAt: Number.MAX_SAFE_INTEGER };
+        },
+        revoke: async () => {},
       },
     });
     await expect(tokens.accessToken('l1', false)).rejects.toThrow(StorageUnavailable);
     await expect(tokens.accessToken('l9', false)).rejects.toThrow(StorageUnavailable);
     fail = false;
     expect((await tokens.accessToken('l1', false)).token).toBe('ok');
+  });
+
+  it('gives a grant up even when the provider refuses, so the link can still go', async () => {
+    const revoked: string[] = [];
+    const tokens = new LinkTokens(grant, {
+      dropbox: {
+        refresh: async () => ({ token: 'ok', expiresAt: Number.MAX_SAFE_INTEGER }),
+        revoke: async (r) => {
+          revoked.push(r);
+          throw new Error('down');
+        },
+      },
+    });
+    await expect(tokens.revoke('l1')).resolves.toBeUndefined();
+    await expect(tokens.revoke('l9')).resolves.toBeUndefined();
+    expect(revoked).toEqual(['r1']);
   });
 });
 

@@ -5,17 +5,27 @@
 // A link's refresh token is the one long-lived credential the service holds
 // for someone's storage: it is stored sealed, bound to its account and link.
 
-import type { AccountRepository, AccountState, LinkSummary, PendingLink, PodRecord } from '../../app/accounts/ports.js';
+import type { AccountRepository, AccountState, LinkSummary, PendingDeletion, PendingLink, PodRecord } from '../../app/accounts/ports.js';
 import type { Sealer } from './sealing.js';
 import type { SqlRunner } from './sql.js';
 
 const PENDING_TTL_S = 15 * 60;
+const DELETION_TTL_S = 10 * 60;
+
+/** What ending a link or the account takes beyond these tables. */
+export interface Endings {
+  /** Gives a link's grant up with its provider. */
+  revoke(linkId: string): Promise<void>;
+  /** Removes all of the account's storage, provider state included. */
+  wipe(): Promise<void>;
+}
 
 const SCHEMA = `
 CREATE TABLE IF NOT EXISTS owner(id INTEGER PRIMARY KEY CHECK (id = 1), account_key TEXT NOT NULL, webid TEXT NOT NULL, created TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS pod(pod_id TEXT PRIMARY KEY, link_id TEXT, folder TEXT NOT NULL, seq INTEGER NOT NULL);
 CREATE TABLE IF NOT EXISTS storage_link(link_id TEXT PRIMARY KEY, provider TEXT NOT NULL, account TEXT NOT NULL, refresh TEXT NOT NULL, created TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS link_pending(nonce TEXT PRIMARY KEY, verifier TEXT NOT NULL, expires INTEGER NOT NULL);
+CREATE TABLE IF NOT EXISTS deletion_pending(token TEXT PRIMARY KEY, pod_id TEXT, sentence TEXT NOT NULL, expires INTEGER NOT NULL);
 `;
 
 export class SqlAccountPods implements AccountRepository {
@@ -23,6 +33,7 @@ export class SqlAccountPods implements AccountRepository {
     private readonly sql: SqlRunner,
     private readonly sealer: Sealer,
     private readonly atomically: <T>(fn: () => T) => T,
+    private readonly endings: Endings,
     private readonly nowMs: () => number = () => Date.now(),
   ) {
     this.sql.exec(SCHEMA);
@@ -88,6 +99,34 @@ export class SqlAccountPods implements AccountRepository {
     this.sql.exec('DELETE FROM link_pending WHERE nonce = ?', nonce);
     if (!row || Number(row.expires) < Math.floor(this.nowMs() / 1000)) return null;
     return { verifier: String(row.verifier) };
+  }
+
+  async rememberDeletion(token: string, pending: PendingDeletion): Promise<void> {
+    const nowS = Math.floor(this.nowMs() / 1000);
+    this.sql.exec('DELETE FROM deletion_pending WHERE expires < ?', nowS);
+    this.sql.exec('INSERT INTO deletion_pending(token, pod_id, sentence, expires) VALUES (?, ?, ?, ?)', token, pending.podId, pending.sentence, nowS + DELETION_TTL_S);
+  }
+
+  /** Consumed on read: one answer per request, right or wrong. */
+  async takeDeletion(token: string): Promise<PendingDeletion | null> {
+    const row = this.sql.exec('SELECT pod_id, sentence, expires FROM deletion_pending WHERE token = ?', token).toArray()[0];
+    this.sql.exec('DELETE FROM deletion_pending WHERE token = ?', token);
+    if (!row || Number(row.expires) < Math.floor(this.nowMs() / 1000)) return null;
+    return { podId: row.pod_id === null ? null : String(row.pod_id), sentence: String(row.sentence) };
+  }
+
+  async removePod(podId: string): Promise<void> {
+    this.sql.exec('DELETE FROM pod WHERE pod_id = ?', podId);
+  }
+
+  async removeLink(linkId: string): Promise<void> {
+    await this.endings.revoke(linkId);
+    this.sql.exec('DELETE FROM storage_link WHERE link_id = ?', linkId);
+  }
+
+  async erase(): Promise<void> {
+    for (const row of this.sql.exec('SELECT link_id FROM storage_link').toArray()) await this.endings.revoke(String(row.link_id));
+    await this.endings.wipe();
   }
 
   /** A link's provider and refresh token, for minting access tokens. */

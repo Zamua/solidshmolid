@@ -71,6 +71,13 @@ export async function refreshAccess(
   return { accessToken: String(body.access_token), expiresAt: now + Number(body.expires_in ?? 0) * 1000 };
 }
 
+/** Gives up a grant: Dropbox revokes the token and the app's access with it. */
+export async function revokeGrant(fetcher: Fetch, appKey: string, refreshToken: string, now: number): Promise<void> {
+  const { accessToken } = await refreshAccess(fetcher, appKey, refreshToken, now);
+  const res = await fetcher('https://api.dropboxapi.com/2/auth/token/revoke', { method: 'POST', headers: { Authorization: `Bearer ${accessToken}` } });
+  if (!res.ok) throw new DropboxAuthError(`Dropbox answered ${res.status} to the revoke`);
+}
+
 async function tokenCall(fetcher: Fetch, form: Record<string, string>): Promise<Record<string, unknown>> {
   const res = await fetcher(TOKEN, {
     method: 'POST',

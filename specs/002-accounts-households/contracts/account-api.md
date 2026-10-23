@@ -12,10 +12,11 @@ JSON. Errors: `{ "error": "<code>", "message": "..." }` with 400/401/403/404/409
 | `POST /api/storage/{provider}/start` | returns the provider's authorize URL (PKCE) |
 | `GET /link/{provider}/callback` | finishes linking; places every pod waiting for storage |
 | `POST /api/pods` | adds a pod beside the first, owned by the WebID and listed in its profile (409 before storage is connected) |
-| `GET /api/storage` | storage links with the pods using each |
-| `DELETE /api/storage/{linkId}` | 409 with the pod list while any pod uses it (FR-015) |
-| `GET /api/apps` / `DELETE /api/apps/{clientId}` | list and revoke app approvals (FR-007) |
-| `POST /api/pods/{id}/move` `{linkId}` | copies to another link, then switches (FR-014) |
-| `POST /api/pods/{id}/delete` `{deleteFiles: false}` | deletes the pod; keeps the folder |
+| `POST /api/storage/{linkId}/disconnect` | gives up the grant and removes the link; 409 with the pod list while any pod uses it (FR-015) |
+| `GET /api/apps` | the apps the person approved |
+| `POST /api/apps/revoke` `{clientId}` | removes the approval and ends the app's refresh tokens (FR-007) |
+| `POST /api/pods/{id}/delete` `{deleteFiles: false}` | deletes a pod other than the first; keeps its folder; 409 for the WebID pod |
 | `POST /api/pods/{id}/delete` `{deleteFiles: true}` | returns `{confirmToken, sentence}`; nothing deleted yet |
-| `POST /api/pods/{id}/delete/confirm` `{confirmToken, typed}` | deletes the files only when `typed` equals `sentence` exactly (SC-005) |
+| `POST /api/account/delete` `{deleteFiles}` | the same for the whole account: every pod, the grants, the stored records, the Clerk user |
+| `POST /api/deletions/confirm` `{token, typed}` | deletes the files only when `typed` equals `sentence` exactly (SC-005); any answer uses the token up |
+| `POST /api/pods/{id}/move` `{linkId}` | copies to another link, then switches (FR-014); not built yet |
