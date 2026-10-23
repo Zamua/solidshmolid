@@ -18,6 +18,7 @@ export function welcomePage(): Response {
 <li>${icon('stack')}<span>Keep separate pods for work, photos or anything else.</span></li>
 <li>${icon('doorOpen')}<span>Leave anytime. Your folder is still a complete pod.</span></li>
 </ul>
+<p class="small center" style="margin-top:18px"><a href="/privacy">Privacy</a></p>
 <div class="dock"><div><a class="btn primary" href="/sign-up?return=%2F">Create your pod</a><a class="btn quiet" href="/sign-in?return=%2F">I already have one</a></div></div>`,
   );
 }
