@@ -86,6 +86,17 @@ ul.plain li .icon{color:var(--blue);flex:none;margin-top:1px}
 .dock{position:fixed;left:0;right:0;bottom:0;padding:26px 22px calc(30px + env(safe-area-inset-bottom));background:linear-gradient(180deg,rgba(234,244,255,0) 0%,var(--sky) 34%)}
 .dock>*{max-width:396px;margin:0 auto}
 .center{text-align:center}
+.row-link{color:inherit;text-decoration:none;display:flex;flex-direction:column}
+a.row.row-link{flex-direction:row}
+.row-link:hover b{color:var(--blue-deep)}
+.crumbs{font-size:15px;color:var(--ink-soft);overflow-wrap:anywhere}
+.crumbs a{color:var(--blue-deep);font-weight:700;text-decoration:none}
+.crumb-sep{margin:0 6px;color:var(--ink-soft)}
+.file-name{display:block;overflow-wrap:anywhere}
+.file-get{color:var(--ink-soft);flex:none}
+.add-row{border-top:1px solid var(--line)}
+.add-pod{display:flex;align-items:center;gap:10px;width:100%;padding:14px 0;border:0;background:none;color:var(--blue-deep);font:600 17px var(--display);cursor:pointer}
+.add-pod:focus-visible{outline:3px solid var(--sun);outline-offset:2px;border-radius:12px}
 .prose h2{margin:22px 0 6px}
 .prose h2:first-child{margin-top:0}
 .prose p{margin:0 0 10px}

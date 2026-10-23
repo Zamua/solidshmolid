@@ -69,6 +69,21 @@ describe.skipIf(!APEX)('sign up and connect storage', () => {
     expect([nowhere.status, nowhere.body]).toEqual([404, expect.stringContaining("There's no pod here")]);
     expect((await fetch(pod!.url, { headers: { accept: 'text/html' } })).headers.get('content-type')).toContain('text/plain');
 
+    // Browsing on the account site: folders and files of the person's own pods.
+    expect((await fetch(`${pod!.url}notes/hello.txt`, { method: 'PUT', headers: { 'X-Dev-WebID': webid, 'content-type': 'text/plain' }, body: 'hello <b>' })).status).toBe(201);
+    const root = await (await fetch(`${APEX}/pods/${pod!.id}/files`, { headers: { cookie } })).text();
+    expect(root).toContain(`/pods/${pod!.id}/files?path=%2Fnotes%2F`);
+    const notes = await (await fetch(`${APEX}/pods/${pod!.id}/files?path=%2Fnotes%2F`, { headers: { cookie } })).text();
+    expect(notes).toContain('hello.txt');
+    const got = await fetch(`${APEX}/pods/${pod!.id}/download?path=%2Fnotes%2Fhello.txt`, { headers: { cookie } });
+    expect([got.status, got.headers.get('content-type'), got.headers.get('content-disposition'), await got.text()]).toEqual([
+      200,
+      'application/octet-stream',
+      "attachment; filename*=UTF-8''hello.txt",
+      'hello <b>',
+    ]);
+    expect((await fetch(`${APEX}/pods/zzzzzzzz/files`, { headers: { cookie } })).status).toBe(404);
+
     // The name apps see: set on the profile page, read by anyone.
     const named = await fetch(`${APEX}/api/profile`, { method: 'POST', headers: { cookie, origin: APEX!, 'content-type': 'application/json' }, body: JSON.stringify({ name: 'E2E Person' }) });
     expect(named.status).toBe(204);

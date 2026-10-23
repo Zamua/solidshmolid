@@ -7,7 +7,7 @@
 import { confirmationSentence, confirmsDeletion, providerDisplayName } from '../../domain/accounts/deletion.js';
 import { personName } from '../../domain/accounts/names.js';
 import type { StorageAuthorization } from '../storage/ports.js';
-import type { AccountRepository, AccountState, Directory, Identities, Ids, Logins, PodRecord, Pods } from './ports.js';
+import type { AccountRepository, AccountState, Directory, FileContent, FileEntry, Identities, Ids, Logins, PodRecord, Pods } from './ports.js';
 
 export class NotSignedUp extends Error {}
 export class LinkExpired extends Error {}
@@ -116,6 +116,18 @@ export class Accounts {
     await this.deps.account(state.key).setName(name);
   }
 
+  /** A folder of one of the person's pods. */
+  async files(person: string, podId: string, path: string): Promise<FileEntry[]> {
+    const state = await this.ownPlaced(person, podId);
+    return this.deps.pods.list(podId, state.webid, path);
+  }
+
+  /** A file of one of the person's pods. */
+  async file(person: string, podId: string, path: string): Promise<FileContent> {
+    const state = await this.ownPlaced(person, podId);
+    return this.deps.pods.open(podId, state.webid, path);
+  }
+
   /** Deletes a pod other than the first (which holds the WebID; deleting the
    * account removes it). Its files stay unless `deleteFiles`, which first
    * asks for the typed sentence. */
@@ -200,6 +212,15 @@ export class Accounts {
       await this.deps.pods.place(pod.podId, { accountKey, linkId, provider, folder: pod.folder }, state.webid, withProfile);
       await account.placePod(pod.podId, linkId);
     }
+  }
+
+  /** The account, when `podId` is one of its pods and has storage. */
+  private async ownPlaced(person: string, podId: string): Promise<AccountState> {
+    const state = await this.signedUp(person);
+    const pod = state.pods.find((p) => p.podId === podId);
+    if (!pod) throw new NotFound('no such pod');
+    if (!pod.linkId) throw new NoStorageYet('this pod is waiting for storage');
+    return state;
   }
 
   private async signedUp(person: string): Promise<AccountState> {

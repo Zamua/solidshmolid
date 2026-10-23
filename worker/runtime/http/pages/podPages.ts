@@ -6,7 +6,7 @@ import type { ProfileSummary } from '../../../domain/pods/profile.js';
 import { icon } from './icons.js';
 import { escapeHtml, page } from './shell.js';
 
-export function podLandingPage(status: 401 | 403 | 404, podUrl: string, accountSite: string): Response {
+export function podLandingPage(status: 401 | 403 | 404, podUrl: string, accountSite: string, podId: string): Response {
   if (status === 404) {
     return page(
       'No pod here',
@@ -21,9 +21,9 @@ export function podLandingPage(status: 401 | 403 | 404, podUrl: string, accountS
     `<h1 style="margin-top:56px">This pod is private</h1>
 <p class="lede">It's a Solid pod: a space for someone's data, kept in their own storage. Apps they approve can use it; a browser on its own sees nothing.</p>
 <ul class="plain card" style="margin-top:22px">
-<li>${icon('folderSimpleLock')}<span>If it's yours, sign in at solidshmolid.com to see what's in it.</span></li>
+<li>${icon('folderSimpleLock')}<span>If it's yours, sign in to see what's in it.</span></li>
 </ul>
-<div class="dock"><div><a class="btn primary" href="${escapeHtml(accountSite)}">Go to your pods</a></div></div>`,
+<div class="dock"><div><a class="btn primary" href="${escapeHtml(`${accountSite}pods/${podId}/files`)}">See its files</a><a class="btn quiet" href="${escapeHtml(accountSite)}">Go to your pods</a></div></div>`,
     status,
   );
 }

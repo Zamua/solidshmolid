@@ -1,7 +1,7 @@
 // The apex home page: welcome, then sign-up, then connecting storage, then
 // the person's pods. One page whose content follows where the person is.
 
-import type { AccountState } from '../../../app/accounts/ports.js';
+import type { AccountState, FileEntry } from '../../../app/accounts/ports.js';
 import type { Approval } from '../../../app/identity/ports.js';
 import type { Hosts } from '../../hosts.js';
 import { icon } from './icons.js';
@@ -58,10 +58,13 @@ export function podsPage(state: AccountState, apps: Approval[], hosts: Hosts): R
       const origin = hosts.podOrigin(p.podId);
       const where = p.linkId ? `<a href="${escapeHtml(origin)}/">${escapeHtml(new URL(origin).host)}</a>` : 'Waiting for storage';
       const remove = i === 0 ? '' : `<a class="icon-btn" href="/pods/${escapeHtml(p.podId)}/delete" aria-label="Delete pod ${i + 1}">${icon('trash', 20)}</a>`;
+      const label = `<div class="row" style="gap:8px;flex-wrap:wrap"><b>${podLabel(i)}</b>${i === 0 ? ' <span class="badge">WebID</span>' : ''}</div>`;
+      const body = p.linkId
+        ? `<a class="grow row-link" href="/pods/${escapeHtml(p.podId)}/files">${label}<div class="small">${escapeHtml(new URL(origin).host)}</div></a>`
+        : `<div class="grow">${label}<div class="small">${where}</div></div>`;
       return `<div class="row" style="padding:12px 0${i ? ';border-top:1px solid var(--line)' : ''}">
 ${podCloud(String(i + 1), true)}
-<div class="grow"><div class="row" style="gap:8px;flex-wrap:wrap"><b>${i === 0 ? 'Your pod' : `Pod ${i + 1}`}</b>${i === 0 ? ' <span class="badge">WebID</span>' : ''}</div>
-<div class="small">${where}</div></div>${remove}</div>`;
+${body}${remove}</div>`;
     })
     .join('');
   const appRows = apps
@@ -83,11 +86,11 @@ ${podCloud(String(i + 1), true)}
     'Your pods',
     `<h1 style="margin-top:40px">Your pods</h1>
 <p class="lede">Each pod is its own folder in your storage. Apps you allow can use them.</p>
-<div class="card" style="padding:6px 16px">${rows}</div>
+<div class="card" style="padding:6px 16px">${rows}
+<form method="post" action="/api/pods" class="add-row"><button class="add-pod">${icon('plus', 20)}Add a pod</button></form></div>
 ${storage}
 <div class="card"><h2>Apps</h2>${appRows ? `<div style="margin-top:4px">${appRows}</div>` : '<p class="small">No apps yet. When you sign in to a Solid app with solidshmolid, it shows up here, and you can remove it.</p>'}</div>
-<p class="small center" style="margin-top:22px"><a href="/account/delete">Delete account</a></p>
-<div class="dock"><div><form method="post" action="/api/pods"><button class="btn primary">${icon('plus')}Add a pod</button></form></div></div>`,
+<p class="small center" style="margin-top:22px"><a href="/account/delete">Delete account</a></p>`,
   );
 }
 
@@ -218,4 +221,64 @@ ${name ? `<p class="menu-name">${escapeHtml(name)}</p>` : ''}
 <a href="/sign-out">Sign out</a>
 </div>
 </details>`;
+}
+
+function podLabel(index: number): string {
+  return index === 0 ? 'Your pod' : `Pod ${index + 1}`;
+}
+
+/** One folder of a pod, for its owner: folders to open, files to download. */
+export function filesPage(state: AccountState, podId: string, path: string, entries: FileEntry[], hosts: Hosts): Response {
+  const index = state.pods.findIndex((p) => p.podId === podId);
+  const base = `/pods/${encodeURIComponent(podId)}`;
+  const segments = path.split('/').filter(Boolean);
+  const crumbs = [`<a href="${base}/files">${escapeHtml(podLabel(index))}</a>`]
+    .concat(segments.map((seg, i) => `<a href="${base}/files?path=${encodeURIComponent(`/${segments.slice(0, i + 1).join('/')}/`)}">${escapeHtml(decodeSegment(seg))}</a>`))
+    .join('<span class="crumb-sep">/</span>');
+  const rows = [...entries]
+    .sort((a, b) => (a.kind === b.kind ? a.path.localeCompare(b.path) : a.kind === 'container' ? -1 : 1))
+    .map((e, i) => {
+      const name = decodeSegment(e.path.replace(/\/$/u, '').split('/').pop()!);
+      const folder = e.kind === 'container';
+      const href = folder ? `${base}/files?path=${encodeURIComponent(e.path)}` : `${base}/download?path=${encodeURIComponent(e.path)}`;
+      const detail = folder ? 'Folder' : `${formatSize(e.size)}, ${formatDate(e.modified)}`;
+      return `<a class="row row-link file-row" style="padding:12px 0${i ? ';border-top:1px solid var(--line)' : ''}" href="${escapeHtml(href)}"${folder ? '' : ' download'}>
+<span class="icon-tile">${icon(folder ? 'folder' : 'file')}</span>
+<span class="grow"><b class="file-name">${escapeHtml(name)}</b><span class="small" style="display:block">${escapeHtml(detail)}</span></span>
+${folder ? '' : `<span class="file-get">${icon('downloadSimple', 20)}</span>`}</a>`;
+    })
+    .join('');
+  return page(
+    'Files',
+    `${segments.length ? `<p class="crumbs" style="margin-top:40px">${crumbs}</p>` : ''}
+<h1 style="margin-top:${segments.length ? 8 : 40}px">${escapeHtml(segments.length ? decodeSegment(segments.at(-1)!) : podLabel(index))}</h1>
+<p class="small">${escapeHtml(new URL(hosts.podOrigin(podId)).host)}${escapeHtml(path)}</p>
+<div class="card" style="padding:6px 16px">${rows || '<p class="small" style="padding:14px 0">Nothing here yet. Apps you approve can save files here.</p>'}</div>
+<p class="small center" style="margin-top:18px"><a href="/">Back to your pods</a></p>`,
+  );
+}
+
+function decodeSegment(segment: string): string {
+  try {
+    return decodeURIComponent(segment);
+  } catch {
+    return segment;
+  }
+}
+
+function formatSize(bytes: number): string {
+  if (bytes < 1024) return `${bytes} bytes`;
+  const units = ['KB', 'MB', 'GB'];
+  let value = bytes / 1024;
+  let unit = 0;
+  while (value >= 1024 && unit < units.length - 1) {
+    value /= 1024;
+    unit++;
+  }
+  return `${value < 10 ? value.toFixed(1) : Math.round(value)} ${units[unit]}`;
+}
+
+function formatDate(iso: string): string {
+  const date = new Date(iso);
+  return Number.isNaN(date.getTime()) ? '' : date.toLocaleDateString('en-US', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' });
 }

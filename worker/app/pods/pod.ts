@@ -75,6 +75,14 @@ export interface Access {
   public: Set<Mode>;
 }
 
+export interface ListingEntry {
+  path: PodPath;
+  kind: 'container' | 'document';
+  contentType: string | null;
+  size: number;
+  modified: string;
+}
+
 export interface ReadResult {
   kind: 'document' | 'container';
   path: PodPath;
@@ -214,6 +222,21 @@ export class Pod {
   }
 
   // ---- reads --------------------------------------------------------------
+
+  /** A container's members, for people browsing it (not the LDP view). */
+  async listing(container: PodPath, agent: Agent): Promise<ListingEntry[]> {
+    const row = this.deps.index.get(container);
+    await this.require(container, agent, ['read']);
+    if (!row) throw new NotFound(container);
+    if (row.kind !== 'container') throw new BadRequest(`${container} is not a folder`);
+    return this.members(container).map((m) => ({
+      path: m.path,
+      kind: m.kind,
+      contentType: m.contentType,
+      size: m.size,
+      modified: m.modified,
+    }));
+  }
 
   async read(path: PodPath, agent: Agent, options: ReadOptions): Promise<ReadResult> {
     if (isMetaPath(path)) throw new NotFound(path);
