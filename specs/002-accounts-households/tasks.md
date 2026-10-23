@@ -1,8 +1,8 @@
 ---
-description: "Task list for accounts, households and Solid sign-in"
+description: "Task list for accounts, pods and Solid sign-in"
 ---
 
-# Tasks: Accounts, Households and Solid Sign-In
+# Tasks: Accounts, Pods and Solid Sign-In
 
 **Input**: Design documents from `/specs/002-accounts-households/`
 
@@ -12,6 +12,10 @@ description: "Task list for accounts, households and Solid sign-in"
 red-reachable check.
 
 **Organization**: Tasks are grouped by user story so each can ship and be tested on its own.
+
+**Scope reduced 2026-10-23**: households, members and children's accounts were dropped (see
+spec.md). Tasks already done for them stay listed as history; their code was removed with the
+change that added more pods per person.
 
 ## Format: `[ID] [P?] [Story] Description`
 
@@ -31,7 +35,7 @@ red-reachable check.
 - [x] T006 [P] Tests then code: `worker/domain/oidc.ts` (claims for access and ID tokens, scope rules, redirect matching, PKCE S256 check) in `worker/tests/oidc-domain.test.ts`
 - [x] T007 [P] Tests then code: `worker/domain/household.ts` (roles, at-least-one-manager invariant, member root ACL with manager grants per FR-012, family group document) in `worker/tests/household-domain.test.ts`
 - [x] T008 [P] Tests then code: `worker/domain/deletion.ts` (sentence for a provider display name; exact-match check) with a test that every other input is refused (SC-006) in `worker/tests/deletion.test.ts`
-- [ ] T009 Ports in `worker/app/ports.ts`: `Sessions` (current Clerk user), `ClerkAdmin` (create user, sign-in token, remove passkeys), `Approvals`, `Codes`, `RefreshFamilies`, `SigningKeys`, `ClientIds`, `Directory`, `Households`
+- [x] T009 Ports per bounded context (`worker/app/<context>/ports.ts`), replacing one shared ports file
 - [x] T010 `worker/runtime/clerk.ts`: session verification against Clerk JWKS and the Backend API adapter; tests with a fake JWKS in `worker/tests/clerk.test.ts`
 - [x] T011 `DirectoryObject` (account and provider-account lookups) with tests in `worker/tests/directory.test.ts`
 - [x] T011b Directory assigns random pod ids (replaces handle reservation and the 90-day hold)
@@ -63,35 +67,17 @@ red-reachable check.
 - [x] T023 [P] [US2] Interop: a stock CSS pod granting our WebID accepts our token, in `worker/tests/oidc-interop.test.ts` (`make compat`)
 - [ ] T024 [P] [US2] Interop: `@inrupt/solid-client-authn-node` completes login against wrangler dev (`make e2e`)
 
-## Phase 5: User Story 3, member pods (P2)
+## Phase 5: User Story 3, more pods (P2)
 
-- [x] T025 [P] [US3] Tests: manager adds a managed member; Clerk user created (fake ClerkAdmin); pod in manager's link; member owns it, manager has Read/Write/Control, in `worker/tests/households.test.ts`
-- [x] T026 [US3] `POST /api/members` and the member card on the dashboard
+- [x] T025 [P] [US3] Tests: a second pod gets a fresh id and folder beside the first, has no profile, is owned by the WebID only, and is listed as `pim:storage` in the profile, in `worker/tests/accounts.test.ts`, `worker/tests/starter.test.ts` and `worker/tests/e2e-signup.test.ts`
+- [x] T026 [US3] Households fold into the account (`AccountObject` holds pods and storage links); `POST /api/pods` and "Add a pod" on the pods page
 
-## Phase 6: User Story 4, child device setup (P2)
+## Phase 6: User Story 4, controls and guardrails (P3)
 
-- [ ] T027 [P] [US4] Tests: setup code only for that member, 15 minutes, audit row; reset revokes passkeys, approvals and refresh families
-- [ ] T028 [US4] `setup-code` and `reset-login` endpoints; `/setup` page (ticket sign-in, then passkey registration)
-
-## Phase 7: User Story 5, invite an adult (P3)
-
-- [ ] T029 [P] [US5] Tests: invitation accepted with the invitee's own Clerk login binds the pod; move to own link keeps URLs
-- [ ] T030 [US5] Invitations and `POST /api/pods/{handle}/move` (copy, adopt, switch; old copy serves until commit)
-
-## Phase 8: User Story 6, family sharing (P3)
-
-- [ ] T031 [P] [US6] Tests: WAC `acl:agentGroup` for groups hosted on this service; member added later gains access; non-member refused; CSS agrees (`make compat`)
-- [ ] T032 [US6] Group document in the manager's pod kept current; `POST /api/folders/share`
-
-## Phase 9: User Story 7, handover (P3)
-
-- [ ] T033 [P] [US7] Tests: handover removes manager grants; failed copy leaves the pod serving and retryable
-- [ ] T034 [US7] `POST /api/pods/{handle}/handover` and the member-side flow
-
-## Phase 10: User Story 8, controls and guardrails (P3)
-
-- [ ] T035 [P] [US8] Tests: disconnect refused while pods use the link (names them); delete keeps files by default; typed sentence required to delete files (red-reachable check run once)
-- [ ] T036 [US8] Usage and app lists on the dashboard; delete flow with the two-step confirmation
+- [ ] T027 [P] [US4] Tests: disconnect refused while pods use the link (names them); delete keeps files by default; typed sentence required to delete files (red-reachable check run once)
+- [ ] T028 [US4] App list and revoke (`/api/apps`) on the pods page
+- [ ] T029 [US4] Disconnect storage; delete a pod or the account with the two-step confirmation
+- [ ] T030 [US4] Move a pod to another link (copy, adopt, switch; old copy serves until commit)
 
 ## Phase 11: Polish
 
@@ -103,8 +89,7 @@ red-reachable check.
 
 - Setup (T001 to T005) before Foundational; T001 and T002 gate everything Clerk-shaped.
 - Foundational (T006 to T012) before every story.
-- US1 then US2 (sign-in needs hosted WebIDs); US3 to US8 depend on US1 and can then proceed in
-  any order; US4 needs US3; US7 needs US5's move.
+- US1 then US2 (sign-in needs hosted WebIDs); US3 and US4 depend on US1.
 
 ## Parallel Examples
 
@@ -114,4 +99,4 @@ red-reachable check.
 ## Implementation Strategy
 
 MVP is US1 + US2: a person can get a pod in their own Dropbox and use it from any Solid app.
-Ship that to staging, then add households (US3, US4), then the P3 stories.
+Ship that to staging with US3, then add US4 before anyone relies on it.

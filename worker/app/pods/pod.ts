@@ -129,17 +129,19 @@ export class Pod {
 
   // ---- provisioning ----------------------------------------------------
 
-  /** Creates the root container, its ACL and the owner's profile document.
-   * `controllers` also get full access (a household's managers). */
-  provision(owner: string, profile: string, controllers: string[] = []): Promise<void> {
+  /** Creates the root container and its ACL, and with `profile` the owner's
+   * profile document (a WebID's pod; further pods have none). */
+  provision(owner: string, profile: string | null): Promise<void> {
     return this.writes.run(async () => {
       const { index, files } = this.deps;
       if (index.state()) throw new Conflict('pod already exists');
       await files.makeFolder('');
       index.atomically(() => index.upsert(this.containerRow('/')));
-      await this.storeRdf('/.acl', ACL_TYPE, podRootAcl(owner, controllers), null);
-      await this.storeRdf('/profile/card', TURTLE, profile, null);
-      await this.storeRdf('/profile/card.acl', ACL_TYPE, profileAcl(owner), null);
+      await this.storeRdf('/.acl', ACL_TYPE, podRootAcl(owner), null);
+      if (profile !== null) {
+        await this.storeRdf('/profile/card', TURTLE, profile, null);
+        await this.storeRdf('/profile/card.acl', ACL_TYPE, profileAcl(owner), null);
+      }
       index.setState({ owner, created: this.deps.now().toISOString() });
     });
   }

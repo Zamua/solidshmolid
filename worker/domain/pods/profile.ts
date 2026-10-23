@@ -19,3 +19,13 @@ export function profileDocument(storage: string, issuer: string | null): string 
   ];
   return lines.join('\n');
 }
+
+/** An N3 Patch for `/profile/card` listing one more storage of `<#me>`, so
+ * apps that read the profile find every pod the person has. */
+export function addStoragePatch(storage: string): string {
+  return `@prefix solid: <http://www.w3.org/ns/solid/terms#>.
+@prefix pim: <http://www.w3.org/ns/pim/space#>.
+_:add a solid:InsertDeletePatch;
+  solid:inserts { <#me> pim:storage <${storage}>. }.
+`;
+}

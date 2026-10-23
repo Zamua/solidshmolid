@@ -9,23 +9,24 @@ before changing behavior, and update it in the same change.
 Layers and bounded contexts, enforced by `worker/tests/layering.test.ts`:
 
 ```
-worker/domain/{shared,pods,identity,households}   pure rules, no I/O
-worker/app/{shared,pods,storage,identity,households}  services + their ports (ports.ts per context)
+worker/domain/{shared,pods,identity,accounts}   pure rules, no I/O
+worker/app/{shared,pods,storage,identity,accounts}  services + their ports (ports.ts per context)
 worker/runtime/
   composition.ts    the one place that picks adapters and builds services
   worker.ts         entry: routes by host
   hosts.ts          pod origins, WebIDs and the issuer, from the apex URL
   http/             translation only (solid.ts, oidc.ts, api.ts, home.ts, dev.ts, pages/)
   adapters/         SQL stores, Dropbox, OAuth, token signer/verifier, sessions, RPC
-  objects/          Durable Objects as thin shells (Pod, Household, Account, Directory)
+  objects/          Durable Objects as thin shells (Pod, Account, Directory)
 ```
 
-- One `PodObject` per pod id; one `HouseholdObject` per household (members,
-  pods, storage links with sealed refresh tokens, access tokens over RPC);
-  `AccountObject` per person (provider state); one `DirectoryObject`
-  (account keys, households, pod ids, registered clients).
-- Pod ids are random (`domain/households/podIds.ts`); each pod lives in its
-  own folder of the household's storage (`Apps/solidshmolid/<id>/`).
+- One `PodObject` per pod id; one `AccountObject` per person (their one WebID,
+  pods, storage links with sealed refresh tokens and access tokens over RPC,
+  plus provider state); one `DirectoryObject` (account keys, pod ids,
+  registered clients).
+- Pod ids are random (`domain/accounts/podIds.ts`); each pod lives in its own
+  folder of the person's storage (`Apps/solidshmolid/<id>/`). The first pod
+  holds the WebID profile; further pods are listed in it as `pim:storage`.
 - The user's storage holds every resource; the pod index and a small RDF cache
   live in the pod's SQLite. Writes: storage first, index second, under the
   pod's `Serial` queue.
@@ -52,10 +53,8 @@ agent, files go to the DO's own SQLite (`DevFileStore`, 2 MB per file), and
 connecting storage grants consent on the spot. `/dev/sign-in?person=<id>`
 signs in without Clerk (its cookie wins over a Clerk session). `make
 .dev.vars` copies the Clerk dev keys from `~/keys/clerk-solidshmolid-dev.env`
-when present; without them `/sign-in` offers only the dev stand-in. With
-them, adding a member creates a real user in the Clerk dev instance, even
-for a dev sign-in person; `make e2e` leaves the Clerk keys out so it never
-does. Deployed
+when present; without them `/sign-in` offers only the dev stand-in. `make
+e2e` leaves the Clerk keys out, so it never talks to Clerk. Deployed
 configs never set any of the dev switches.
 `make dev STORAGE=dropbox` connects real Dropbox instead.
 `wrangler.jsonc` is the deploy contract; per-environment files live in
@@ -97,7 +96,10 @@ configs never set any of the dev switches.
 ## State
 
 The resource server, Dropbox storage, reconcile, our Solid-OIDC provider,
-and signup with connecting storage (households) are in; `make e2e` covers
-signup on the dev provider, and `make clerk-live` a real Clerk session. Next:
-members and device setup, then the first staging deploy (after choosing a
-separate pod domain, see SPEC "URLs"). Not deployed anywhere yet.
+signup with connecting storage, and more pods per person are in; `make e2e` covers
+signup on the dev provider, and `make clerk-live` a real Clerk session.
+Households and children's accounts were dropped on 2026-10-23. Next: the app
+list, disconnect and delete (spec 002 US4), then the first staging deploy
+(after choosing a separate pod domain, see SPEC "URLs"). The Clerk
+production instance and Google OAuth client exist (keys in `~/keys`); nothing
+is deployed yet.

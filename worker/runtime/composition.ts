@@ -2,22 +2,20 @@
 // application services from the environment. Everything else receives what it
 // needs from here.
 
-import { Households } from '../app/households/households.js';
-import type { Logins, Placement } from '../app/households/ports.js';
+import { Accounts } from '../app/accounts/accounts.js';
+import type { Placement } from '../app/accounts/ports.js';
 import { Provider } from '../app/identity/provider.js';
 import { Pod } from '../app/pods/pod.js';
 import { StorageUnavailable } from '../app/shared/errors.js';
 import type { FileLister, FileStore, StorageAuthorization } from '../app/storage/ports.js';
 import { FolderSync } from '../app/storage/sync.js';
-import { RpcAccounts } from './adapters/accountRpc.js';
+import { RpcAccounts, rpcAccountPods, rpcDirectory, rpcIdentities, rpcPods } from './adapters/accountRpc.js';
 import { HttpClientRegistry } from './adapters/clientRegistry.js';
 import { DevFileStore } from './adapters/devFiles.js';
 import { DEV_PROVIDER, devAuthorization, devRefresher } from './adapters/devStorage.js';
 import { DropboxFileStore } from './adapters/dropbox.js';
 import { DropboxAuthorization, refreshAccess } from './adapters/dropboxOAuth.js';
-import { rpcDirectory, rpcHousehold, rpcIdentities, rpcPods } from './adapters/householdRpc.js';
 import type { AccessToken, Refresher } from './adapters/linkTokens.js';
-import { ClerkLogins, devLogins } from './adapters/clerkLogins.js';
 import { type ClerkKeys, ClerkSessions, frontendApiOf } from './adapters/clerkSessions.js';
 import { type Sessions, devSessions, firstOf, noSessions } from './adapters/sessions.js';
 import type { SqlRunner } from './adapters/sql.js';
@@ -81,14 +79,6 @@ export function sessions(env: Env, apexOrigin: string): Sessions {
   return clerk ?? noSessions;
 }
 
-/** People's sign-ins: Clerk when configured, else (dev only) a stand-in. */
-function logins(env: Env): Logins {
-  const keys = clerkKeys(env);
-  if (keys) return new ClerkLogins(keys);
-  if (isDev(env)) return devLogins;
-  throw new Error('CLERK_PUBLISHABLE_KEY and CLERK_SECRET_KEY are not configured');
-}
-
 /** What apex pages need to load Clerk, or null when it is not configured. */
 export function clerkChrome(env: Env): ClerkChrome | null {
   const keys = clerkKeys(env);
@@ -100,14 +90,14 @@ function clerkKeys(env: Env): ClerkKeys | null {
   return { publishableKey: env.CLERK_PUBLISHABLE_KEY, secretKey: env.CLERK_SECRET_KEY };
 }
 
-/** The provider households connect their storage to. */
+/** The provider people connect their storage to. */
 export function storageAuthorization(env: Env): StorageAuthorization {
   if (env.STORAGE === DEV_PROVIDER && isDev(env)) return devAuthorization;
   if (env.STORAGE === 'dropbox') return new DropboxAuthorization(requireAppKey(env), fetcher);
   throw new Error(`STORAGE=${env.STORAGE} is not a provider this deployment can connect`);
 }
 
-/** How a household mints access tokens for each provider it may hold. */
+/** How an account mints access tokens for each provider it may hold. */
 export function storageRefreshers(env: Env): Record<string, Refresher> {
   const refreshers: Record<string, Refresher> = {};
   if (env.DROPBOX_APP_KEY) {
@@ -121,13 +111,12 @@ export function storageRefreshers(env: Env): Record<string, Refresher> {
   return refreshers;
 }
 
-export function households(env: Env, hosts: Hosts): Households {
-  return new Households({
+export function accounts(env: Env, hosts: Hosts): Accounts {
+  return new Accounts({
     directory: rpcDirectory(env),
-    household: (id) => rpcHousehold(env, id),
+    account: (key) => rpcAccountPods(env, key),
     pods: rpcPods(env, hosts),
     identities: rpcIdentities(env),
-    logins: logins(env),
     authorization: storageAuthorization(env),
     ids: { random: randomId },
     webidOf: hosts.webidOf,
@@ -168,16 +157,16 @@ export function podServices(env: Env, storage: DurableObjectStorage, base: strin
 
 function placedStorage(env: Env, sql: SqlRunner, p: Placement): FileStore & FileLister {
   if (p.provider === DEV_PROVIDER && isDev(env)) return new DevFileStore(sql);
-  if (p.provider === 'dropbox') return new DropboxFileStore({ fetch: fetcher, root: p.folder, accessToken: householdTokens(env, p) });
+  if (p.provider === 'dropbox') return new DropboxFileStore({ fetch: fetcher, root: p.folder, accessToken: accountTokens(env, p) });
   throw new StorageUnavailable(`this pod's storage (${p.provider}) is not reachable here`);
 }
 
-/** Access tokens from the pod's household, kept until shortly before expiry. */
-function householdTokens(env: Env, p: Placement): (refresh: boolean) => Promise<string> {
-  const household = env.HOUSEHOLD.get(env.HOUSEHOLD.idFromName(p.householdId));
+/** Access tokens from the pod's account, kept until shortly before expiry. */
+function accountTokens(env: Env, p: Placement): (refresh: boolean) => Promise<string> {
+  const account = env.ACCOUNT.get(env.ACCOUNT.idFromName(p.accountKey));
   let current: AccessToken | null = null;
   return async (refresh) => {
-    if (refresh || !current || current.expiresAt - Date.now() < 60_000) current = await household.accessToken(p.linkId, refresh);
+    if (refresh || !current || current.expiresAt - Date.now() < 60_000) current = await account.accessToken(p.linkId, refresh);
     return current.token;
   };
 }

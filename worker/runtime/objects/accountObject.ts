@@ -1,15 +1,30 @@
-// One person's provider state. Addressed by their account key, which the
-// directory assigns; codes and refresh tokens carry that key.
+// One person's account. Addressed by their account key, which the directory
+// assigns; codes and refresh tokens carry that key. It holds their provider
+// state and their pods and storage links, and alone holds the storage grants,
+// handing the person's pods short-lived access tokens over RPC.
 
 import { DurableObject } from 'cloudflare:workers';
+import type { AccountState, LinkSummary, PendingLink, PodRecord } from '../../app/accounts/ports.js';
 import type { CodeGrant, RefreshFamily } from '../../app/identity/ports.js';
 import type { AuthorizeRequest, ClientInfo } from '../../domain/identity/oidc.js';
-import { SqlAccountStore } from '../adapters/sqlAccountStore.js';
-import type { Env } from '../env.js';
+import { type AccessToken, LinkTokens } from '../adapters/linkTokens.js';
+import { Sealer } from '../adapters/sealing.js';
 import type { SqlRunner } from '../adapters/sql.js';
+import { SqlAccountPods } from '../adapters/sqlAccountPods.js';
+import { SqlAccountStore } from '../adapters/sqlAccountStore.js';
+import { storageRefreshers } from '../composition.js';
+import type { Env } from '../env.js';
 
 export class AccountObject extends DurableObject<Env> {
   private store: SqlAccountStore | null = null;
+  private readonly pods: SqlAccountPods;
+  private readonly tokens: LinkTokens;
+
+  constructor(ctx: DurableObjectState, env: Env) {
+    super(ctx, env);
+    this.pods = new SqlAccountPods(ctx.storage.sql as SqlRunner, new Sealer(env.TOKEN_KEY), (fn) => ctx.storage.transactionSync(fn));
+    this.tokens = new LinkTokens((linkId) => this.pods.grant(linkId), storageRefreshers(env));
+  }
 
   /** The store, created under `key` on first use. */
   private open(key?: string): SqlAccountStore {
@@ -88,5 +103,39 @@ export class AccountObject extends DurableObject<Env> {
 
   async revokeFromCode(codeHash: string): Promise<void> {
     return this.open().revokeFromCode(codeHash);
+  }
+
+  // ---- pods and storage ---------------------------------------------------
+
+  async loadPods(): Promise<AccountState | null> {
+    return this.pods.load();
+  }
+
+  async createPods(state: AccountState): Promise<AccountState> {
+    return this.pods.create(state);
+  }
+
+  async addPod(pod: PodRecord): Promise<void> {
+    return this.pods.addPod(pod);
+  }
+
+  async addLink(link: LinkSummary, refreshToken: string): Promise<void> {
+    return this.pods.addLink(link, refreshToken);
+  }
+
+  async placePod(podId: string, linkId: string): Promise<void> {
+    return this.pods.placePod(podId, linkId);
+  }
+
+  async rememberLinkPending(nonce: string, pending: PendingLink): Promise<void> {
+    return this.pods.rememberPending(nonce, pending);
+  }
+
+  async takeLinkPending(nonce: string): Promise<PendingLink | null> {
+    return this.pods.takePending(nonce);
+  }
+
+  async accessToken(linkId: string, refresh: boolean): Promise<AccessToken> {
+    return this.tokens.accessToken(linkId, refresh);
   }
 }

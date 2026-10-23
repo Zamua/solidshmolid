@@ -1,13 +1,13 @@
 // Development-only routes on the apex: sign in as anyone, standing in for
 // Clerk. `pod=<name>` also gives that person a named dev pod to sign in to
-// apps as, without a household.
+// apps as, without signing up.
 
 import { DEV_PERSON_COOKIE } from '../adapters/sessions.js';
 import { isDev } from '../composition.js';
 import type { Env } from '../env.js';
-import { isPodId } from '../../domain/households/podIds.js';
+import { isPodId } from '../../domain/accounts/podIds.js';
 import { isValidHandle } from '../../domain/pods/handles.js';
-import { rpcIdentities } from '../adapters/householdRpc.js';
+import { rpcIdentities } from '../adapters/accountRpc.js';
 import { profileDocument } from '../../domain/pods/profile.js';
 import { hostsFor } from '../hosts.js';
 

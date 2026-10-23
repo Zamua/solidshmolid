@@ -8,9 +8,8 @@ import type { FileLister, FileStore, PlacementOutcome, SyncCursor } from './port
 
 export interface Starter {
   owner: string;
-  profile: string;
-  /** Full access besides the owner's (a household's managers). */
-  controllers: string[];
+  /** The WebID profile, for the pod that holds the owner's WebID. */
+  profile: string | null;
 }
 
 export async function placePod(pod: Pod, storage: FileStore & FileLister, cursor: SyncCursor, starter: Starter): Promise<PlacementOutcome> {
@@ -21,7 +20,7 @@ export async function placePod(pod: Pod, storage: FileStore & FileLister, cursor
     await cursor.setCursor(listing.cursor);
     return 'adopted';
   }
-  await pod.provision(starter.owner, starter.profile, starter.controllers);
+  await pod.provision(starter.owner, starter.profile);
   await cursor.setCursor((await storage.listAll()).cursor);
   return 'created';
 }

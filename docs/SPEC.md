@@ -53,7 +53,7 @@ exact Worker route, which wins over production's `*.solidshmolid.com` route.
 Pods serve whatever HTML their folders hold, so a pod host must never be
 able to set cookies the apex reads: a page on a sibling subdomain could plant
 its owner's session in a visitor's browser (cookie tossing) and have them act
-inside the attacker's household. Pods therefore need a registrable domain of
+inside the attacker's account. Pods therefore need a registrable domain of
 their own (or a Public Suffix List entry); the production pod domain is still
 to be chosen. The apex also checks `Origin` on every state-changing POST,
 since SameSite cookies do not stop same-site pages.
@@ -77,12 +77,11 @@ client --> Worker (stateless)
              - WAC evaluation; ACL docs cached parsed
              - write lock: all writes to the pod are serialized
              - reconcile: rebuild/repair the index from the folder
-             - placement: household, storage link, folder, change cursor
-           Household DO (one per household): members, pods, storage links
-             (sealed refresh tokens), access tokens for its pods over RPC
-           Account DO (one per person): provider state (approvals, codes)
-           Directory DO (one): person -> account and household, pod ids,
-             registered clients
+             - placement: account, storage link, folder, change cursor
+           Account DO (one per person): WebID, pods, storage links (sealed
+             refresh tokens), access tokens for its pods over RPC; provider
+             state (approvals, codes, refresh families)
+           Directory DO (one): person -> account, pod ids, registered clients
            FileStore port --> Dropbox | OneDrive | Drive | WebDAV | dev store
 ```
 
@@ -92,7 +91,7 @@ client --> Worker (stateless)
   RDF graph helpers, WAC evaluation, N3 Patch application, container
   representation. No I/O, no `cloudflare:` or `node:` imports.
 - `worker/app/`: services and their ports, per bounded context (pods,
-  storage, identity, households). Orchestration only.
+  storage, identity, accounts). Orchestration only.
 - `worker/runtime/`: Worker entry, the Durable Objects, HTTP translation,
   adapters, and the composition root that wires them.
 
@@ -214,49 +213,40 @@ unauthorized (access revoked), rate limited (with retry-after), unavailable.
 Adapters in order: `MemoryFileStore` (tests), `DevFileStore` (DO SQLite, local
 dev only; deployments refuse it), Dropbox (M2), OneDrive, Drive, WebDAV.
 
-## Households and storage
+## Accounts and storage
 
 Signing up (`POST /api/signup`, contracts in
-`specs/002-accounts-households/contracts/account-api.md`) puts the person in
-a new household as its manager, assigns their pod id, and binds their account
-to that pod's WebID. Repeating it, or racing it, returns the same household:
-the directory and the household each keep the first record written.
+`specs/002-accounts-households/contracts/account-api.md`) assigns the person's first pod id
+and their WebID, and binds their account to it. Repeating it, or racing it, returns the same
+account: the account keeps the first record written. Each person has one account, one WebID
+and any number of pods; the account's records live in their `AccountObject` beside the
+provider state.
 
-The pod exists once the household connects storage. `POST
-/api/storage/<provider>/start` (managers only) begins the provider's OAuth
-with PKCE and offline access; the verifier waits in the household's DO under
-a one-time nonce (15 min) together with the person who started it, and only
-that person can finish it. The state is `<householdId>.<nonce>`;
-`/link/<provider>/callback` exchanges the code. With PKCE Dropbox refreshes
-without a client secret, so the service holds no app secret. The refresh
-token is stored in the household's DO, AES-GCM-sealed under the `TOKEN_KEY`
-secret with `household/<id>/link/<linkId>` as associated data. Pods get
-short-lived access tokens from their household over RPC; nothing else holds
-a grant.
+The pods exist once storage is connected. `POST /api/storage/<provider>/start` begins the
+provider's OAuth with PKCE and offline access; the verifier waits in the account under a
+one-time nonce (15 min). The state is `<accountKey>.<nonce>`; `/link/<provider>/callback`
+exchanges the code, and only the same account can finish it. With PKCE Dropbox refreshes
+without a client secret, so the service holds no app secret. The refresh token is stored in
+the account, AES-GCM-sealed under the `TOKEN_KEY` secret with `account/<key>/link/<linkId>` as
+associated data. Pods get short-lived access tokens from their account over RPC; nothing else
+holds a grant.
 
 Each pod waiting for storage is then placed in its own folder of the link,
-`Apps/solidshmolid/<pod id>/` on Dropbox (`app/storage/placement.ts`): an
-empty folder gets a new pod (owner in full, the household's managers with
-full access, a public profile); a folder that already holds files is adopted:
-the index is rebuilt from a full listing (`app/pods/reconcile.ts`), keeping
-ETags and caches of unchanged files. Files the layout cannot map, or that
-collide with another file for the same resource, are reported and left alone;
-CSS's `.internal/` folder is ignored. The pod records its placement and the
-listing's cursor.
+`Apps/solidshmolid/<pod id>/` on Dropbox (`app/storage/placement.ts`): an empty folder gets a
+new pod (the WebID in full; the first pod also gets the public profile); a folder that already
+holds files is adopted: the index is rebuilt from a full listing (`app/pods/reconcile.ts`),
+keeping ETags and caches of unchanged files. Files the layout cannot map, or that collide with
+another file for the same resource, are reported and left alone; CSS's `.internal/` folder is
+ignored. The pod records its placement and the listing's cursor.
 
-While placed, a request first folds in what changed in the folder since the
-last look (`list_folder/continue` from the stored cursor), at most every 30 s
-per pod. Webhooks can replace the polling later; the reconcile path is the
-same.
+`POST /api/pods` adds a pod beside the first, owned by the same WebID, with no profile of its
+own; the WebID's profile gains a `pim:storage` for it, so apps find every pod.
 
-A manager adds a child (`POST /api/members`, the `/members/new` page): the
-child gets a username-only Clerk user (`pod-<pod id>`, no email; a manager
-sets up their devices), a pod id and WebID of their own, and a pod placed in
-its own folder of the manager's storage, owned by the child with full access
-for the household's managers. Their account signs in to apps as their own
-WebID. If the household cannot record the member, the new login is removed.
+While placed, a request first folds in what changed in the folder since the last look
+(`list_folder/continue` from the stored cursor), at most every 30 s per pod. Webhooks can
+replace the polling later; the reconcile path is the same.
 
-`STORAGE` names the provider households connect: `dropbox`, or `dev` in the
+`STORAGE` names the provider people connect: `dropbox`, or `dev` in the
 dev config, which grants consent on the spot and keeps files in each pod's
 own SQLite.
 
@@ -306,8 +296,8 @@ config also accepts an `X-Dev-WebID` header.
   adopting a folder a stock CSS wrote); Dropbox adapter (App folder, PKCE + refresh
   token, encrypted at rest); link flow; Dropbox change feed into reconcile.
 - **M3**: our own Solid-OIDC identity provider (done; `make e2e` shows a
-  stock CSS accepting its tokens); households, signup and connecting storage
-  (done; Clerk sign-in done; managed members done); device setup,
-  handover, deletion.
+  stock CSS accepting its tokens); signup, connecting storage, more pods per
+  person and Clerk sign-in (done); then the app list, disconnecting storage,
+  moving and deleting pods.
 - **M4**: Solid Notifications (WebSocketChannel2023 on hibernating DO
   sockets); OneDrive, Drive, WebDAV adapters; conformance suite in CI.

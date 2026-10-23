@@ -13,12 +13,12 @@ const ALLOWED: Record<string, string[]> = {
   'domain/shared': ['domain/shared'],
   'domain/pods': ['domain/pods', 'domain/shared'],
   'domain/identity': ['domain/identity', 'domain/shared'],
-  'domain/households': ['domain/households', 'domain/shared'],
+  'domain/accounts': ['domain/accounts', 'domain/shared'],
   'app/shared': ['app/shared', 'domain'],
   'app/pods': ['app/pods', 'app/shared', 'app/storage/ports.ts', 'domain'],
   'app/storage': ['app/storage', 'app/shared', 'app/pods', 'domain'],
   'app/identity': ['app/identity', 'app/shared', 'domain'],
-  'app/households': ['app/households', 'app/shared', 'app/storage/ports.ts', 'domain'],
+  'app/accounts': ['app/accounts', 'app/shared', 'app/storage/ports.ts', 'domain'],
 };
 
 const BANNED_SPECIFIERS = [/^cloudflare:/, /^node:/];

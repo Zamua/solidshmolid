@@ -1,7 +1,7 @@
-// The global directory in SQLite: which account and household belong to
-// which person, every pod id ever assigned, and dynamically registered clients.
+// The global directory in SQLite: which account belongs to which person,
+// every pod id ever assigned, and dynamically registered clients.
 
-import { podIdFrom } from '../../domain/households/podIds.js';
+import { podIdFrom } from '../../domain/accounts/podIds.js';
 import type { SqlRunner } from './sql.js';
 
 export class SqlDirectory {
@@ -13,8 +13,7 @@ export class SqlDirectory {
   ) {
     this.sql.exec(`
       CREATE TABLE IF NOT EXISTS person(person TEXT PRIMARY KEY, account_key TEXT NOT NULL UNIQUE);
-      CREATE TABLE IF NOT EXISTS membership(person TEXT PRIMARY KEY, household_id TEXT NOT NULL);
-      CREATE TABLE IF NOT EXISTS pod_id(pod_id TEXT PRIMARY KEY, household_id TEXT NOT NULL, state TEXT NOT NULL, assigned INTEGER NOT NULL);
+      CREATE TABLE IF NOT EXISTS pod_id(pod_id TEXT PRIMARY KEY, account_key TEXT NOT NULL, state TEXT NOT NULL, assigned INTEGER NOT NULL);
       CREATE TABLE IF NOT EXISTS client(id TEXT PRIMARY KEY, doc TEXT NOT NULL, created INTEGER NOT NULL);
     `);
   }
@@ -28,27 +27,15 @@ export class SqlDirectory {
     return key;
   }
 
-  householdOf(person: string): string | null {
-    const row = this.sql.exec('SELECT household_id FROM membership WHERE person = ?', person).toArray()[0];
-    return row ? String(row.household_id) : null;
-  }
-
-  /** Puts `person` in `householdId` unless they are in one already; returns
-   * the household they are in. */
-  join(person: string, householdId: string): string {
-    this.sql.exec('INSERT INTO membership(person, household_id) VALUES (?, ?) ON CONFLICT(person) DO NOTHING', person, householdId);
-    return this.householdOf(person)!;
-  }
-
-  /** A fresh random pod id for `householdId`. Ids are never released, so a
+  /** A fresh random pod id for the account. Ids are never released, so a
    * deleted pod's URLs can never come to point at someone else. */
-  allocatePodId(householdId: string): string {
+  allocatePodId(accountKey: string): string {
     for (;;) {
       const id = podIdFrom(this.randomBytes(32));
       if (!id) continue;
       const taken = this.sql.exec('SELECT 1 FROM pod_id WHERE pod_id = ?', id).toArray().length > 0;
       if (taken) continue;
-      this.sql.exec("INSERT INTO pod_id(pod_id, household_id, state, assigned) VALUES (?, ?, 'active', ?)", id, householdId, this.nowS());
+      this.sql.exec("INSERT INTO pod_id(pod_id, account_key, state, assigned) VALUES (?, ?, 'active', ?)", id, accountKey, this.nowS());
       return id;
     }
   }
