@@ -252,17 +252,17 @@ describe('deleting', () => {
     expect((await service.mine('user_dana'))!.pods.map((p) => p.podId)).toEqual(['pod1xxxx']);
   });
 
-  it('deletes files only after the exact sentence, and any answer uses the request up', async () => {
+  it('deletes files only after the exact sentence; a wrong one asks again under a new token', async () => {
     const { service, second, retired } = await withTwoPods();
     const step = await service.deletePod('user_dana', second, true);
     if (!('confirm' in step)) throw new Error('expected a confirmation step');
     expect(step.confirm.sentence).toBe('yes, delete my data in Dropbox');
-    await expect(service.confirmDeletion('user_dana', step.confirm.token, 'yes, delete my data in dropbox')).rejects.toThrow(NotConfirmed);
+    const wrong = await service.confirmDeletion('user_dana', step.confirm.token, 'yes, delete my data in dropbox');
+    if (!('retry' in wrong)) throw new Error('expected another try');
+    expect(wrong.retry.sentence).toBe(step.confirm.sentence);
     expect(retired).toEqual([]);
     await expect(service.confirmDeletion('user_dana', step.confirm.token, step.confirm.sentence)).rejects.toThrow(NotConfirmed);
-    const again = await service.deletePod('user_dana', second, true);
-    if (!('confirm' in again)) throw new Error('expected a confirmation step');
-    expect(await service.confirmDeletion('user_dana', again.confirm.token, again.confirm.sentence)).toBe('pod');
+    expect(await service.confirmDeletion('user_dana', wrong.retry.token, wrong.retry.sentence)).toEqual({ deleted: 'pod' });
     expect(retired).toEqual([{ podId: second, deleteFiles: true }]);
   });
 
@@ -297,7 +297,7 @@ describe('deleting', () => {
     const step = await service.deleteAccount('user_dana', true);
     if (!('confirm' in step)) throw new Error('expected a confirmation step');
     expect(retired).toEqual([]);
-    expect(await service.confirmDeletion('user_dana', step.confirm.token, step.confirm.sentence)).toBe('account');
+    expect(await service.confirmDeletion('user_dana', step.confirm.token, step.confirm.sentence)).toEqual({ deleted: 'account' });
     expect(retired.every((r) => r.deleteFiles)).toBe(true);
   });
 });

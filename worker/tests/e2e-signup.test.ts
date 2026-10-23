@@ -120,7 +120,9 @@ describe.skipIf(!APEX)('sign up and connect storage', () => {
     expect(await (await fetch(`${APEX}/api/apps`, { headers: { cookie } })).json()).toEqual([]);
     const ask = (await (await api(`/api/pods/${second.id}/delete`, { deleteFiles: true })).json()) as { confirmToken: string; sentence: string };
     expect(ask.sentence).toBe('yes, delete my data in development storage');
-    expect((await api('/api/deletions/confirm', { token: ask.confirmToken, typed: 'yes' })).status).toBe(400);
+    const wrong = await api('/api/deletions/confirm', { token: ask.confirmToken, typed: 'yes' });
+    expect(wrong.status).toBe(400);
+    expect(((await wrong.json()) as { confirmToken: string }).confirmToken).not.toBe(ask.confirmToken);
     expect((await fetch(second.url, { headers: { 'X-Dev-WebID': webid } })).status).toBe(200);
     expect((await api(`/api/pods/${second.id}/delete`, { deleteFiles: false })).status).toBe(200);
     expect((await fetch(second.url, { headers: { 'X-Dev-WebID': webid } })).status).toBe(404);

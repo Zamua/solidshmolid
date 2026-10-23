@@ -189,7 +189,7 @@ ${files}
 }
 
 /** The last step before files are deleted: typing the sentence. */
-export function confirmDeletionPage(token: string, sentence: string): Response {
+export function confirmDeletionPage(token: string, sentence: string, problem: string | null = null, status = 200): Response {
   return page(
     'Delete files',
     `<h1>This deletes files for good</h1>
@@ -199,9 +199,11 @@ export function confirmDeletionPage(token: string, sentence: string): Response {
 <input type="hidden" name="token" value="${escapeHtml(token)}">
 <label class="label" for="typed">Type it here</label>
 <input class="field" id="typed" name="typed" autocomplete="off" autocapitalize="off" spellcheck="false" required>
+${problem ? `<p class="small problem" role="alert">${escapeHtml(problem)}</p>` : ''}
 <button class="btn danger" style="margin-top:16px">Delete the files</button>
 <a class="btn quiet" href="/">Cancel</a>
 </form>`,
+    status,
   );
 }
 
