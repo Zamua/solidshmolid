@@ -72,7 +72,7 @@ async function withAccountMenu(response: Response, env: Env, url: URL, person: s
   const state = await accounts(env, hostsFor(env, url)).mine(person);
   if (!state) return response;
   const menu = accountMenu(state.name);
-  return new HTMLRewriter().on('header.masthead', { element: (e) => void e.append(menu, { html: true }) }).transform(response);
+  return new HTMLRewriter().on('.masthead-inner', { element: (e) => void e.append(menu, { html: true }) }).transform(response);
 }
 
 async function pod(request: Request, env: Env, url: URL, handle: string): Promise<Response> {
