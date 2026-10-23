@@ -123,7 +123,7 @@ a.add-pod{text-decoration:none}
 .prose h2:first-child{margin-top:0}
 .prose p{margin:0 0 10px}
 /* Clerk takes over the element it mounts in, so the spacing lives on a wrapper. */
-.clerk-mount{display:flex;justify-content:center;margin-top:28px;min-height:420px}
+.clerk-mount{display:flex;justify-content:center;margin-top:16px;min-height:360px}
 @media (min-width:720px){
 .sky{height:420px}
 .sky .near{display:none}

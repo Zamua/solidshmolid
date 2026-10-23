@@ -6,14 +6,40 @@
 export const CLERK_BOOT_PATH = '/assets/clerk-boot.js';
 
 export const CLERK_BOOT = `(() => {
+  // Clerk's sign-in dressed as our own cards, fields and buttons; the page
+  // gives the heading, so Clerk's is hidden.
+  const display = "'Fredoka', system-ui, sans-serif";
+  const button = { minHeight: '56px', borderRadius: '18px', fontFamily: display, fontSize: '18px', fontWeight: 600, textTransform: 'none' };
   const appearance = {
     variables: {
       colorPrimary: '#3d6fe0',
       colorText: '#1f2d4d',
-      colorTextSecondary: '#5a6b8c',
+      colorTextSecondary: '#506080',
+      colorInputBackground: '#f3f8ff',
       fontFamily: "'Atkinson Hyperlegible', system-ui, sans-serif",
-      borderRadius: '14px',
+      fontSize: '17px',
+      borderRadius: '16px',
     },
+    elements: {
+      rootBox: { width: '100%' },
+      cardBox: { width: '100%', maxWidth: 'none', borderRadius: '26px', border: '0', boxShadow: '0 1px 0 #dbe7fa, 0 14px 30px -18px rgba(42,82,184,.35)' },
+      card: { padding: '20px', boxShadow: 'none', border: '0', borderRadius: '26px' },
+      header: { display: 'none' },
+      socialButtonsBlockButton: { ...button, color: '#1f2d4d', border: '0', boxShadow: '0 0 0 2px #dbe7fa' },
+      socialButtonsBlockButtonText: { fontFamily: display, fontSize: '18px', fontWeight: 600, color: '#1f2d4d' },
+      formFieldLabel: { fontSize: '15px', fontWeight: 700 },
+      formFieldInput: { minHeight: '58px', padding: '0 16px', fontSize: '18px', borderRadius: '16px', border: '0', backgroundColor: '#f3f8ff', boxShadow: '0 0 0 2px #dbe7fa' },
+      formButtonPrimary: { ...button, background: '#3d6fe0', boxShadow: '0 10px 20px -12px #3d6fe0', '&::after': { display: 'none' } },
+      buttonArrowIcon: { display: 'none' },
+      footer: { background: 'transparent' },
+      footerActionText: { fontSize: '15px' },
+      footerActionLink: { fontSize: '15px', fontWeight: 700 },
+    },
+  };
+  const localization = {
+    formFieldLabel__emailAddress_username: 'Email',
+    formFieldInputPlaceholder__emailAddress_username: '',
+    signIn: { start: { actionText: 'New here?', actionLink: 'Create your account' } },
   };
 
   // Clerk's errors carry a sentence for people; anything else gets a plain one.
@@ -92,7 +118,7 @@ export const CLERK_BOOT = `(() => {
   window.addEventListener('load', async () => {
     const Clerk = window.Clerk;
     if (!Clerk) return;
-    await Clerk.load({ appearance, ui: { ClerkUI: window.__internal_ClerkUICtor } });
+    await Clerk.load({ appearance, localization, ui: { ClerkUI: window.__internal_ClerkUICtor } });
     const mount = document.querySelector('[data-clerk-mount]');
     if (!mount) return;
     const back = mount.dataset.return || '/';
