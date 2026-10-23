@@ -6,9 +6,11 @@ import { accounts, provider } from '../composition.js';
 import type { Env } from '../env.js';
 import { hostsFor } from '../hosts.js';
 import { connectPage, deletePage, podsPage, signupPage, welcomePage } from './pages/home.js';
+import { privacyPage } from './pages/privacy.js';
 
 export async function homeRoute(request: Request, env: Env, url: URL, person: string | null): Promise<Response | null> {
   if (request.method !== 'GET') return null;
+  if (url.pathname === '/privacy') return privacyPage();
   const deletingPod = /^\/pods\/([a-z0-9]{1,32})\/delete$/u.exec(url.pathname)?.[1];
   if (url.pathname !== '/' && url.pathname !== '/account/delete' && !deletingPod) return null;
   if (!person) return url.pathname === '/' ? welcomePage() : Response.redirect(`${url.origin}/sign-in?return=${encodeURIComponent(url.pathname)}`, 302);

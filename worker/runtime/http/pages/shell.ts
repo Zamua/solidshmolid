@@ -71,6 +71,9 @@ ul.plain li .icon{color:var(--blue);flex:none;margin-top:1px}
 .dock{position:fixed;left:0;right:0;bottom:0;padding:26px 22px calc(30px + env(safe-area-inset-bottom));background:linear-gradient(180deg,rgba(234,244,255,0) 0%,var(--sky) 34%)}
 .dock>*{max-width:396px;margin:0 auto}
 .center{text-align:center}
+.prose h2{margin:22px 0 6px}
+.prose h2:first-child{margin-top:0}
+.prose p{margin:0 0 10px}
 /* Clerk takes over the element it mounts in, so the spacing lives on a wrapper. */
 .clerk-mount{display:flex;justify-content:center;margin-top:28px;min-height:420px}
 @media (min-width:720px){
