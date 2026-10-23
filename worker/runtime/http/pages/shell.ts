@@ -99,6 +99,7 @@ ul.plain li .icon{color:var(--blue);flex:none;margin-top:1px}
 a.row.row-link{flex-direction:row}
 .row-link:hover b{color:var(--blue-deep)}
 /* Rows of a list. */
+a.list-row:focus-visible{outline-offset:-3px;border-radius:14px}
 .list-row{position:relative;padding:12px 0}
 .list-row+.list-row::before,.add-row::before{content:'';position:absolute;left:0;right:0;top:0;border-top:1px solid var(--line)}
 .crumbs{margin-top:40px;font-size:15px;color:var(--ink-soft);overflow-wrap:anywhere}

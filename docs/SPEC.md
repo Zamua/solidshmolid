@@ -260,6 +260,12 @@ ignored. The pod records its placement and the listing's cursor.
 `POST /api/pods` adds a pod beside the first, owned by the same WebID, with no profile of its
 own; the WebID's profile gains a `pim:storage` for it, so apps find every pod.
 
+A new pod goes into the storage the person picks (`link`), the first pod's by default. The
+pods page asks where (`/pods/new`) once there is more than one choice: each connected storage,
+and each offered provider not connected yet. Picking one of those starts its link flow with
+`newPod`, and finishing that flow adds the pod in the new storage, so no pod waits on a flow
+the person abandons.
+
 While placed, a request first folds in what changed in the folder since the last look
 (Dropbox `list_folder/continue`, Drive `changes.list`, from the stored cursor), at most every
 30 s per pod. Webhooks can
