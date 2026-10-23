@@ -99,10 +99,9 @@ export function podsPage(state: AccountState, apps: Approval[], hosts: Hosts, of
 <div class="card" style="padding:6px 16px">${rows}
 ${add}</div>
 <div class="card">
-<div class="row"><div class="icon-tile">${icon('identificationCard')}</div><b class="grow">Your WebID</b>
-<button type="button" class="copy-btn" data-copy="${escapeHtml(state.webid)}" hidden>${icon('copy', 18)}${icon('check', 18)}<span data-label>Copy</span></button></div>
-<p class="webid">${escapeHtml(state.webid).replaceAll('/', '/<wbr>')}</p>
-<p class="small">Apps ask for it when you sign in with Solid.</p></div>
+<div class="row"><div class="icon-tile">${icon('identificationCard')}</div><div class="grow"><b>Your WebID</b><div class="small">Apps ask for it when you sign in with Solid.</div></div></div>
+<div class="card-actions"><a class="pill-btn" href="${escapeHtml(state.webid)}" title="${escapeHtml(state.webid)}">${icon('user', 18)}View</a>
+<button type="button" class="pill-btn copy-btn" data-copy="${escapeHtml(state.webid)}" hidden>${icon('copy', 18)}${icon('check', 18)}<span data-label>Copy</span></button></div></div>
 ${storage}
 <div class="card">
 <div class="row"><div class="icon-tile">${icon('squaresFour')}</div><div class="grow"><b>Apps</b><div class="small">${appRows ? 'Solid apps you signed in to' : 'None yet. When you sign in to a Solid app with solidshmolid, it shows up here.'}</div></div></div>

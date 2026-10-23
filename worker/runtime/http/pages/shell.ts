@@ -84,12 +84,12 @@ ul.plain li .icon{color:var(--blue);flex:none;margin-top:1px}
 .icon-btn{display:grid;place-items:center;width:44px;height:44px;border-radius:12px;color:var(--ink-soft);flex:none}
 .icon-btn:hover{background:var(--mist);color:var(--berry)}
 .chip-btn{display:inline-flex;align-items:center;min-height:44px;font:600 14px var(--body);color:var(--berry);background:var(--mist);border:0;border-radius:999px;padding:0 16px;cursor:pointer;text-decoration:none;flex:none}
-.copy-btn{display:inline-flex;align-items:center;gap:6px;flex:none;min-height:44px;font:600 14px var(--body);color:var(--blue-deep);background:var(--mist);border:0;border-radius:999px;padding:0 16px;cursor:pointer}
-.copy-btn:hover{background:var(--line)}
+.pill-btn{display:inline-flex;align-items:center;gap:6px;flex:none;min-height:44px;font:600 14px var(--body);color:var(--blue-deep);background:var(--mist);border:0;border-radius:999px;padding:0 16px;cursor:pointer;text-decoration:none}
+.pill-btn:hover{background:var(--line)}
+.card-actions{display:flex;flex-wrap:wrap;gap:8px;margin:12px 0 0 58px}
 .copy-btn .icon:nth-of-type(2),.copy-btn.copied .icon:first-of-type{display:none}
 .copy-btn.copied .icon:nth-of-type(2){display:inline}
-.webid{margin:12px 0 4px;font-size:16px;overflow-wrap:anywhere}
-.copy-btn:focus-visible{outline:3px solid var(--blue-deep);outline-offset:3px}
+.pill-btn:focus-visible{outline:3px solid var(--blue-deep);outline-offset:3px}
 .sentence{font:600 17px var(--body);background:var(--mist);border-radius:14px;padding:12px 14px;margin:0 0 16px;user-select:all}
 .btn:focus-visible,a:focus-visible{outline:3px solid var(--blue-deep);outline-offset:3px}
 .dock{position:fixed;left:0;right:0;bottom:0;padding:26px 22px calc(30px + env(safe-area-inset-bottom));background:linear-gradient(180deg,rgba(234,244,255,0) 0%,var(--sky) 34%)}
