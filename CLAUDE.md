@@ -90,6 +90,12 @@ configs never set any of the dev switches.
   `< /dev/null`.
 - `curl --data '@prefix ...'` reads a file named `prefix ...`; use
   `--data-raw` for Turtle/N3 bodies.
+- On Cloudflare a Worker's subrequest to its own custom domain or route gets
+  522 (wrangler dev allows it, so local tests pass). Anything the Worker
+  fetches from itself goes through `runtime/ownHosts.ts`.
+- The mini's tailnet resolver (100.100.100.100) caches NXDOMAIN for a new
+  hostname well past the zone's 30-minute negative TTL; smoke a fresh
+  deployment from a fleet box (see `infra/solidshmolid/DEPLOY.md`).
 - Install scripts for esbuild/workerd are allow-listed in `package.json`
   (`allowScripts`), which npm now requires.
 
