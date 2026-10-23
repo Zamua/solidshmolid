@@ -56,6 +56,11 @@ ul.plain li .icon{color:var(--blue);flex:none;margin-top:1px}
 .btn.primary{background:var(--blue);color:#fff;box-shadow:0 10px 20px -12px var(--blue)}
 .btn.quiet{background:transparent;color:var(--blue-deep);height:48px}
 .btn.danger{background:var(--berry);color:#fff}
+.btn.outline{background:#fff;color:var(--ink);border:2px solid var(--line)}
+.btn:disabled{opacity:.6;cursor:default}
+.or{display:flex;align-items:center;gap:12px;margin:18px 0;color:var(--ink-soft);font-size:14px}
+.or::before,.or::after{content:'';flex:1;border-top:1px solid var(--line)}
+[hidden]{display:none!important}
 .btn.danger-quiet{background:transparent;color:var(--berry);border:2px solid var(--berry)}
 .stack>.btn+.btn{margin-top:12px}
 .icon-btn{display:grid;place-items:center;width:40px;height:40px;border-radius:12px;color:var(--ink-soft)}

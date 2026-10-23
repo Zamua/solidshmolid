@@ -148,3 +148,32 @@ export function refusalPage(title: string, message: string, status: number): Res
   const sentence = message.charAt(0).toUpperCase() + message.slice(1);
   return page(title, `<h1 style="margin-top:40px">${escapeHtml(title)}</h1><p class="lede">${escapeHtml(sentence)}.</p><p style="margin-top:18px"><a href="/">Back to your pods</a></p>`, status);
 }
+
+/** Our own sign-up: an email code, or Google. The boot script drives it. */
+export function signUpPage(back: string): Response {
+  const signIn = `/sign-in?return=${encodeURIComponent(back)}`;
+  return page(
+    'Create your account',
+    `<h1 style="margin-top:40px">Create your account</h1>
+<p class="lede">Use your email or Google. There is no password to remember.</p>
+<div class="card" data-clerk-mount="sign-up" data-return="${escapeHtml(back)}">
+<button type="button" class="btn outline" data-google>${icon('googleLogo', 22)}Continue with Google</button>
+<div class="or"><span>or</span></div>
+<form data-email-form>
+<label class="label" for="email">Email</label>
+<input class="field" id="email" name="email" type="email" autocomplete="email" inputmode="email" required>
+<div id="clerk-captcha"></div>
+<button class="btn primary" style="margin-top:16px">Send me a code</button>
+</form>
+<form data-code-form hidden>
+<p class="small" style="margin-bottom:12px">We sent a 6-digit code to <b data-email-shown></b>.</p>
+<label class="label" for="code">Code</label>
+<input class="field" id="code" name="code" inputmode="numeric" autocomplete="one-time-code" pattern="[0-9]*" maxlength="6" required>
+<button class="btn primary" style="margin-top:16px">Create my account</button>
+<button type="button" class="btn quiet" data-back>Use a different email</button>
+</form>
+<p class="small problem" role="alert" data-problem hidden></p>
+</div>
+<p class="small center" style="margin-top:18px">Already have an account? <a href="${escapeHtml(signIn)}">Sign in</a></p>`,
+  );
+}

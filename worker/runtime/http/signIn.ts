@@ -1,11 +1,12 @@
-// Sign-in, sign-up and sign-out on the apex. With Clerk configured the pages
-// mount Clerk's components (the boot script does the mounting); the dev
-// config adds a one-tap stand-in.
+// Sign-in, sign-up and sign-out on the apex. With Clerk configured, sign-in
+// mounts Clerk's component and sign-up is our own form (the boot script runs
+// both); the dev config adds a one-tap stand-in.
 
 import { DEV_PERSON_COOKIE } from '../adapters/sessions.js';
 import { clerkChrome, isDev } from '../composition.js';
 import type { Env } from '../env.js';
 import { CLERK_BOOT, CLERK_BOOT_PATH } from './assets/clerkBoot.js';
+import { signUpPage } from './pages/home.js';
 import { escapeHtml, page } from './pages/shell.js';
 
 export async function signInRoute(request: Request, env: Env, url: URL): Promise<Response | null> {
@@ -25,7 +26,10 @@ ${isDev(env) ? `<p class="small center" style="margin-top:16px">Development: <a 
       );
     case '/sign-up':
       if (!clerk) return isDev(env) ? new Response(null, { status: 302, headers: { Location: `/sign-in${url.search}` } }) : null;
-      return page('Create your account', `<div class="clerk-mount"><div data-clerk-mount="sign-up" data-return="${escapeHtml(back)}"></div></div>`);
+      return signUpPage(back);
+    case '/sso-callback':
+      if (!clerk) return null;
+      return page('Signing in', `<h1 style="margin-top:40px">Signing in</h1><div data-clerk-mount="sso-callback" data-return="${escapeHtml(back)}"></div>`);
     case '/sign-out': {
       const response = clerk
         ? page('Signing out', '<h1 style="margin-top:40px">Signing out</h1><div data-clerk-mount="sign-out"></div>')
