@@ -119,8 +119,12 @@ export class SqlAccountStore implements AccountStore {
     return { ...(JSON.parse(String(row.json)) as RefreshFamily), currentHash: String(row.current_hash), expires: Number(row.expires) };
   }
 
-  async rotateFamily(id: string, newHash: string, expires: number): Promise<void> {
-    this.sql.exec('UPDATE family SET current_hash = ?, expires = ? WHERE id = ?', newHash, expires, id);
+  async rotateFamily(id: string, fromHash: string, newHash: string, expires: number): Promise<boolean> {
+    return (
+      this.sql
+        .exec('UPDATE family SET current_hash = ?, expires = ? WHERE id = ? AND current_hash = ? AND revoked = 0 RETURNING id', newHash, expires, id, fromHash)
+        .toArray().length > 0
+    );
   }
 
   async revokeFamily(id: string): Promise<void> {

@@ -9,7 +9,7 @@ import type { CodeGrant, RefreshFamily } from '../../app/identity/ports.js';
 import type { AuthorizeRequest, ClientInfo } from '../../domain/identity/oidc.js';
 import { type AccessToken, LinkTokens } from '../adapters/linkTokens.js';
 import { Sealer } from '../adapters/sealing.js';
-import type { SqlRunner } from '../adapters/sql.js';
+import { type SqlRunner, isBlank } from '../adapters/sql.js';
 import { SqlAccountPods } from '../adapters/sqlAccountPods.js';
 import { SqlAccountStore } from '../adapters/sqlAccountStore.js';
 import { storageGrants } from '../composition.js';
@@ -17,19 +17,25 @@ import type { Env } from '../env.js';
 
 export class AccountObject extends DurableObject<Env> {
   private store: SqlAccountStore | null = null;
-  private readonly pods: SqlAccountPods;
+  private accountPods: SqlAccountPods | null = null;
   private readonly tokens: LinkTokens;
 
   constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, env);
-    this.pods = new SqlAccountPods(ctx.storage.sql as SqlRunner, new Sealer(env.TOKEN_KEY), (fn) => ctx.storage.transactionSync(fn), {
+    this.tokens = new LinkTokens((linkId) => this.pods.grant(linkId), storageGrants(env));
+  }
+
+  /** Opened on first use, so an object reached by a guessed key stores nothing. */
+  private get pods(): SqlAccountPods {
+    this.accountPods ??= new SqlAccountPods(this.ctx.storage.sql as SqlRunner, new Sealer(this.env.TOKEN_KEY), (fn) => this.ctx.storage.transactionSync(fn), {
       revoke: (linkId) => this.tokens.revoke(linkId),
       wipe: async () => {
-        await ctx.storage.deleteAll();
+        await this.ctx.storage.deleteAll();
         this.store = null;
+        this.accountPods = null;
       },
     });
-    this.tokens = new LinkTokens((linkId) => this.pods.grant(linkId), storageGrants(env));
+    return this.accountPods;
   }
 
   /** The store, created under `key` on first use. */
@@ -45,6 +51,11 @@ export class AccountObject extends DurableObject<Env> {
       );
     }
     return this.store;
+  }
+
+  /** Whether this account was ever created; asking creates nothing. */
+  async exists(): Promise<boolean> {
+    return !isBlank(this.ctx.storage.sql as SqlRunner);
   }
 
   async ensure(key: string): Promise<string> {
@@ -99,8 +110,8 @@ export class AccountObject extends DurableObject<Env> {
     return this.open().family(id);
   }
 
-  async rotateFamily(id: string, newHash: string, expires: number): Promise<void> {
-    return this.open().rotateFamily(id, newHash, expires);
+  async rotateFamily(id: string, fromHash: string, newHash: string, expires: number): Promise<boolean> {
+    return this.open().rotateFamily(id, fromHash, newHash, expires);
   }
 
   async revokeFamily(id: string): Promise<void> {

@@ -1,10 +1,14 @@
 import { describe, expect, it } from 'vitest';
 import type { AccountState } from '../app/accounts/ports.js';
 import { StorageUnavailable } from '../app/shared/errors.js';
+import { RpcAccounts } from '../runtime/adapters/accountRpc.js';
 import { LinkTokens } from '../runtime/adapters/linkTokens.js';
+import { ProofLedger } from '../runtime/adapters/proofLedger.js';
 import { Sealer } from '../runtime/adapters/sealing.js';
 import { SqlAccountPods } from '../runtime/adapters/sqlAccountPods.js';
+import { isBlank } from '../runtime/adapters/sql.js';
 import { SqlPlacement } from '../runtime/adapters/sqlPlacement.js';
+import type { Env } from '../runtime/env.js';
 import { sqlRunner } from './support/fakes.js';
 
 const KEY = btoa(String.fromCharCode(...new Uint8Array(32).map((_, i) => i)));
@@ -180,5 +184,28 @@ describe('a pod placement', () => {
     expect(await placement.cursor()).toBeNull();
     await placement.setCursor('c1');
     expect(placement.current()).toEqual({ accountKey: 'k1', linkId: 'l1', provider: 'dropbox', folder: 'k3x9fqm7', cursor: 'c1' });
+  });
+});
+
+describe('objects nobody created', () => {
+  it('read as blank until something is stored, and reading them stores nothing', () => {
+    const sql = sqlRunner();
+    expect(isBlank(sql)).toBe(true);
+    expect(isBlank(sql)).toBe(true);
+    new ProofLedger(sql);
+    expect(isBlank(sql)).toBe(false);
+  });
+
+  it('are not accounts: an unknown key is looked up without calling the account', async () => {
+    const calls: string[] = [];
+    const stub = new Proxy({} as Record<string, unknown>, {
+      get: (_, name) => async () => {
+        calls.push(String(name));
+        return name === 'exists' ? false : null;
+      },
+    });
+    const env = { ACCOUNT: { idFromName: (n: string) => n, get: () => stub } } as unknown as Env;
+    expect(await new RpcAccounts(env).byKey('0123456789abcdef0123456789abcdef')).toBeNull();
+    expect(calls).toEqual(['exists']);
   });
 });

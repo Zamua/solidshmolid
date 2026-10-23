@@ -12,6 +12,7 @@ import type { Env } from '../env.js';
 import { hostsFor } from '../hosts.js';
 import { confirmDeletionPage, refusalPage } from './pages/home.js';
 import { problemPage, sentenceOf } from './pages/problem.js';
+import { signedOut } from './signIn.js';
 
 interface Route {
   method: 'GET' | 'POST';
@@ -42,7 +43,14 @@ export async function apiRoute(request: Request, env: Env, url: URL, person: str
       },
     },
     { method: 'POST', path: /^\/api\/pods\/([a-z0-9]{1,32})\/delete$/u, run: async (p, [podId]) => deletion(html, '/', await service().deletePod(p, podId!, await wantsFilesGone(request))) },
-    { method: 'POST', path: /^\/api\/account\/delete$/u, run: async (p) => deletion(html, '/sign-out', await service().deleteAccount(p, await wantsFilesGone(request))) },
+    {
+      method: 'POST',
+      path: /^\/api\/account\/delete$/u,
+      run: async (p) => {
+        const step = await service().deleteAccount(p, await wantsFilesGone(request));
+        return html && 'done' in step ? signedOut(env) : deletion(html, '/', step);
+      },
+    },
     {
       method: 'POST',
       path: /^\/api\/deletions\/confirm$/u,
@@ -55,7 +63,7 @@ export async function apiRoute(request: Request, env: Env, url: URL, person: str
             ? confirmDeletionPage(token, sentence, "That didn't match. Copy the sentence above, or type it exactly.", 400)
             : Response.json({ code: 'not_confirmed', confirmToken: token, sentence }, { status: 400 });
         }
-        return done(html, outcome.deleted === 'account' ? '/sign-out' : '/', null, 204);
+        return html && outcome.deleted === 'account' ? signedOut(env) : done(html, '/', null, 204);
       },
     },
     {

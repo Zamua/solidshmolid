@@ -22,7 +22,9 @@ export class RpcAccounts implements Accounts {
   }
 
   async byKey(key: string): Promise<AccountStore | null> {
-    return ACCOUNT_KEY.test(key) ? accountStore(this.stub(key), key) : null;
+    if (!ACCOUNT_KEY.test(key)) return null;
+    const stub = this.stub(key);
+    return (await stub.exists()) ? accountStore(stub, key) : null;
   }
 
   private stub(key: string): DurableObjectStub<AccountObject> {
@@ -44,7 +46,7 @@ function accountStore(stub: DurableObjectStub<AccountObject>, key: string): Acco
     takeCode: (hash) => stub.takeCode(hash),
     saveFamily: (family) => stub.saveFamily(family),
     family: (id) => stub.family(id),
-    rotateFamily: (id, hash, expires) => stub.rotateFamily(id, hash, expires),
+    rotateFamily: (id, fromHash, newHash, expires) => stub.rotateFamily(id, fromHash, newHash, expires),
     revokeFamily: (id) => stub.revokeFamily(id),
     revokeFromCode: (hash) => stub.revokeFromCode(hash),
   };

@@ -267,7 +267,7 @@ export function accountMenu(): string {
 <div class="menu">
 <a href="/">${icon('house', 20)}Your pods</a>
 <a href="/connections">${icon('plugs', 20)}Connections</a>
-<a href="/sign-out">${icon('signOut', 20)}Sign out</a>
+<form method="post" action="/sign-out"><button>${icon('signOut', 20)}Sign out</button></form>
 </div>
 </details>`;
 }

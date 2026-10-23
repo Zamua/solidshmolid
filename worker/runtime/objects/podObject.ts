@@ -16,6 +16,7 @@ import { NO_CONDITIONS } from '../../domain/pods/requests.js';
 import { placePod } from '../../app/storage/placement.js';
 import type { PlacementOutcome } from '../../app/storage/ports.js';
 import { ProofLedger } from '../adapters/proofLedger.js';
+import { isBlank } from '../adapters/sql.js';
 import { type PodServices, podServices, storageAround } from '../composition.js';
 import type { Env } from '../env.js';
 import { handleSolid, withCors } from '../http/solid.js';
@@ -29,21 +30,19 @@ export const INTERNAL_PREFIX = 'x-solidshmolid-';
 export class PodObject extends DurableObject<Env> {
   private services: PodServices | null = null;
   private servicesFor = '';
-  private proofs: ProofLedger;
-
-  constructor(ctx: DurableObjectState, env: Env) {
-    super(ctx, env);
-    this.proofs = new ProofLedger(ctx.storage.sql);
-  }
+  private proofs: ProofLedger | null = null;
 
   async fetch(request: Request): Promise<Response> {
     const base = request.headers.get(BASE_HEADER);
     if (!base) return new Response('missing pod base\n', { status: 500 });
     const origin = request.headers.get('Origin');
+    // A pod id no one placed must not leave tables behind.
+    if (isBlank(this.ctx.storage.sql)) return withCors(new Response('no such pod\n', { status: 404 }), request, origin);
     const { pod, sync } = this.open(base);
     if (!pod.isProvisioned()) return withCors(new Response('no such pod\n', { status: 404 }), request, origin);
 
     const jti = request.headers.get(JTI_HEADER);
+    this.proofs ??= new ProofLedger(this.ctx.storage.sql);
     if (jti && !this.proofs.firstUse(jti, Number(request.headers.get(JTI_EXPIRES_HEADER)))) {
       return withCors(
         new Response('DPoP proof already used\n', { status: 401, headers: { 'WWW-Authenticate': 'DPoP error="invalid_dpop_proof"' } }),
@@ -122,7 +121,7 @@ export class PodObject extends DurableObject<Env> {
     if (deleteFiles && placement) await storageAround(this.env, placement)?.removeFolder(placement.folder);
     await this.ctx.storage.deleteAll();
     this.services = null;
-    this.proofs = new ProofLedger(this.ctx.storage.sql);
+    this.proofs = null;
   }
 
   private open(base: string): PodServices {

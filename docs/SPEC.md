@@ -63,7 +63,10 @@ every state-changing POST, since SameSite cookies do not stop same-site pages.
 A pod's handle is a random pod id: 8 characters from
 `23456789abcdefghjkmnpqrstuvwxyz` (no look-alikes), assigned by the directory,
 unique, and never reused, so nobody picks or squats one and a deleted pod's
-URLs never come to point at someone else. The dev config also serves named
+URLs never come to point at someone else. Outside dev, a host that is not a
+pod id is refused before any Durable Object is reached, and a Pod or Account
+DO that was never created answers without storing anything, so guessed names
+leave nothing behind. The dev config also serves named
 pods (`dana.localhost:8787`, any valid handle that is not a pod id), created
 on first request in the dev store.
 
@@ -82,7 +85,9 @@ client --> Worker (stateless)
              - placement: account, storage link, folder, change cursor
            Account DO (one per person): WebID, pods, storage links (sealed
              refresh tokens), access tokens for its pods over RPC; provider
-             state (approvals, codes, refresh families)
+             state (approvals, codes, refresh families; a refresh rotates
+             its family only if the token is still current, so of two
+             simultaneous refreshes one wins)
            Directory DO (one): person -> account, pod ids, registered clients
            FileStore port --> Dropbox | OneDrive | Drive | WebDAV | dev store
 ```
@@ -310,6 +315,10 @@ session token from the `__session` cookie or a bearer header, requires its
 `azp` to be the apex origin, and answers a page load whose token has expired
 with Clerk's handshake redirect, which comes straight back signed in. The dev
 config also honors the `dev_person` cookie from `/dev/sign-in` first.
+
+Signing out takes a press on the site: `GET /sign-out` (where the provider's
+end-session endpoint leads) only asks, and the `POST` it sends from the apex
+signs out. A link from another site cannot sign anyone out.
 
 ## Authentication
 

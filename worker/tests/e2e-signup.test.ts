@@ -138,3 +138,27 @@ describe.skipIf(!APEX)('sign up and connect storage', () => {
     expect((await fetch(pod!.url, { headers: { 'X-Dev-WebID': webid } })).status).toBe(404);
   });
 });
+
+describe.skipIf(!APEX)('sign out', () => {
+  it('takes a press on this site; a link from anywhere only asks', async () => {
+    const signin = await fetch(`${APEX}/dev/sign-in?person=e2e_out`, { redirect: 'manual' });
+    const cookie = signin.headers.get('set-cookie')!.split(';')[0]!;
+    const signOut = (method: string, origin?: string) =>
+      fetch(`${APEX}/sign-out`, { method, headers: { cookie, ...(origin ? { origin } : {}) }, redirect: 'manual' });
+
+    const asked = await signOut('GET');
+    expect(asked.status).toBe(200);
+    expect(asked.headers.get('set-cookie')).toBeNull();
+    expect(await asked.text()).toContain('action="/sign-out"');
+    const ended = await fetch(`${APEX}/.oidc/session/end`, { headers: { cookie }, redirect: 'manual' });
+    expect(ended.headers.get('set-cookie')).toBeNull();
+
+    const elsewhere = await signOut('POST', 'https://evil.example');
+    expect(elsewhere.status).toBe(403);
+    expect(elsewhere.headers.get('set-cookie')).toBeNull();
+
+    const pressed = await signOut('POST', APEX);
+    expect(pressed.status).toBe(303);
+    expect(pressed.headers.get('set-cookie')).toContain('Max-Age=0');
+  });
+});
