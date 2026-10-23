@@ -34,20 +34,20 @@ red-reachable check.
 - [ ] T009 Ports in `worker/app/ports.ts`: `Sessions` (current Clerk user), `ClerkAdmin` (create user, sign-in token, remove passkeys), `Approvals`, `Codes`, `RefreshFamilies`, `SigningKeys`, `ClientIds`, `Directory`, `Households`
 - [ ] T010 `worker/runtime/clerk.ts`: session verification against Clerk JWKS and the Backend API adapter; tests with a fake JWKS in `worker/tests/clerk.test.ts`
 - [x] T011 `DirectoryObject` (account and provider-account lookups) with tests in `worker/tests/directory.test.ts`
-- [ ] T011b Directory assigns random pod ids (replaces handle reservation and the 90-day hold)
-- [ ] T012 Storage links move to `HouseholdObject`; `PodObject` gets access tokens over RPC and stores its folder (`root` = handle); update `worker/tests/link.test.ts` and `make live` to the subfolder layout
+- [x] T011b Directory assigns random pod ids (replaces handle reservation and the 90-day hold)
+- [x] T012 Storage links move to `HouseholdObject`; `PodObject` gets access tokens over RPC and stores its folder (`root` = handle); update `worker/tests/link.test.ts` and `make live` to the subfolder layout
 
 ## Phase 3: User Story 1, sign up and get a pod (P1) 🎯 MVP
 
-**Goal**: A visitor signs up, picks a handle, connects Dropbox and has a pod in `Apps/solidshmolid/<handle>/`.
+**Goal**: A visitor signs up, gets a random pod id, connects Dropbox and has a pod in `Apps/solidshmolid/<id>/`.
 
 **Independent Test**: signup + connect on wrangler dev; profile public, root private; returning folder adopted.
 
-- [ ] T013 [P] [US1] Tests: signup assigns a fresh random pod id (alphabet, length, uniqueness, never reused); creates household with caller as manager; connect creates the pod in the link; existing folder adopted, in `worker/tests/households.test.ts`
-- [ ] T014 [US1] `worker/app/households.ts`: signup, connect storage, create own pod
-- [ ] T015 [US1] `/api/me`, `/api/signup`, `/api/storage/dropbox/start`, `/link/dropbox/callback` in `worker/runtime/api/`
-- [ ] T016 [US1] Pages: sign-up and connect-storage (from approved mockups) in `worker/runtime/pages/`
-- [ ] T017 [US1] e2e on wrangler dev with a Clerk testing token: sign up, connect (fake Dropbox in dev), read own profile, in `worker/tests/e2e-signin.test.ts`
+- [x] T013 [P] [US1] Tests: signup assigns a fresh random pod id (alphabet, length, uniqueness, never reused); creates household with caller as manager; connect creates the pod in the link; existing folder adopted, in `worker/tests/households.test.ts`
+- [x] T014 [US1] `worker/app/households.ts`: signup, connect storage, create own pod
+- [x] T015 [US1] `/api/me`, `/api/signup`, `/api/storage/dropbox/start`, `/link/dropbox/callback` in `worker/runtime/api/`
+- [ ] T016 [US1] Pages: sign-up and connect-storage (from approved mockups) in `worker/runtime/pages/` (welcome, create, connect and household done; Clerk sign-in page remains)
+- [ ] T017 [US1] e2e on wrangler dev with a Clerk testing token: sign up, connect (fake Dropbox in dev), read own profile (done with dev sign-in in `worker/tests/e2e-signup.test.ts`; the Clerk token remains)
 
 ## Phase 4: User Story 2, sign in to any Solid app (P1)
 

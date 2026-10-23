@@ -27,8 +27,8 @@ DROPBOX_APP_KEY_FILE ?= $(HOME)/keys/dropbox-solidshmolid-app-key
 	@if [ -f "$(DROPBOX_APP_KEY_FILE)" ]; then printf 'DROPBOX_APP_KEY=%s\n' "$$(tr -d '\n' < $(DROPBOX_APP_KEY_FILE))" >> .dev.vars; fi
 	@chmod 600 .dev.vars
 
-dev: .dev.vars ## run the worker locally on :8787 (pods at http://<handle>.localhost:8787)
-	$(NODE) wrangler dev --config wrangler.dev.jsonc --ip 127.0.0.1 --port 8787
+dev: .dev.vars ## run the worker locally on :8787 (pods at http://<handle>.localhost:8787; STORAGE=dropbox for real Dropbox)
+	$(NODE) wrangler dev --config wrangler.dev.jsonc --ip 127.0.0.1 --port 8787 $(if $(STORAGE),--var STORAGE:$(STORAGE))
 
 live: ## the Dropbox adapter against real Dropbox (DROPBOX_LIVE_TOKEN_FILE holds an app-folder token)
 	DROPBOX_LIVE_TOKEN="$$(tr -d '\n' < $${DROPBOX_LIVE_TOKEN_FILE:-$$HOME/keys/dropbox-dev-token})" \

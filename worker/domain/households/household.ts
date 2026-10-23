@@ -22,29 +22,6 @@ export function checkManagers(members: Member[]): void {
 
 const PREFIXES = `@prefix acl: <${ACL('')}>.\n@prefix foaf: <${FOAF('')}>.\n`;
 
-/** The root ACL of a pod: its owner in full, and each manager with full
- * access to everything in it (spec 002, FR-012). */
-export function rootAcl(ownerWebid: string, managerWebids: string[]): string {
-  const managers = managerWebids.filter((m) => m !== ownerWebid);
-  let out = `${PREFIXES}
-<#owner> a acl:Authorization;
-  acl:agent <${ownerWebid}>;
-  acl:accessTo <./>;
-  acl:default <./>;
-  acl:mode acl:Read, acl:Write, acl:Control.
-`;
-  if (managers.length > 0) {
-    out += `
-<#managers> a acl:Authorization;
-  ${managers.map((m) => `acl:agent <${m}>`).join(';\n  ')};
-  acl:accessTo <./>;
-  acl:default <./>;
-  acl:mode acl:Read, acl:Write, acl:Control.
-`;
-  }
-  return out;
-}
-
 /** The household group document: a vcard:Group listing every member's WebID. */
 export function familyGroup(webids: string[]): string {
   const members = [...new Set(webids)].sort();

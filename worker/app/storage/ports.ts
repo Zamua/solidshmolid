@@ -1,6 +1,5 @@
 // The user's storage, as the pod and storage services see it. Interfaces only.
 
-
 /** A stored file. `file` is relative to the pod folder, `/`-separated. */
 export interface FileInfo {
   file: string;
@@ -65,29 +64,13 @@ export interface FileLister {
   changes(cursor: string): Promise<Listing>;
 }
 
-/** A pod's connection to a storage provider. */
-export interface StorageLink {
-  provider: string;
-  account: string;
-  /** The long-lived grant; adapters keep it encrypted at rest. */
-  refreshToken: string;
-  /** Where the provider's change feed was last read. */
-  cursor: string | null;
-}
+/** Placing a pod in a folder either starts a new pod or adopts the one there. */
+export type PlacementOutcome = 'created' | 'adopted';
 
-/** A link flow in progress, kept until the provider calls back. */
-export interface PendingLink {
-  verifier: string;
-  webid: string;
-}
-
-export interface LinkStore {
-  current(): Promise<StorageLink | null>;
-  save(link: StorageLink): Promise<void>;
+/** Where a pod last read its storage's change feed. */
+export interface SyncCursor {
+  cursor(): Promise<string | null>;
   setCursor(cursor: string): Promise<void>;
-  remember(nonce: string, pending: PendingLink): Promise<void>;
-  /** The pending link for `nonce`, consumed, or null when absent or expired. */
-  take(nonce: string): Promise<PendingLink | null>;
 }
 
 export interface Grant {
@@ -104,9 +87,4 @@ export interface StorageAuthorization {
   pkce(): Promise<{ verifier: string; challenge: string }>;
   authorizeUrl(redirectUri: string, state: string, challenge: string): string;
   exchange(code: string, verifier: string, redirectUri: string): Promise<Grant>;
-}
-
-/** Opens the user's storage for a link. */
-export interface StorageOpener {
-  open(link: StorageLink, grant?: Grant): FileStore & FileLister;
 }

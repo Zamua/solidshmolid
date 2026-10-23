@@ -1,12 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import { SqlDirectory } from '../runtime/adapters/sqlDirectory.js';
 import { sqlRunner } from './support/fakes.js';
+import { isPodId } from '../domain/households/podIds.js';
 
 function directory() {
-  let now = 1_000_000;
   let n = 0;
-  const d = new SqlDirectory(sqlRunner(), () => now, () => `k${++n}`);
-  return { d, advance: (s: number) => (now += s) };
+  const d = new SqlDirectory(sqlRunner(), () => 1_000_000, () => `k${++n}`);
+  return { d };
 }
 
 describe('directory', () => {
@@ -17,16 +17,22 @@ describe('directory', () => {
     expect(d.accountKeyFor('clerk_b')).not.toBe(k);
   });
 
-  it('keeps handles unique, and held for 90 days after release', () => {
-    const { d, advance } = directory();
-    expect(d.reserveHandle('dana', 'h1')).toBe(true);
-    expect(d.reserveHandle('dana', 'h1')).toBe(true);
-    expect(d.reserveHandle('dana', 'h2')).toBe(false);
-    d.releaseHandle('dana');
-    advance(89 * 24 * 3600);
-    expect(d.reserveHandle('dana', 'h2')).toBe(false);
-    advance(2 * 24 * 3600);
-    expect(d.reserveHandle('dana', 'h2')).toBe(true);
+  it('keeps a person in the first household they join', () => {
+    const { d } = directory();
+    expect(d.householdOf('clerk_a')).toBeNull();
+    expect(d.join('clerk_a', 'h1')).toBe('h1');
+    expect(d.join('clerk_a', 'h2')).toBe('h1');
+    expect(d.householdOf('clerk_a')).toBe('h1');
+  });
+
+  it('never hands out the same pod id twice, even when the draw repeats', () => {
+    const draws = [new Uint8Array(32).fill(7), new Uint8Array(32).fill(7), new Uint8Array(32).fill(250), new Uint8Array(32).fill(9)];
+    const d = new SqlDirectory(sqlRunner(), () => 0, () => 'k', () => draws.shift()!);
+    const first = d.allocatePodId('h1');
+    const second = d.allocatePodId('h1');
+    expect(first).toBe('99999999');
+    expect(second).toBe('bbbbbbbb');
+    expect(isPodId(first) && isPodId(second)).toBe(true);
   });
 
   it('stores registered clients under their own id', () => {

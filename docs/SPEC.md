@@ -49,22 +49,32 @@ Pod hosts come from `POD_HOST_TEMPLATE` (`{handle}.solidshmolid.com`,
 browser origins. Staging shares the production domain because Cloudflare's
 free certificate covers one wildcard level only: each staging host is an
 exact Worker route, which wins over production's `*.solidshmolid.com` route.
-Handles match `[a-z0-9]([a-z0-9-]{0,30}[a-z0-9])?`, contain no `--`, never
-start with `stg-` (staging's), and avoid a reserved list (`www`, `api`,
-`id`, `stg`, ...).
+
+A pod's handle is a random pod id: 8 characters from
+`23456789abcdefghjkmnpqrstuvwxyz` (no look-alikes), assigned by the directory,
+unique, and never reused, so nobody picks or squats one and a deleted pod's
+URLs never come to point at someone else. The dev config also serves named
+pods (`dana.localhost:8787`, any valid handle that is not a pod id), created
+on first request in the dev store.
 
 ## Architecture
 
 ```
 client --> Worker (stateless)
-             - host -> handle; apex -> identity provider (M3)
-             - verifies Solid-OIDC access token + DPoP proof (M2)
+             - host -> handle; apex -> identity provider, account API, pages
+             - verifies Solid-OIDC access token + DPoP proof
              - forwards to POD.idFromName(handle) with the verified agent
            Pod DO (one per pod, SQLite)
              - index: every resource, its file, rev, etag, type
              - WAC evaluation; ACL docs cached parsed
              - write lock: all writes to the pod are serialized
              - reconcile: rebuild/repair the index from the folder
+             - placement: household, storage link, folder, change cursor
+           Household DO (one per household): members, pods, storage links
+             (sealed refresh tokens), access tokens for its pods over RPC
+           Account DO (one per person): provider state (approvals, codes)
+           Directory DO (one): person -> account and household, pod ids,
+             registered clients
            FileStore port --> Dropbox | OneDrive | Drive | WebDAV | dev store
 ```
 
@@ -73,10 +83,10 @@ client --> Worker (stateless)
 - `worker/domain/`: pure. Paths, the CSS file layout, content-type mapping,
   RDF graph helpers, WAC evaluation, N3 Patch application, container
   representation. No I/O, no `cloudflare:` or `node:` imports.
-- `worker/app/`: the pod service and its ports (`FileStore`, `PodIndex`,
-  `Clock`). Orchestration only.
-- `worker/runtime/`: Worker entry, the `Pod` Durable Object, HTTP
-  translation, adapters.
+- `worker/app/`: services and their ports, per bounded context (pods,
+  storage, identity, households). Orchestration only.
+- `worker/runtime/`: Worker entry, the Durable Objects, HTTP translation,
+  adapters, and the composition root that wires them.
 
 ## The folder layout (CSS file-backend compatible)
 
@@ -196,26 +206,44 @@ unauthorized (access revoked), rate limited (with retry-after), unavailable.
 Adapters in order: `MemoryFileStore` (tests), `DevFileStore` (DO SQLite, local
 dev only; deployments refuse it), Dropbox (M2), OneDrive, Drive, WebDAV.
 
-## Linking storage
+## Households and storage
 
-`GET|POST https://<apex>/link/dropbox/start?pod=<handle>` (the caller must
-hold Control on the pod root) begins Dropbox OAuth with PKCE and offline
-access; the verifier waits in the pod's DO under a one-time nonce (15 min).
-The state is `<handle>.<nonce>`. `/link/dropbox/callback` exchanges the code
-in the pod's DO. With PKCE Dropbox refreshes without a client secret, so the
-service holds no app secret. The refresh token is stored AES-GCM-encrypted
-under the `TOKEN_KEY` secret with the handle as associated data; access tokens
-stay in memory.
+Signing up (`POST /api/signup`, contracts in
+`specs/002-accounts-households/contracts/account-api.md`) puts the person in
+a new household as its manager, assigns their pod id, and binds their account
+to that pod's WebID. Repeating it, or racing it, returns the same household:
+the directory and the household each keep the first record written.
 
-On link, an app folder with no files receives a copy of the pod; a folder that
-already holds files is adopted: the index is rebuilt from a full listing
-(`app/reconcile.ts`), keeping ETags and caches of unchanged files. Files the
-layout cannot map, or that collide with another file for the same resource,
-are reported and left alone; CSS's `.internal/` folder is ignored.
+The pod exists once the household connects storage. `POST
+/api/storage/<provider>/start` (managers only) begins the provider's OAuth
+with PKCE and offline access; the verifier waits in the household's DO under
+a one-time nonce (15 min) together with the person who started it, and only
+that person can finish it. The state is `<householdId>.<nonce>`;
+`/link/<provider>/callback` exchanges the code. With PKCE Dropbox refreshes
+without a client secret, so the service holds no app secret. The refresh
+token is stored in the household's DO, AES-GCM-sealed under the `TOKEN_KEY`
+secret with `household/<id>/link/<linkId>` as associated data. Pods get
+short-lived access tokens from their household over RPC; nothing else holds
+a grant.
 
-While linked, a request first folds in what changed in Dropbox since the last
-look (`list_folder/continue` from the stored cursor), at most every 30 s per
-pod. Webhooks can replace the polling later; the reconcile path is the same.
+Each pod waiting for storage is then placed in its own folder of the link,
+`Apps/solidshmolid/<pod id>/` on Dropbox (`app/storage/placement.ts`): an
+empty folder gets a new pod (owner in full, the household's managers with
+full access, a public profile); a folder that already holds files is adopted:
+the index is rebuilt from a full listing (`app/pods/reconcile.ts`), keeping
+ETags and caches of unchanged files. Files the layout cannot map, or that
+collide with another file for the same resource, are reported and left alone;
+CSS's `.internal/` folder is ignored. The pod records its placement and the
+listing's cursor.
+
+While placed, a request first folds in what changed in the folder since the
+last look (`list_folder/continue` from the stored cursor), at most every 30 s
+per pod. Webhooks can replace the polling later; the reconcile path is the
+same.
+
+`STORAGE` names the provider households connect: `dropbox`, or `dev` in the
+dev config, which grants consent on the spot and keeps files in each pod's
+own SQLite.
 
 ## Authentication
 
@@ -246,6 +274,9 @@ config also accepts an `X-Dev-WebID` header.
   token, `make e2e` drives a dev pod with one); reconcile (done, including
   adopting a folder a stock CSS wrote); Dropbox adapter (App folder, PKCE + refresh
   token, encrypted at rest); link flow; Dropbox change feed into reconcile.
-- **M3**: our own Solid-OIDC identity provider, signup, WebID profiles.
+- **M3**: our own Solid-OIDC identity provider (done; `make e2e` shows a
+  stock CSS accepting its tokens); households, signup and connecting storage
+  (done on the dev provider; Clerk sign-in next); members, device setup,
+  handover, deletion.
 - **M4**: Solid Notifications (WebSocketChannel2023 on hibernating DO
   sockets); OneDrive, Drive, WebDAV adapters; conformance suite in CI.

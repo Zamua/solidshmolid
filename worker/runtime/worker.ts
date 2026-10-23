@@ -1,20 +1,25 @@
 // Entry Worker: routes by host. Pod hosts go to that pod's Durable Object
 // after the agent is verified; the apex carries the identity provider, the
-// storage-link flow and (in development) stand-ins for sign-in.
+// account and household API, the home page and (in development) stand-ins
+// for sign-in.
 
+import { isPodId } from '../domain/households/podIds.js';
 import { handleFromHost } from '../domain/pods/handles.js';
 import { profileDocument } from '../domain/pods/profile.js';
 import { InvalidCredentials, type VerifiedAgent } from './adapters/solidOidcVerifier.js';
 import { isDev, tokenVerifier } from './composition.js';
+import { hostsFor } from './hosts.js';
 import type { Env } from './env.js';
 import { devRoute } from './http/dev.js';
-import { linkRoute } from './http/link.js';
+import { apiRoute } from './http/api.js';
+import { homeRoute } from './http/home.js';
 import { oidcRoute } from './http/oidc.js';
 import { withCors } from './http/solid.js';
-import { AGENT_HEADER, BASE_HEADER, HANDLE_HEADER, INTERNAL_PREFIX, JTI_EXPIRES_HEADER, JTI_HEADER } from './objects/podObject.js';
+import { AGENT_HEADER, BASE_HEADER, INTERNAL_PREFIX, JTI_EXPIRES_HEADER, JTI_HEADER } from './objects/podObject.js';
 
 export { AccountObject } from './objects/accountObject.js';
 export { DirectoryObject } from './objects/directoryObject.js';
+export { HouseholdObject } from './objects/householdObject.js';
 export { PodObject } from './objects/podObject.js';
 
 export default {
@@ -28,9 +33,10 @@ export default {
     if (url.hostname === env.APEX_HOST) {
       return (
         (await oidcRoute(request, env, url)) ??
-        (await linkRoute(request, env, url)) ??
+        (await apiRoute(request, env, url)) ??
+        (await homeRoute(request, env, url)) ??
         (await devRoute(request, env, url)) ??
-        new Response('solidshmolid: Solid pods on your own storage\n', { headers: { 'Content-Type': 'text/plain' } })
+        new Response('not found\n', { status: 404 })
       );
     }
     return new Response('not found\n', { status: 404 });
@@ -40,15 +46,15 @@ export default {
 async function pod(request: Request, env: Env, url: URL, handle: string): Promise<Response> {
   const stub = env.POD.get(env.POD.idFromName(handle));
   const base = url.origin;
-  if (isDev(env)) {
-    const issuer = `${url.protocol}//${env.APEX_HOST}${url.port ? `:${url.port}` : ''}/`;
-    await stub.ensureProvisioned(handle, base, `${base}/profile/card#me`, profileDocument(`${base}/`, issuer));
+  // Named pods are a development convenience; pods with random ids belong to
+  // households and exist once their storage is connected.
+  if (isDev(env) && !isPodId(handle)) {
+    await stub.ensureProvisioned(base, `${base}/profile/card#me`, profileDocument(`${base}/`, hostsFor(env, url).issuer));
   }
 
   const headers = new Headers(request.headers);
   for (const name of [...headers.keys()]) if (name.toLowerCase().startsWith(INTERNAL_PREFIX)) headers.delete(name);
   headers.set(BASE_HEADER, base);
-  headers.set(HANDLE_HEADER, handle);
 
   if (request.method !== 'OPTIONS') {
     let agent: VerifiedAgent | null;

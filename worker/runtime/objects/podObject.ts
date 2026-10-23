@@ -7,16 +7,16 @@
 // the Worker and stripped from every inbound request before forwarding.
 
 import { DurableObject } from 'cloudflare:workers';
+import type { Placement } from '../../app/households/ports.js';
 import { Conflict } from '../../app/shared/errors.js';
-import type { FolderSync, StorageLinking } from '../../app/storage/linking.js';
-import type { Pod } from '../../app/pods/pod.js';
+import { placePod } from '../../app/storage/placement.js';
+import type { PlacementOutcome } from '../../app/storage/ports.js';
+import { ProofLedger } from '../adapters/proofLedger.js';
 import { type PodServices, podServices } from '../composition.js';
 import type { Env } from '../env.js';
 import { handleSolid, withCors } from '../http/solid.js';
-import { ProofLedger } from '../adapters/proofLedger.js';
 
 export const BASE_HEADER = 'x-solidshmolid-base';
-export const HANDLE_HEADER = 'x-solidshmolid-handle';
 export const AGENT_HEADER = 'x-solidshmolid-agent';
 export const JTI_HEADER = 'x-solidshmolid-jti';
 export const JTI_EXPIRES_HEADER = 'x-solidshmolid-jti-expires';
@@ -34,10 +34,9 @@ export class PodObject extends DurableObject<Env> {
 
   async fetch(request: Request): Promise<Response> {
     const base = request.headers.get(BASE_HEADER);
-    const handle = request.headers.get(HANDLE_HEADER);
-    if (!base || !handle) return new Response('missing pod base\n', { status: 500 });
+    if (!base) return new Response('missing pod base\n', { status: 500 });
     const origin = request.headers.get('Origin');
-    const { pod, sync } = await this.open(handle, base);
+    const { pod, sync } = this.open(base);
     if (!pod.isProvisioned()) return withCors(new Response('no such pod\n', { status: 404 }), request, origin);
 
     const jti = request.headers.get(JTI_HEADER);
@@ -55,10 +54,10 @@ export class PodObject extends DurableObject<Env> {
     return handleSolid(pod, request, { webid: request.headers.get(AGENT_HEADER) || null });
   }
 
-  /** Creates the pod if it does not exist yet. */
-  async ensureProvisioned(handle: string, base: string, owner: string, profile: string): Promise<void> {
-    const { pod } = await this.open(handle, base);
-    if (pod.isProvisioned()) return;
+  /** Development only: creates a named pod in the dev store if it does not exist yet. */
+  async ensureProvisioned(base: string, owner: string, profile: string): Promise<void> {
+    const { pod, placement } = this.open(base);
+    if (pod.isProvisioned() || placement.current()) return;
     try {
       await pod.provision(owner, profile);
     } catch (e) {
@@ -66,24 +65,26 @@ export class PodObject extends DurableObject<Env> {
     }
   }
 
-  async beginDropboxLink(handle: string, base: string, webid: string | null, redirectUri: string): Promise<string> {
-    const { linking } = await this.open(handle, base);
-    return linking().begin(webid, redirectUri, handle);
-  }
-
-  async completeDropboxLink(handle: string, base: string, nonce: string, code: string, redirectUri: string): Promise<string> {
-    const { linking } = await this.open(handle, base);
-    const { outcome } = await linking().complete(nonce, code, redirectUri);
-    // The pod now lives in Dropbox: rebuild its services around the link.
+  /** Serves the pod from its folder in a household's storage. Repeating a
+   * finished placement is a no-op; moving to other storage is not this call. */
+  async place(podId: string, base: string, placement: Placement, owner: string, profile: string, managers: string[]): Promise<PlacementOutcome> {
+    const services = this.open(base);
+    const current = services.placement.current();
+    if (current?.cursor) {
+      if (current.linkId === placement.linkId && current.folder === placement.folder) return 'adopted';
+      throw new Conflict(`pod ${podId} already lives in other storage`);
+    }
+    services.placement.save(placement);
+    const { pod, files } = services.podIn(placement);
+    const outcome = await placePod(pod, files, services.placement, { owner, profile, controllers: managers });
     this.services = null;
     return outcome;
   }
 
-  private async open(handle: string, base: string): Promise<{ pod: Pod; sync: FolderSync | null; linking: () => StorageLinking }> {
-    const key = `${handle} ${base}`;
-    if (!this.services || this.servicesFor !== key) {
-      this.services = await podServices(this.env, this.ctx.storage, handle, base);
-      this.servicesFor = key;
+  private open(base: string): PodServices {
+    if (!this.services || this.servicesFor !== base) {
+      this.services = podServices(this.env, this.ctx.storage, base);
+      this.servicesFor = base;
     }
     return this.services;
   }
