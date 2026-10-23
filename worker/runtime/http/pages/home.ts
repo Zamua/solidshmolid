@@ -91,7 +91,7 @@ ${body}${remove}</div>`;
 <div class="card">
 <div class="row"><div class="icon-tile">${icon('identificationCard')}</div><b class="grow">Your WebID</b>
 <button type="button" class="copy-btn" data-copy="${escapeHtml(state.webid)}" hidden>${icon('copy', 18)}${icon('check', 18)}<span data-label>Copy</span></button></div>
-<p class="webid"><a href="${escapeHtml(state.webid)}">${escapeHtml(state.webid).replaceAll('/', '/<wbr>')}</a></p>
+<p class="webid">${escapeHtml(state.webid).replaceAll('/', '/<wbr>')}</p>
 <p class="small">Apps ask for it when you sign in with Solid.</p></div>
 ${storage}
 <div class="card"><h2>Apps</h2>${appRows ? `<div style="margin-top:4px">${appRows}</div>` : '<p class="small">No apps yet. When you sign in to a Solid app with solidshmolid, it shows up here, and you can remove it.</p>'}</div>
