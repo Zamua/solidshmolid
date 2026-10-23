@@ -22,18 +22,21 @@ test: ## unit tests
 	$(NODE) vitest run --root worker
 
 # The dev Worker's secrets: a fresh token key and signing key, the Dropbox app
-# key when DROPBOX_APP_KEY_FILE exists (public, but operator config), and the
-# Clerk dev instance's keys when CLERK_ENV_FILE exists.
+# key when DROPBOX_APP_KEY_FILE exists (public, but operator config), the
+# Google Drive client when GOOGLE_ENV_FILE exists, and the Clerk dev
+# instance's keys when CLERK_ENV_FILE exists.
 DROPBOX_APP_KEY_FILE ?= $(HOME)/keys/dropbox-solidshmolid-app-key
+GOOGLE_ENV_FILE ?= $(HOME)/keys/google-drive-solidshmolid.env
 CLERK_ENV_FILE ?= $(HOME)/keys/clerk-solidshmolid-dev.env
 .dev.vars:
 	@printf 'TOKEN_KEY=%s\n' "$$(head -c 32 /dev/urandom | base64)" > .dev.vars
 	@printf "OIDC_SIGNING_JWK='%s'\n" "$$(node scripts/new-signing-jwk.mjs)" >> .dev.vars
 	@if [ -f "$(DROPBOX_APP_KEY_FILE)" ]; then printf 'DROPBOX_APP_KEY=%s\n' "$$(tr -d '\n' < $(DROPBOX_APP_KEY_FILE))" >> .dev.vars; fi
+	@if [ -f "$(GOOGLE_ENV_FILE)" ]; then grep -E '^GOOGLE_CLIENT_(ID|SECRET)=' "$(GOOGLE_ENV_FILE)" >> .dev.vars; fi
 	@if [ -f "$(CLERK_ENV_FILE)" ]; then grep -E '^CLERK_(PUBLISHABLE|SECRET)_KEY=' "$(CLERK_ENV_FILE)" >> .dev.vars; fi
 	@chmod 600 .dev.vars
 
-dev: .dev.vars ## run the worker locally on :8787 (pods at http://<handle>.localhost:8787; STORAGE=dropbox for real Dropbox)
+dev: .dev.vars ## run the worker locally on :8787 (pods at http://<handle>.localhost:8787; STORAGE=dev,dropbox,google-drive offers real ones too)
 	$(NODE) wrangler dev --config wrangler.dev.jsonc --ip 127.0.0.1 --port 8787 $(if $(STORAGE),--var STORAGE:$(STORAGE))
 
 live: ## the Dropbox adapter against real Dropbox (DROPBOX_LIVE_TOKEN_FILE holds an app-folder token)

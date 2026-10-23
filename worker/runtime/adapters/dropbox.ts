@@ -8,6 +8,7 @@
 
 import { InsufficientStorage, StorageUnavailable } from '../../app/shared/errors.js';
 import { type ByteRange, type FileInfo, type FileLister, type FileStore, type ListedEntry, type Listing, RevisionConflict, type StoredFile, type WriteOptions } from '../../app/storage/ports.js';
+import { chunked } from './chunks.js';
 
 const API = 'https://api.dropboxapi.com/2';
 const CONTENT = 'https://content.dropboxapi.com/2';
@@ -257,29 +258,4 @@ async function errorSummary(res: Response): Promise<string> {
   } catch {
     return text.slice(0, 200);
   }
-}
-
-/** Re-chunks a byte stream into pieces of exactly `size` bytes (the last may
- * be shorter), without holding more than one piece. */
-async function* chunked(stream: ReadableStream<Uint8Array>, size: number): AsyncGenerator<Uint8Array> {
-  const reader = stream.getReader();
-  let buffer = new Uint8Array(size);
-  let filled = 0;
-  for (;;) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    let offset = 0;
-    while (offset < value.byteLength) {
-      const take = Math.min(size - filled, value.byteLength - offset);
-      buffer.set(value.subarray(offset, offset + take), filled);
-      filled += take;
-      offset += take;
-      if (filled === size) {
-        yield buffer;
-        buffer = new Uint8Array(size);
-        filled = 0;
-      }
-    }
-  }
-  if (filled > 0) yield buffer.slice(0, filled);
 }

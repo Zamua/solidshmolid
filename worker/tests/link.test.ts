@@ -3,7 +3,10 @@ import { copyPod } from '../app/storage/migrate.js';
 import { Pod } from '../app/pods/pod.js';
 import { NO_CONDITIONS } from '../domain/pods/requests.js';
 import { DropboxFileStore } from '../runtime/adapters/dropbox.js';
-import { DropboxAuthError, authorizeUrl, exchangeCode, pkce, refreshAccess } from '../runtime/adapters/dropboxOAuth.js';
+import { DropboxAuthError, authorizeUrl, exchangeCode, refreshAccess } from '../runtime/adapters/dropboxOAuth.js';
+import { DRIVE_FILE_SCOPE, exchangeGoogleCode, googleAuthorizeUrl, refreshGoogleAccess, revokeGoogleGrant } from '../runtime/adapters/googleDriveOAuth.js';
+import { pkce } from '../runtime/adapters/pkce.js';
+import { GrantRefused } from '../app/storage/ports.js';
 import { FakeDropbox } from './support/fakeDropbox.js';
 import { ALICE, BASE, newPod, sqliteIndex, streamOf, textOf } from './support/fakes.js';
 
@@ -41,6 +44,50 @@ describe('Dropbox OAuth with PKCE', () => {
     await expect(refreshAccess(fake, 'KEY', 'revoked', 0)).rejects.toThrow(DropboxAuthError);
     expect(forms.every((f) => !('client_secret' in f))).toBe(true);
     expect(forms[0]).toMatchObject({ code_verifier: 'v1', client_id: 'KEY' });
+  });
+});
+
+describe('Google Drive OAuth with PKCE', () => {
+  const client = { id: 'CID', secret: 'CSECRET' };
+
+  it('asks offline for drive.file alone, around an S256 challenge', () => {
+    const url = new URL(googleAuthorizeUrl('CID', 'https://example.com/cb', 'alice.n1', 'chal'));
+    expect(Object.fromEntries(url.searchParams)).toMatchObject({
+      client_id: 'CID',
+      scope: DRIVE_FILE_SCOPE,
+      access_type: 'offline',
+      prompt: 'consent',
+      code_challenge: 'chal',
+      code_challenge_method: 'S256',
+      redirect_uri: 'https://example.com/cb',
+      state: 'alice.n1',
+    });
+  });
+
+  it('exchanges a code with the client secret, names the Drive, refreshes and revokes', async () => {
+    const forms: Record<string, string>[] = [];
+    let scope = DRIVE_FILE_SCOPE;
+    const fake = async (url: string, init?: RequestInit) => {
+      if (url.includes('/drive/v3/about')) {
+        expect(new Headers(init?.headers).get('Authorization')).toBe('Bearer a1');
+        return Response.json({ user: { permissionId: 'perm1' } });
+      }
+      const form = Object.fromEntries(new URLSearchParams(String(init?.body)));
+      forms.push(form);
+      if (url.endsWith('/revoke')) return form.token === 'gone' ? Response.json({ error: 'invalid_token' }, { status: 400 }) : new Response(null);
+      if (form.grant_type === 'authorization_code') return Response.json({ access_token: 'a1', expires_in: 3599, refresh_token: 'r1', scope });
+      if (form.refresh_token === 'revoked') return Response.json({ error: 'invalid_grant' }, { status: 400 });
+      return Response.json({ access_token: 'a2', expires_in: 3599 });
+    };
+    const grant = await exchangeGoogleCode(fake, client, 'https://example.com/cb', 'code1', 'v1', 1000);
+    expect(grant).toEqual({ accessToken: 'a1', expiresAt: 1000 + 3_599_000, refreshToken: 'r1', accountId: 'perm1' });
+    expect(forms[0]).toMatchObject({ code_verifier: 'v1', client_id: 'CID', client_secret: 'CSECRET' });
+    expect(await refreshGoogleAccess(fake, client, 'r1', 0)).toEqual({ accessToken: 'a2', expiresAt: 3_599_000 });
+    await expect(refreshGoogleAccess(fake, client, 'revoked', 0)).rejects.toThrow(GrantRefused);
+    await revokeGoogleGrant(fake, 'r1');
+    await revokeGoogleGrant(fake, 'gone');
+    scope = 'openid';
+    await expect(exchangeGoogleCode(fake, client, 'https://example.com/cb', 'code2', 'v2', 0)).rejects.toThrow(/not granted/);
   });
 });
 

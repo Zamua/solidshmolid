@@ -56,14 +56,15 @@ a{color:var(--blue-deep)}
 .pod-cloud.small{width:58px;height:42px}
 .pod-cloud.small span{inset:9px 0 0 0;font-size:17px}
 .choice{border:2px solid var(--line);border-radius:20px;padding:14px 16px;display:flex;gap:12px;align-items:center}
-.choice+.choice{margin-top:10px}
-.choice.on{border-color:var(--blue);background:var(--mist)}
 .choice.off{opacity:.55}
-.choice .dot{width:22px;height:22px;border-radius:50%;border:2px solid var(--line);flex:none}
-label.choice{cursor:pointer}
-.choice input{position:absolute;opacity:0;pointer-events:none}
-.choice:has(input:focus-visible){outline:3px solid var(--sun);outline-offset:2px}
-.choice.on .dot{border:7px solid var(--blue)}
+.choices{display:grid;gap:10px;margin-top:22px}
+.choices form{display:contents}
+button.choice{width:100%;background:var(--cloud);font:inherit;color:inherit;text-align:left;cursor:pointer;box-shadow:0 1px 0 var(--line),0 14px 30px -22px rgba(42,82,184,.35)}
+button.choice>.icon:last-child{color:var(--ink-soft);flex:none}
+button.choice:hover{border-color:var(--blue);background:var(--mist)}
+button.choice:focus-visible{outline:3px solid var(--sun);outline-offset:2px}
+.choice.off{background:transparent}
+.provider-logo{display:grid;place-items:center;width:46px;height:46px;border-radius:14px;background:var(--mist);color:var(--blue-deep);flex:none}
 ul.plain{list-style:none;padding:0}
 ul.plain.card{padding:14px 20px}
 ul.plain li{display:flex;gap:10px;align-items:flex-start;padding:6px 0}

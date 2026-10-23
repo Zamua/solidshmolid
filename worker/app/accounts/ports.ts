@@ -27,6 +27,8 @@ export interface AccountState {
 
 export interface PendingLink {
   verifier: string;
+  /** The provider the flow started with; its callback alone may finish it. */
+  provider: string;
 }
 
 /** A deletion waiting for its typed confirmation. */

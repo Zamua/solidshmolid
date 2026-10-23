@@ -79,11 +79,11 @@ describe("an account's pods", () => {
     let now = 100_000;
     const { account } = store(() => now);
     await account.create(STATE);
-    await account.rememberPending('n1', { verifier: 'v' });
+    await account.rememberPending('n1', { verifier: 'v', provider: 'google-drive' });
     now += 1000;
-    expect(await account.takePending('n1')).toEqual({ verifier: 'v' });
+    expect(await account.takePending('n1')).toEqual({ verifier: 'v', provider: 'google-drive' });
     expect(await account.takePending('n1')).toBeNull();
-    await account.rememberPending('n2', { verifier: 'v' });
+    await account.rememberPending('n2', { verifier: 'v', provider: 'dropbox' });
     now += 16 * 60 * 1000;
     expect(await account.takePending('n2')).toBeNull();
   });

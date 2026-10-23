@@ -56,7 +56,8 @@ signs in without Clerk (its cookie wins over a Clerk session). `make
 when present; without them `/sign-in` offers only the dev stand-in. `make
 e2e` leaves the Clerk keys out, so it never talks to Clerk. Deployed
 configs never set any of the dev switches.
-`make dev STORAGE=dropbox` connects real Dropbox instead.
+`make dev STORAGE=dev,dropbox,google-drive` offers real Dropbox and Google Drive
+beside dev storage (their keys come from `~/keys`, see the Makefile).
 `wrangler.jsonc` is the deploy contract; per-environment files live in
 `infra/solidshmolid/`.
 

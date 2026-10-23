@@ -6,17 +6,19 @@ import type { Approval } from '../../../app/identity/ports.js';
 import type { Hosts } from '../../hosts.js';
 import { PAGE_SCRIPT_PATH } from '../assets/pageScript.js';
 import { icon } from './icons.js';
+import { lookOf, storagePhrase } from './providers.js';
 import { escapeHtml, page, podCloud } from './shell.js';
 
-export function welcomePage(): Response {
+export function welcomePage(providers: string[]): Response {
+  const storage = storagePhrase(providers);
   return page(
     'solidshmolid',
     `<div class="welcome"><div style="margin-top:72px"><div class="row" style="gap:6px">${podCloud({ html: icon('image', 28) })}${podCloud({ html: icon('notepad', 28) })}${podCloud({ html: icon('calendarBlank', 28) })}</div>
 <h1>A home for your data, kept in your own cloud</h1>
-<p class="lede">Get a pod: a private space your apps can use with your permission. Its files live in your Dropbox, where you can always see them.</p>
+<p class="lede">Get a pod: a private space your apps can use with your permission. Its files live in ${escapeHtml(storage)}, where you can always see them.</p>
 <div class="dock"><div><a class="btn primary" href="/sign-up?return=%2F">Create your pod</a><a class="btn quiet" href="/sign-in?return=%2F">I already have one</a></div></div></div>
 <ul class="plain card features" style="margin-top:26px">
-<li>${icon('folderSimpleLock')}<span>Your files stay in your Dropbox, not on our servers.</span></li>
+<li>${icon('folderSimpleLock')}<span>Your files stay in ${escapeHtml(storage)}, not on our servers.</span></li>
 <li>${icon('stack')}<span>Keep separate pods for work, photos or anything else.</span></li>
 <li>${icon('doorOpen')}<span>Leave anytime. Your folder is still a complete pod.</span></li>
 </ul></div>`,
@@ -32,23 +34,29 @@ export function signupPage(): Response {
   );
 }
 
-/** Choosing storage for an account whose pods have none yet. */
-export function connectPage(provider: string): Response {
-  const dropbox = provider === 'dropbox';
+/** Choosing storage for an account whose pods have none yet: one tap per
+ * provider starts connecting it. */
+export function connectPage(providers: string[]): Response {
+  const choices = providers
+    .map((p) => {
+      const look = lookOf(p);
+      return `<form method="post" action="/api/storage/${escapeHtml(p)}/start"><button class="choice pick">
+<span class="provider-logo"${look.color ? ` style="color:${look.color}"` : ''}>${icon(look.icon, 28)}</span>
+<span class="grow"><b>${escapeHtml(look.name)}</b><span class="small" style="display:block">${escapeHtml(look.where)}</span></span>
+${icon('caretRight', 20)}</button></form>`;
+    })
+    .join('');
   return page(
     'Connect storage',
     `<h1 style="margin-top:44px">Where should your pod live?</h1>
-<p class="lede">Pick the storage you already use. You can add more later.</p>
-<div class="card" style="margin-top:22px;padding:8px">
-<div class="choice on"><div class="dot"></div><div class="grow"><b>${dropbox ? 'Dropbox' : 'Development storage'}</b><div class="small">${dropbox ? 'A folder called Apps/solidshmolid' : 'Kept on this dev server only'}</div></div>${dropbox ? `<span style="color:#0061fe">${icon('dropboxLogo', 28)}</span>` : ''}</div>
-<div class="choice off"><div class="dot"></div><div class="grow"><b>Google Drive</b><div class="small">Coming soon</div></div></div>
-<div class="choice off"><div class="dot"></div><div class="grow"><b>OneDrive</b><div class="small">Coming soon</div></div></div>
+<p class="lede">Pick the storage you already use.</p>
+<div class="choices">${choices}
+<div class="choice off"><span class="provider-logo">${icon('cloud', 28)}</span><span class="grow"><b>OneDrive</b><span class="small" style="display:block">Coming soon</span></span></div>
 </div>
 <ul class="plain" style="margin-top:18px">
 <li>${icon('eye')}<span>We can only open that one folder, nothing else in your storage.</span></li>
-<li>${icon('plugs')}<span>Disconnect anytime from your account or from ${dropbox ? 'Dropbox' : 'the provider'}.</span></li>
-</ul>
-<div class="dock"><form method="post" action="/api/storage/${escapeHtml(provider)}/start"><button class="btn primary">${dropbox ? `${icon('dropboxLogo')}Connect Dropbox` : 'Connect'}</button></form></div>`,
+<li>${icon('plugs')}<span>Disconnect anytime from your account or from your storage provider.</span></li>
+</ul>`,
   );
 }
 
@@ -77,8 +85,8 @@ ${body}${remove}</div>`;
   const storage = state.links
     .map(
       (l) => `<div class="card row">
-<div class="icon-tile">${icon(l.provider === 'dropbox' ? 'dropboxLogo' : 'folderSimpleLock')}</div>
-<div class="grow"><b>${l.provider === 'dropbox' ? 'Your Dropbox' : 'Development storage'}</b><div class="small">${podCount(state, l.linkId)}</div></div>
+<div class="icon-tile">${icon(lookOf(l.provider).icon)}</div>
+<div class="grow"><b>${escapeHtml(lookOf(l.provider).yours)}</b><div class="small">${podCount(state, l.linkId)}</div></div>
 <span class="ok">${icon('checkCircle')}</span></div>`,
     )
     .join('');
