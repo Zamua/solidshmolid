@@ -18,8 +18,12 @@ typecheck: ## typecheck the worker and its tests
 test: ## unit tests
 	$(NODE) vitest run --root worker
 
+# The dev Worker's secrets: a fresh token key, and the Dropbox app key when
+# DROPBOX_APP_KEY_FILE exists (the key is public, but it is operator config).
+DROPBOX_APP_KEY_FILE ?= $(HOME)/keys/dropbox-solidshmolid-app-key
 .dev.vars:
 	@printf 'TOKEN_KEY=%s\n' "$$(head -c 32 /dev/urandom | base64)" > .dev.vars
+	@if [ -f "$(DROPBOX_APP_KEY_FILE)" ]; then printf 'DROPBOX_APP_KEY=%s\n' "$$(tr -d '\n' < $(DROPBOX_APP_KEY_FILE))" >> .dev.vars; fi
 	@chmod 600 .dev.vars
 
 dev: .dev.vars ## run the worker locally on :8787 (pods at http://<handle>.localhost:8787)
