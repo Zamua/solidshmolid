@@ -10,18 +10,10 @@ import { isValidHandle } from '../../domain/pods/handles.js';
 import { rpcIdentities } from '../adapters/householdRpc.js';
 import { profileDocument } from '../../domain/pods/profile.js';
 import { hostsFor } from '../hosts.js';
-import { page } from './pages/shell.js';
 
 export async function devRoute(request: Request, env: Env, url: URL): Promise<Response | null> {
   if (!isDev(env)) return null;
   if (url.pathname === '/dev/sign-in') return signIn(env, url);
-  if (url.pathname === '/sign-in') {
-    const back = encodeURIComponent(url.searchParams.get('return') ?? '/');
-    return page(
-      'Sign in',
-      `<h1>Sign in</h1><p class="lede">Development sign-in.</p><div class="dock"><div><a class="btn primary" href="/dev/sign-in?person=dana&amp;return=${back}">Continue as dana</a></div></div>`,
-    );
-  }
   return null;
 }
 

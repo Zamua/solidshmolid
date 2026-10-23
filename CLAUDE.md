@@ -43,13 +43,17 @@ POD_URL=http://smoke.localhost:8787 DEV_WEBID='http://smoke.localhost:8787/profi
 make build       # wrangler dry-run bundle
 make compat      # a stock CSS 7.2 serves a folder we wrote, and its tokens verify (CSS in ~/.cache/solidshmolid)
 make e2e         # wrangler dev on ::1: CSS WebIDs use a dev pod; our provider signs a client in; CSS accepts our token; signup + connect
+make clerk-live  # with `make dev` running: a throwaway Clerk dev user signs in by ticket; the Worker accepts the session
 ```
 
 `wrangler.dev.jsonc` sets `DEV_MODE=1` and `STORAGE=dev`: named pods
 (`dana.localhost:8787`) are created on first request, `X-Dev-WebID` names the
 agent, files go to the DO's own SQLite (`DevFileStore`, 2 MB per file), and
 connecting storage grants consent on the spot. `/dev/sign-in?person=<id>`
-stands in for Clerk. Deployed configs never set any of it.
+signs in without Clerk (its cookie wins over a Clerk session). `make
+.dev.vars` copies the Clerk dev keys from `~/keys/clerk-solidshmolid-dev.env`
+when present; without them `/sign-in` offers only the dev stand-in. Deployed
+configs never set any of the dev switches.
 `make dev STORAGE=dropbox` connects real Dropbox instead.
 `wrangler.jsonc` is the deploy contract; per-environment files live in
 `infra/solidshmolid/`.
@@ -76,7 +80,10 @@ stands in for Clerk. Deployed configs never set any of it.
 - `worker/tests/tsconfig.json` sets `"exclude": []`: inheriting the base's
   `exclude: ["tests"]` silently skipped typechecking every test.
 - Clerk: app `solidshmolid` (`app_3L4g4ToFucNUwJdtcubuwAogbRp`), dev keys in
-  `~/keys/clerk-solidshmolid-dev.env`. `clerk api` reads a request body from
+  `~/keys/clerk-solidshmolid-dev.env`. clerk-js 6 needs its UI bundle
+  (`@clerk/ui`) loaded beside it and passed to `Clerk.load`; Clerk empties the
+  element it mounts into, so style a wrapper; a session token minted without
+  an `Origin` has no `azp` and the Worker refuses it. `clerk api` reads a request body from
   stdin when stdin is not a terminal, so scripted calls hang unless given
   `< /dev/null`.
 - `curl --data '@prefix ...'` reads a file named `prefix ...`; use
@@ -88,6 +95,6 @@ stands in for Clerk. Deployed configs never set any of it.
 
 The resource server, Dropbox storage, reconcile, our Solid-OIDC provider,
 and signup with connecting storage (households) are in; `make e2e` covers
-signup on the dev provider. Next: Clerk sign-in (spec 002 T010), then
-members and device setup, then the first staging deploy. Not deployed
-anywhere yet.
+signup on the dev provider, and `make clerk-live` a real Clerk session. Next:
+members and device setup, then the first staging deploy (after choosing a
+separate pod domain, see SPEC "URLs"). Not deployed anywhere yet.

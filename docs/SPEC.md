@@ -50,6 +50,14 @@ browser origins. Staging shares the production domain because Cloudflare's
 free certificate covers one wildcard level only: each staging host is an
 exact Worker route, which wins over production's `*.solidshmolid.com` route.
 
+Pods serve whatever HTML their folders hold, so a pod host must never be
+able to set cookies the apex reads: a page on a sibling subdomain could plant
+its owner's session in a visitor's browser (cookie tossing) and have them act
+inside the attacker's household. Pods therefore need a registrable domain of
+their own (or a Public Suffix List entry); the production pod domain is still
+to be chosen. The apex also checks `Origin` on every state-changing POST,
+since SameSite cookies do not stop same-site pages.
+
 A pod's handle is a random pod id: 8 characters from
 `23456789abcdefghjkmnpqrstuvwxyz` (no look-alikes), assigned by the directory,
 unique, and never reused, so nobody picks or squats one and a deleted pod's
@@ -245,6 +253,22 @@ same.
 dev config, which grants consent on the spot and keeps files in each pod's
 own SQLite.
 
+## Signing in (people, on the apex)
+
+People sign in with Clerk. Every apex page loads clerk-js from the
+instance's Frontend API plus our own `/assets/clerk-boot.js`, which keeps the
+60-second session token fresh and mounts sign-in or sign-up where a page asks
+(`/sign-in`, `/sign-up`, `/sign-out`; a `return` parameter must name a page
+on the apex). Pages carry no inline script, and their CSP allows only the
+Frontend API, Clerk's bot protection and Cloudflare Turnstile.
+
+The Worker settles who is signed in once per apex request
+(`runtime/adapters/clerkSessions.ts`, `@clerk/backend`): it verifies the
+session token from the `__session` cookie or a bearer header, requires its
+`azp` to be the apex origin, and answers a page load whose token has expired
+with Clerk's handshake redirect, which comes straight back signed in. The dev
+config also honors the `dev_person` cookie from `/dev/sign-in` first.
+
 ## Authentication
 
 Resource-server side of Solid-OIDC (`runtime/auth/solidOidc.ts`, in the
@@ -276,7 +300,7 @@ config also accepts an `X-Dev-WebID` header.
   token, encrypted at rest); link flow; Dropbox change feed into reconcile.
 - **M3**: our own Solid-OIDC identity provider (done; `make e2e` shows a
   stock CSS accepting its tokens); households, signup and connecting storage
-  (done on the dev provider; Clerk sign-in next); members, device setup,
+  (done; Clerk sign-in done); members, device setup,
   handover, deletion.
 - **M4**: Solid Notifications (WebSocketChannel2023 on hibernating DO
   sockets); OneDrive, Drive, WebDAV adapters; conformance suite in CI.

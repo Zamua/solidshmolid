@@ -17,7 +17,8 @@ import { DropboxFileStore } from './adapters/dropbox.js';
 import { DropboxAuthorization, refreshAccess } from './adapters/dropboxOAuth.js';
 import { rpcDirectory, rpcHousehold, rpcIdentities, rpcPods } from './adapters/householdRpc.js';
 import type { AccessToken, Refresher } from './adapters/linkTokens.js';
-import { type Sessions, devSessions, noSessions } from './adapters/sessions.js';
+import { type ClerkKeys, ClerkSessions, frontendApiOf } from './adapters/clerkSessions.js';
+import { type Sessions, devSessions, firstOf, noSessions } from './adapters/sessions.js';
 import type { SqlRunner } from './adapters/sql.js';
 import { SqlPlacement } from './adapters/sqlPlacement.js';
 import { SqlIndex } from './adapters/sqlPodIndex.js';
@@ -27,6 +28,7 @@ import { type Signer, signerFromJwk } from './adapters/tokenSigner.js';
 import { UnlinkedStore } from './adapters/unlinked.js';
 import type { Env } from './env.js';
 import type { Hosts } from './hosts.js';
+import type { ClerkChrome } from './http/clerkChrome.js';
 
 // Module scope, so keys, JWKS and WebID lookups are cached across requests in
 // one isolate. An eviction costs a rebuild, never a failure.
@@ -66,8 +68,27 @@ export async function provider(env: Env, issuer: string): Promise<Provider> {
   });
 }
 
-export function sessions(env: Env): Sessions {
-  return isDev(env) ? devSessions : noSessions;
+let clerkSessions: { apex: string; sessions: ClerkSessions } | null = null;
+
+/** Who is signed in on the apex: Clerk when configured; the dev config also
+ * honors its dev sign-in cookie first. */
+export function sessions(env: Env, apexOrigin: string): Sessions {
+  const keys = clerkKeys(env);
+  if (keys && clerkSessions?.apex !== apexOrigin) clerkSessions = { apex: apexOrigin, sessions: new ClerkSessions(keys, [apexOrigin]) };
+  const clerk = keys ? clerkSessions!.sessions : null;
+  if (isDev(env)) return clerk ? firstOf(devSessions, clerk) : devSessions;
+  return clerk ?? noSessions;
+}
+
+/** What apex pages need to load Clerk, or null when it is not configured. */
+export function clerkChrome(env: Env): ClerkChrome | null {
+  const keys = clerkKeys(env);
+  return keys ? { publishableKey: keys.publishableKey, frontendApi: frontendApiOf(keys.publishableKey) } : null;
+}
+
+function clerkKeys(env: Env): ClerkKeys | null {
+  if (!env.CLERK_PUBLISHABLE_KEY || !env.CLERK_SECRET_KEY) return null;
+  return { publishableKey: env.CLERK_PUBLISHABLE_KEY, secretKey: env.CLERK_SECRET_KEY };
 }
 
 /** The provider households connect their storage to. */

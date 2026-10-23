@@ -47,12 +47,15 @@ async function signIn(person: string, handle: string, keys: Keys) {
   let answer = await fetch(auth, { headers: { cookie }, redirect: 'manual' });
   if (answer.status === 200) {
     const pending = /name="pending" value="([^"]+)"/u.exec(await answer.text())![1]!;
-    answer = await fetch(`${APEX}/.oidc/auth/decision`, {
-      method: 'POST',
-      headers: { cookie, 'content-type': 'application/x-www-form-urlencoded' },
-      body: `pending=${pending}&approve=yes`,
-      redirect: 'manual',
-    });
+    const decide = (origin: string) =>
+      fetch(`${APEX}/.oidc/auth/decision`, {
+        method: 'POST',
+        headers: { cookie, origin, 'content-type': 'application/x-www-form-urlencoded' },
+        body: `pending=${pending}&approve=yes`,
+        redirect: 'manual',
+      });
+    expect((await decide('http://evil.localhost:9')).status).toBe(403);
+    answer = await decide(APEX!);
   }
   expect(answer.status).toBe(302);
   const back = new URL(answer.headers.get('location')!);

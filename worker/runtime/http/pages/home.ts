@@ -17,7 +17,7 @@ export function welcomePage(): Response {
 <li>${icon('usersThree')}<span>Make pods for your whole family and manage them in one place.</span></li>
 <li>${icon('doorOpen')}<span>Leave anytime. Your folder is still a complete pod.</span></li>
 </ul>
-<div class="dock"><div><a class="btn primary" href="/sign-in?return=%2F">Create your pod</a><a class="btn quiet" href="/sign-in?return=%2F">I already have one</a></div></div>`,
+<div class="dock"><div><a class="btn primary" href="/sign-up?return=%2F">Create your pod</a><a class="btn quiet" href="/sign-in?return=%2F">I already have one</a></div></div>`,
   );
 }
 
@@ -77,7 +77,8 @@ ${podCloud(you ? 'Me' : '?', true)}
 <p class="lede">Everyone signs in as themselves.</p>
 <div class="card" style="padding:6px 16px">${rows}</div>
 ${storage}
-${me ? `<div class="card row"><div class="icon-tile">${icon('identificationCard')}</div><div class="grow"><b>Your WebID</b><div class="small">${escapeHtml(me.webid)}</div><div class="small">Apps ask for this when you sign in with Solid.</div></div></div>` : ''}`,
+${me ? `<div class="card row"><div class="icon-tile">${icon('identificationCard')}</div><div class="grow"><b>Your WebID</b><div class="small">${escapeHtml(me.webid)}</div><div class="small">Apps ask for this when you sign in with Solid.</div></div></div>` : ''}
+<div class="dock"><div><a class="btn quiet" href="/sign-out">${icon('signOut')}Sign out</a></div></div>`,
   );
 }
 

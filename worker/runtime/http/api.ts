@@ -6,12 +6,12 @@
 
 import { LinkExpired, NotAManager } from '../../app/households/households.js';
 import type { HouseholdState } from '../../app/households/ports.js';
-import { households, sessions } from '../composition.js';
+import { households } from '../composition.js';
 import type { Env } from '../env.js';
 import { hostsFor } from '../hosts.js';
 import { escapeHtml, page } from './pages/shell.js';
 
-export async function apiRoute(request: Request, env: Env, url: URL): Promise<Response | null> {
+export async function apiRoute(request: Request, env: Env, url: URL, person: string | null): Promise<Response | null> {
   const provider = env.STORAGE;
   const callback = `/link/${provider}/callback`;
   const routes: Record<string, { method: string; run: (person: string) => Promise<Response> }> = {
@@ -26,7 +26,6 @@ export async function apiRoute(request: Request, env: Env, url: URL): Promise<Re
   if (route.method === 'POST' && request.headers.get('Origin') !== url.origin) {
     return error(403, 'cross_origin', 'requests must come from this site');
   }
-  const person = await sessions(env).personOf(request);
   if (!person) {
     return wantsHtml(request) ? redirect(`/sign-in?return=${encodeURIComponent(url.pathname === callback ? url.href : '/')}`) : error(401, 'signed_out', 'sign in first');
   }
