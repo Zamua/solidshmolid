@@ -1,7 +1,7 @@
 # solidshmolid: working notes
 
-Hosted Solid pods whose bytes live in the user's own Dropbox (then OneDrive,
-Drive, WebDAV). `docs/SPEC.md` is the design and the source of truth; read it
+Hosted Solid pods whose bytes live in the user's own Dropbox or Google Drive
+(OneDrive and WebDAV to come). `docs/SPEC.md` is the design and the source of truth; read it
 before changing behavior, and update it in the same change.
 
 ## Shape
