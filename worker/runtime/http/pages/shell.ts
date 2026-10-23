@@ -9,15 +9,18 @@ const STYLE = `
 :root{--sky-top:#cfe4ff;--sky:#eaf4ff;--cloud:#fff;--mist:#f3f8ff;--blue:#3d6fe0;--blue-deep:#2a52b8;--ink:#1f2d4d;--ink-soft:#5a6b8c;--line:#dbe7fa;--sun:#ffd76a;--leaf:#2f9e6e;--berry:#c2415a;
 --display:'Fredoka',system-ui,sans-serif;--body:'Atkinson Hyperlegible',system-ui,sans-serif}
 *{box-sizing:border-box;margin:0}
-html{touch-action:manipulation;background:var(--sky-top)}
-body{font:17px/1.5 var(--body);color:var(--ink);background:linear-gradient(180deg,var(--sky-top) 0%,var(--sky) 38%,var(--sky) 100%);min-height:100vh}
+html{touch-action:manipulation;background:var(--sky-top);height:100%;overflow:hidden}
+body{font:17px/1.5 var(--body);color:var(--ink);background:linear-gradient(180deg,var(--sky-top) 0%,var(--sky) 38%,var(--sky) 100%);position:fixed;inset:0;overflow:hidden}
+/* The masthead stays put; only the content scrolls (and bounces) beneath it. */
+.scroller{position:absolute;inset:0;overflow-y:auto;-webkit-overflow-scrolling:touch}
+.masthead{position:absolute;top:0;left:0;right:0;z-index:5;padding:calc(env(safe-area-inset-top) + 16px) 22px 18px;background:linear-gradient(180deg,var(--sky-top) 72%,rgba(207,228,255,0))}
+.masthead-inner{max-width:396px;margin:0 auto;display:flex;align-items:center;justify-content:space-between;gap:12px}
 .sky{position:absolute;inset:0 0 auto 0;height:300px;overflow:hidden;pointer-events:none}
 .sky svg{position:absolute}
 .sky .near{left:50%;margin-left:-201px;width:402px;height:300px}
 .sky .far{display:none;width:220px;height:120px}
-main{max-width:440px;margin:0 auto;padding:28px 22px 170px;position:relative}
+main{max-width:440px;margin:0 auto;padding:calc(env(safe-area-inset-top) + 64px) 22px 170px;position:relative}
 .wordmark{font:600 22px var(--display);color:var(--blue-deep);display:flex;align-items:center;gap:8px}
-.masthead{display:flex;align-items:center;justify-content:space-between;gap:12px}
 .account-menu{position:relative}
 .account-menu summary{list-style:none;cursor:pointer}
 .account-menu summary::-webkit-details-marker{display:none}
@@ -92,7 +95,9 @@ ul.plain li .icon{color:var(--blue);flex:none;margin-top:1px}
 .sky{height:420px}
 .sky .near{display:none}
 .sky .far{display:block}
-main{max-width:480px;padding:56px 22px 80px}
+main{max-width:480px;padding:96px 22px 80px}
+.masthead{padding-top:28px}
+.masthead-inner{max-width:436px}
 h1{font-size:38px}
 .dock{position:static;padding:30px 0 0;background:none}
 .dock>*{max-width:none}
@@ -155,10 +160,11 @@ export function page(title: string, body: string, status = 200): Response {
 <title>${escapeHtml(title)}</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:wght@400;700&family=Fredoka:wght@500;600&display=swap" rel="stylesheet">
-<style>${STYLE}</style></head><body>${SKY}<main>
-<header class="masthead"><div class="wordmark">${LOGO} solidshmolid</div></header>
+<style>${STYLE}</style></head><body>${SKY}
+<header class="masthead"><div class="masthead-inner"><div class="wordmark">${LOGO} solidshmolid</div></div></header>
+<div class="scroller"><main>
 ${body}
-</main></body></html>`;
+</main></div></body></html>`;
   return new Response(html, {
     status,
     headers: {
