@@ -71,15 +71,20 @@ Errors follow RFC 6749 (`invalid_grant`, `invalid_client`, `invalid_dpop_proof`,
 
 ## `POST /.oidc/reg`
 
-Dynamic client registration for clients without a Client ID Document: accepts `redirect_uris`,
-`client_name`; returns `client_id` (and no secret for `token_endpoint_auth_method: none`).
+Dynamic client registration for clients without a Client ID Document: accepts up to 10
+`redirect_uris` (each at most 2048 characters) and a `client_name` (cut to 100 characters) in a
+body of at most 16 KiB; returns `client_id` (and no secret for `token_endpoint_auth_method: none`).
 
 ## `GET|POST /.oidc/session/end`
 
-Ends the provider session (signs out of Clerk on this site) and redirects to
-`post_logout_redirect_uri` if it is registered for the client.
+Signs the person out of this site and lands on the front page. A
+`post_logout_redirect_uri` is ignored, so the endpoint cannot send anyone
+elsewhere.
 
 ## Deviations
 
 - Only the authorization code flow with PKCE; no implicit flow.
 - A person can only receive their own WebID.
+- The public client (`http://www.w3.org/ns/solid/terms#PublicOidcClient`) is asked for consent
+  every time: it may name any redirect, so an earlier approval says nothing about who receives
+  the code. The consent page names the host the code goes to.

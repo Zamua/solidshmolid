@@ -119,15 +119,25 @@ export interface Registration {
   token_endpoint_auth_method: 'none';
 }
 
+/** Bounds on a registration, which anyone may send and the directory keeps. */
+export const REGISTRATION_LIMITS = { uris: 10, uriLength: 2048, nameLength: 100 };
+
 /** Validates a dynamic registration request (RFC 7591): public clients only,
- * with http(s) redirect URIs. */
+ * with a few http(s) redirect URIs. */
 export function parseRegistration(body: unknown): Registration {
   const b = (typeof body === 'object' && body !== null ? body : {}) as Record<string, unknown>;
   const uris = b.redirect_uris;
-  if (!Array.isArray(uris) || uris.length === 0 || !uris.every((u) => typeof u === 'string' && /^https?:\/\//u.test(u))) {
-    throw new OidcError('invalid_redirect_uri', 'redirect_uris must be http(s) URLs');
+  const { uris: most, uriLength, nameLength } = REGISTRATION_LIMITS;
+  if (
+    !Array.isArray(uris) ||
+    uris.length === 0 ||
+    uris.length > most ||
+    !uris.every((u) => typeof u === 'string' && u.length <= uriLength && /^https?:\/\//u.test(u))
+  ) {
+    throw new OidcError('invalid_redirect_uri', `redirect_uris must be 1 to ${most} http(s) URLs of at most ${uriLength} characters`);
   }
-  return { redirect_uris: uris as string[], client_name: typeof b.client_name === 'string' ? b.client_name : null, token_endpoint_auth_method: 'none' };
+  const name = typeof b.client_name === 'string' ? b.client_name.slice(0, nameLength) : null;
+  return { redirect_uris: uris as string[], client_name: name, token_endpoint_auth_method: 'none' };
 }
 
 export function publicClient(): ClientInfo {

@@ -340,15 +340,18 @@ export class Pod {
     return this.writes.run(async () => {
       this.refuseMeta(path);
       const existing = this.deps.index.get(path);
-      this.checkConditions(existing, conditions);
+      // Authorization comes before preconditions and conflicts, so their
+      // answers never tell an outsider whether a resource exists.
       if (isContainer(path)) {
-        if (existing) throw new Conflict('the container already exists; PUT cannot replace a container');
         await this.authorizeCreate(path, agent);
+        this.checkConditions(existing, conditions);
+        if (existing) throw new Conflict('the container already exists; PUT cannot replace a container');
         await this.createContainer(path);
         return { path, created: true };
       }
       if (!contentType) throw new BadRequest('Content-Type is required');
       await this.authorizeWrite(path, existing, agent);
+      this.checkConditions(existing, conditions);
       await this.storeBody(path, contentType, body, existing);
       return { path, created: existing === null };
     });
@@ -377,6 +380,13 @@ export class Pod {
       if (!contentType || bareType(contentType) !== N3) throw new UnsupportedMediaType('PATCH takes text/n3');
       if (isContainer(path)) throw new MethodNotAllowed('containers cannot be patched', ['GET', 'HEAD', 'OPTIONS', 'POST', 'PUT', 'DELETE']);
       const existing = this.deps.index.get(path);
+      // Any patch that can change something needs Append at least, so check
+      // that before preconditions and before parsing an outsider's body.
+      if (isAclPath(path)) await this.authorizeWrite(path, existing, agent);
+      else {
+        if (!existing) await this.authorizeCreate(path, agent);
+        await this.require(path, agent, ['append']);
+      }
       this.checkConditions(existing, conditions);
       let patch;
       try {
@@ -387,8 +397,6 @@ export class Pod {
       }
       const storedType = existing?.contentType ?? TURTLE;
       if (!isRdfType(storedType)) throw new UnsupportedMediaType(`${path} is ${storedType}; only RDF documents can be patched`);
-      if (isAclPath(path)) await this.authorizeWrite(path, existing, agent);
-      else if (!existing) await this.authorizeCreate(path, agent);
       await this.require(path, agent, modesForPatch(patch));
       const current = existing ? await parseRdf(await this.requireText(existing), storedType, this.url(path)) : [];
       let next;
@@ -398,6 +406,8 @@ export class Pod {
         if (e instanceof PatchConflict) throw new Conflict(e.message);
         throw e;
       }
+      // A patch that only tests its where clause changes nothing.
+      if (patch.inserts.length === 0 && patch.deletes.length === 0) return { path, created: false };
       await this.storeRdf(path, storedType, await serializeRdf(next, storedType, this.url(path)), existing);
       return { path, created: existing === null };
     });
@@ -413,13 +423,13 @@ export class Pod {
         await this.require(path, agent, ['read']);
         throw new NotFound(path);
       }
-      this.checkConditions(row, conditions);
       if (isAclPath(path)) {
         await this.require(path, agent, ['control']);
       } else {
         await this.require(path, agent, ['write']);
         await this.require(parentOf(path)!, agent, ['write']);
       }
+      this.checkConditions(row, conditions);
       if (row.kind === 'container' && this.members(path).length > 0) throw new Conflict('the container is not empty');
 
       // A container's remaining children are auxiliary resources, its own ACL
