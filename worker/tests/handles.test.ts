@@ -4,19 +4,19 @@ import { parseRange } from '../runtime/http/solid.js';
 
 describe('handles', () => {
   it.each(['alice', 'a', 'a1-b2', 'x'.repeat(32)])('accepts %s', (h) => expect(isValidHandle(h)).toBe(true));
-  it.each(['', '-a', 'a-', 'a--b', 'A', 'a.b', 'www', 'stg', 'stg-alice', 'x'.repeat(33)])('refuses %s', (h) =>
+  it.each(['', '-a', 'a-', 'a--b', 'A', 'a.b', 'www', 'stg', 'alice-stg', 'x'.repeat(33)])('refuses %s', (h) =>
     expect(isValidHandle(h)).toBe(false),
   );
 
   it('reads the handle out of a pod host', () => {
     expect(handleFromHost('alice.solidshmolid.com', '{handle}.solidshmolid.com')).toBe('alice');
     expect(handleFromHost('Alice.SolidShmolid.com', '{handle}.solidshmolid.com')).toBe('alice');
-    expect(handleFromHost('stg-alice.solidshmolid.com', 'stg-{handle}.solidshmolid.com')).toBe('alice');
+    expect(handleFromHost('alice-stg.solidshmolid.page', '{handle}-stg.solidshmolid.page')).toBe('alice');
   });
 
   it('does not let one environment serve the other', () => {
-    expect(handleFromHost('stg-alice.solidshmolid.com', '{handle}.solidshmolid.com')).toBeNull();
-    expect(handleFromHost('alice.solidshmolid.com', 'stg-{handle}.solidshmolid.com')).toBeNull();
+    expect(handleFromHost('alice-stg.solidshmolid.page', '{handle}.solidshmolid.page')).toBeNull();
+    expect(handleFromHost('alice.solidshmolid.page', '{handle}-stg.solidshmolid.page')).toBeNull();
     expect(handleFromHost('solidshmolid.com', '{handle}.solidshmolid.com')).toBeNull();
     expect(handleFromHost('a.b.solidshmolid.com', '{handle}.solidshmolid.com')).toBeNull();
   });

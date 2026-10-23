@@ -41,7 +41,7 @@ clerk-live: .dev.vars ## a real Clerk dev session through a running `make dev` (
 	set -a && . "$(CLERK_ENV_FILE)" && set +a && CLERK_LIVE_APEX=$${CLERK_LIVE_APEX:-http://localhost:8787} \
 	  $(NODE) vitest run --root worker tests/clerk.live.test.ts
 
-smoke: ## smoke a running pod (POD_URL, optional DEV_WEBID; see scripts/smoke.sh)
+smoke: ## smoke a running deployment (APEX_URL; optional POD_URL, NO_POD_URL, DEV_WEBID; see scripts/smoke.sh)
 	./scripts/smoke.sh
 
 CSS_VERSION := 7.2.0

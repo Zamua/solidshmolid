@@ -38,16 +38,17 @@ service disappearing, leaves the user with a complete, self-describing folder.
 
 | | production | staging | local dev |
 | --- | --- | --- | --- |
-| pod root | `https://<id>.solidshmolid.page/` | `https://stg-<id>.solidshmolid.page/` | `http://<id>.localhost:8787/` |
+| pod root | `https://<id>.solidshmolid.page/` | `https://<id>-stg.solidshmolid.page/` | `http://<id>.localhost:8787/` |
 | WebID | `<pod root>profile/card#me` | same | same |
 | account site and identity provider | `https://solidshmolid.com/` | `https://stg.solidshmolid.com/` | `http://localhost:8787/` |
 
 Pod hosts come from `POD_HOST_TEMPLATE` (`{handle}.solidshmolid.page`,
-`stg-{handle}.solidshmolid.page`); the apex from `APEX_HOST`. One pod per host
+`{handle}-stg.solidshmolid.page`); the apex from `APEX_HOST`. One pod per host
 keeps pods in separate browser origins. Staging shares the production domains
-because Cloudflare's free certificate covers one wildcard level only; how
-`stg-` hosts reach the staging Worker is settled with the first staging
-deploy.
+because Cloudflare's free certificate covers one wildcard level only. Its pod
+hosts end in `-stg` because Worker routes allow a wildcard only at the start
+of a host: staging's `*-stg.solidshmolid.page/*` is more specific than
+production's `*.solidshmolid.page/*`, so it wins.
 
 Pods serve whatever HTML their folders hold, so a pod host must never be
 able to set cookies the apex reads: a page on a sibling subdomain could plant
