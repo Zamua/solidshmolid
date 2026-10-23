@@ -2,13 +2,11 @@
 
 const HANDLE = /^[a-z0-9](?:[a-z0-9-]{0,30}[a-z0-9])?$/u;
 
-/** Names that stay free for the service itself. A `-stg` ending belongs to
- * staging, whose pod hosts (`<id>-stg.<pod domain>`) share the production
- * domain. */
+/** Names that stay free for the service itself. */
 const RESERVED = new Set(['www', 'api', 'id', 'idp', 'auth', 'login', 'admin', 'mail', 'stg', 'staging', 'status', 'static', 'app']);
 
 export function isValidHandle(handle: string): boolean {
-  return HANDLE.test(handle) && !handle.includes('--') && !RESERVED.has(handle) && !handle.endsWith('-stg');
+  return HANDLE.test(handle) && !handle.includes('--') && !RESERVED.has(handle);
 }
 
 /** The handle a pod hostname carries under `template` ('{handle}.example.com',

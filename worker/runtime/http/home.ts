@@ -14,7 +14,7 @@ import { problemPage } from './pages/problem.js';
 
 export async function homeRoute(request: Request, env: Env, url: URL, person: string | null): Promise<Response | null> {
   if (request.method !== 'GET') return null;
-  if (url.pathname === '/privacy') return privacyPage();
+  if (url.pathname === '/privacy') return privacyPage(env.SUPPORT_EMAIL ?? null);
   if (url.pathname === PAGE_SCRIPT_PATH) {
     return new Response(PAGE_SCRIPT, { headers: { 'Content-Type': 'text/javascript; charset=utf-8', 'Cache-Control': 'max-age=300' } });
   }

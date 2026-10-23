@@ -1,18 +1,18 @@
-# Contract: Solid-OIDC Provider
+# Solid-OIDC provider
 
-Served on the apex host (`solidshmolid.com`, `stg.solidshmolid.com`, `localhost:8787`).
+Served on the apex host (`pods.example` below; `localhost:8787` in development).
 Conforms to Solid-OIDC; deviations are listed at the end.
 
 ## Discovery: `GET /.well-known/openid-configuration`
 
 ```json
 {
-  "issuer": "https://solidshmolid.com/",
-  "authorization_endpoint": "https://solidshmolid.com/.oidc/auth",
-  "token_endpoint": "https://solidshmolid.com/.oidc/token",
-  "jwks_uri": "https://solidshmolid.com/.oidc/jwks",
-  "registration_endpoint": "https://solidshmolid.com/.oidc/reg",
-  "end_session_endpoint": "https://solidshmolid.com/.oidc/session/end",
+  "issuer": "https://pods.example/",
+  "authorization_endpoint": "https://pods.example/.oidc/auth",
+  "token_endpoint": "https://pods.example/.oidc/token",
+  "jwks_uri": "https://pods.example/.oidc/jwks",
+  "registration_endpoint": "https://pods.example/.oidc/reg",
+  "end_session_endpoint": "https://pods.example/.oidc/session/end",
   "scopes_supported": ["openid", "webid", "offline_access"],
   "response_types_supported": ["code"],
   "grant_types_supported": ["authorization_code", "refresh_token"],
@@ -69,7 +69,7 @@ ID token claims: `iss`, `aud: <client_id>`, `sub` (the WebID), `webid`, `azp`, `
 
 Errors follow RFC 6749 (`invalid_grant`, `invalid_client`, `invalid_dpop_proof`, ...).
 
-## `POST /.oidc/reg` (optional, FR-005 MAY)
+## `POST /.oidc/reg`
 
 Dynamic client registration for clients without a Client ID Document: accepts `redirect_uris`,
 `client_name`; returns `client_id` (and no secret for `token_endpoint_auth_method: none`).
@@ -82,4 +82,4 @@ Ends the provider session (signs out of Clerk on this site) and redirects to
 ## Deviations
 
 - Only the authorization code flow with PKCE; no implicit flow.
-- A person can only receive their own WebID; managers act on member pods through ACLs.
+- A person can only receive their own WebID.

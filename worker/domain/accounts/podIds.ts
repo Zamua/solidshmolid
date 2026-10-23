@@ -1,4 +1,4 @@
-// Pod ids: the random first label of a pod's host (`k3x9fqm7.solidshmolid.com`).
+// Pod ids: the random first label of a pod's host (`k3x9fqm7.pods.example`).
 // People never choose them, so there is nothing to squat; the alphabet leaves
 // out characters that read alike (0/o, 1/i/l).
 

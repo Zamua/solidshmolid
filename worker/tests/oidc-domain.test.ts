@@ -34,11 +34,11 @@ const params = (over: Record<string, string | null> = {}) => {
 
 describe('discovery', () => {
   it('advertises Solid-OIDC and PKCE-only code flow', () => {
-    const d = discovery('https://solidshmolid.com');
-    expect(d.issuer).toBe('https://solidshmolid.com/');
+    const d = discovery('https://pods.example');
+    expect(d.issuer).toBe('https://pods.example/');
     expect(d.solid_oidc_supported).toBe('https://solidproject.org/TR/solid-oidc');
     expect(d.code_challenge_methods_supported).toEqual(['S256']);
-    expect(d.token_endpoint).toBe('https://solidshmolid.com/.oidc/token');
+    expect(d.token_endpoint).toBe('https://pods.example/.oidc/token');
   });
 });
 
@@ -93,7 +93,7 @@ describe('clients and redirects', () => {
 describe('client sites', () => {
   it('names the host people know an app by', () => {
     expect(clientSite({ clientId: 'https://app.example/id', name: 'App', redirectUris: ['https://cb.example/'], isPublic: false })).toBe('app.example');
-    expect(clientSite({ clientId: 'reg_abc', name: 'hostthis', redirectUris: ['https://hostthis.dev/_solid/cb'], isPublic: false })).toBe('hostthis.dev');
+    expect(clientSite({ clientId: 'reg_abc', name: 'Notes', redirectUris: ['https://notes.example/_solid/cb'], isPublic: false })).toBe('notes.example');
     expect(clientSite({ clientId: 'reg_abc', name: null, redirectUris: [], isPublic: false })).toBeNull();
     expect(clientSite(publicClient())).toBeNull();
   });
@@ -108,7 +108,7 @@ describe('PKCE', () => {
 });
 
 describe('token claims', () => {
-  const ctx = { issuer: 'https://solidshmolid.com/', webid: 'https://sam.solidshmolid.com/profile/card#me', clientId: 'https://app.example/id', now: 1000 };
+  const ctx = { issuer: 'https://pods.example/', webid: 'https://sam.pods.example/profile/card#me', clientId: 'https://app.example/id', now: 1000 };
 
   it('binds the access token to the DPoP key and to Solid', () => {
     expect(accessTokenClaims({ ...ctx, jkt: 'thumb', jti: 'j' })).toMatchObject({

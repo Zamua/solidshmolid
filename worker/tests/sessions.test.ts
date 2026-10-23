@@ -22,7 +22,7 @@ describe('sessions', () => {
   });
 
   it('finds the Frontend API host inside a publishable key', () => {
-    expect(frontendApiOf(`pk_test_${btoa('honest-turkey-693.clerk.accounts.dev$')}`)).toBe('honest-turkey-693.clerk.accounts.dev');
+    expect(frontendApiOf(`pk_test_${btoa('quiet-otter-12.clerk.accounts.dev$')}`)).toBe('quiet-otter-12.clerk.accounts.dev');
     expect(frontendApiOf(`pk_live_${btoa('clerk.example.com$')}`)).toBe('clerk.example.com');
     expect(() => frontendApiOf(`pk_test_${btoa('evil.com/"><script>$')}`)).toThrow();
   });
