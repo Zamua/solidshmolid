@@ -14,6 +14,7 @@ export function podLandingPage(status: 401 | 403 | 404, podUrl: string, accountS
 <p class="lede">Nothing lives at ${escapeHtml(new URL(podUrl).host)}. Check the address, or get a pod of your own.</p>
 <div class="dock"><div><a class="btn primary" href="${escapeHtml(accountSite)}">Get a pod</a></div></div>`,
       404,
+      accountSite,
     );
   }
   return page(
@@ -25,12 +26,13 @@ export function podLandingPage(status: 401 | 403 | 404, podUrl: string, accountS
 </ul>
 <div class="dock"><div><a class="btn primary" href="${escapeHtml(`${accountSite}pods/${podId}/files`)}">See its files</a><a class="btn quiet" href="${escapeHtml(accountSite)}">Go to your pods</a></div></div>`,
     status,
+    accountSite,
   );
 }
 
 /** A WebID profile, readable: who it is, where their data lives, who
  * vouches for them. Apps get the profile document itself. */
-export function publicProfilePage(webid: string, profile: ProfileSummary): Response {
+export function publicProfilePage(webid: string, profile: ProfileSummary, accountSite: string): Response {
   const name = profile.name ?? 'A Solid profile';
   const storages = profile.storages.map((s) => `<li>${icon('folderSimpleLock')}<span>${escapeHtml(s)}</span></li>`).join('');
   return page(
@@ -39,6 +41,8 @@ export function publicProfilePage(webid: string, profile: ProfileSummary): Respo
 <div class="card row"><div class="icon-tile">${icon('identificationCard')}</div><div class="grow"><b>WebID</b><div class="small">${escapeHtml(webid)}</div></div></div>
 ${storages ? `<div class="card"><h2>Pods</h2><ul class="plain">${storages}</ul></div>` : ''}
 ${profile.issuers.length ? `<p class="small" style="margin-top:16px">Signs in with ${profile.issuers.map((i) => escapeHtml(new URL(i).host)).join(', ')}.</p>` : ''}`,
+    200,
+    accountSite,
   );
 }
 

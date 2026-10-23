@@ -120,7 +120,7 @@ async function pod(request: Request, env: Env, url: URL, handle: string): Promis
   if (viewingProfile && response.status === 200) {
     const webid = `${base}/profile/card#me`;
     const quads = await parseRdf(await response.text(), response.headers.get('Content-Type') ?? 'text/turtle', `${base}/profile/card`);
-    return publicProfilePage(webid, summarizeProfile(quads, webid));
+    return publicProfilePage(webid, summarizeProfile(quads, webid), hostsFor(env, url).issuer);
   }
   return response;
 }
