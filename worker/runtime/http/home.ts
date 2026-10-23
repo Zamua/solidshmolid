@@ -7,9 +7,10 @@ import { providerDisplayName } from '../../domain/accounts/deletion.js';
 import { accounts, provider, storageProviders } from '../composition.js';
 import type { Env } from '../env.js';
 import { hostsFor } from '../hosts.js';
-import { connectPage, deletePage, filesPage, podsPage, refusalPage, removeAppPage, signupPage, welcomePage } from './pages/home.js';
+import { connectPage, deletePage, filesPage, podsPage, removeAppPage, signupPage, welcomePage } from './pages/home.js';
 import { PAGE_SCRIPT, PAGE_SCRIPT_PATH } from './assets/pageScript.js';
 import { privacyPage } from './pages/privacy.js';
+import { problemPage } from './pages/problem.js';
 
 export async function homeRoute(request: Request, env: Env, url: URL, person: string | null): Promise<Response | null> {
   if (request.method !== 'GET') return null;
@@ -40,7 +41,9 @@ export async function homeRoute(request: Request, env: Env, url: URL, person: st
       if (browseAction === 'download') return download(await accounts(env, hosts).file(person, browsing, path), path);
       return filesPage(state, browsing, path, await accounts(env, hosts).files(person, browsing, path), hosts);
     } catch (e) {
-      if (e instanceof NotFound || e instanceof NoStorageYet || e instanceof PodError) return refusalPage('Not found', 'that file or folder is not there', 404);
+      if (e instanceof NotFound || e instanceof NoStorageYet || e instanceof PodError) {
+        return problemPage('Not found', 'That file or folder is not there.', 404, { way: { href: `/pods/${browsing}/files`, label: 'Back to the pod' } });
+      }
       throw e;
     }
   }

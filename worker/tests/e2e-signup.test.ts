@@ -83,6 +83,10 @@ describe.skipIf(!APEX)('sign up and connect storage', () => {
       'hello <b>',
     ]);
     expect((await fetch(`${APEX}/pods/zzzzzzzz/files`, { headers: { cookie } })).status).toBe(404);
+    const missing = await fetch(`${APEX}/pods/${pod!.id}/files?path=%2Fnope%2F`, { headers: { cookie } });
+    expect([missing.status, await missing.text()]).toEqual([404, expect.stringContaining('That file or folder is not there.')]);
+    const lost = await navigate(`${APEX}/no-such-page`);
+    expect([lost.status, lost.type]).toEqual([404, 'text/html; charset=utf-8']);
 
     // The profile, as a person opening the WebID sees it.
     const profileView = await navigate(new URL('/profile/card', pod!.url).href);

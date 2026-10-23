@@ -5,7 +5,8 @@ import { OidcError, discovery } from '../../domain/identity/oidc.js';
 import { verifyDpopProof } from '../adapters/dpopProof.js';
 import { provider, tokenSigner } from '../composition.js';
 import type { Env } from '../env.js';
-import { consentPage, messagePage } from './pages/oidcPages.js';
+import { consentPage } from './pages/oidcPages.js';
+import { problemPage } from './pages/problem.js';
 
 /** Handles provider paths; null when the path is not the provider's. */
 export async function oidcRoute(request: Request, env: Env, url: URL, person: string | null): Promise<Response | null> {
@@ -23,7 +24,7 @@ export async function oidcRoute(request: Request, env: Env, url: URL, person: st
         case 'sign-in':
           return Response.redirect(`${url.origin}/sign-in?return=${encodeURIComponent(url.toString())}`, 302);
         case 'no-pod':
-          return messagePage('No pod yet', 'Create your pod first, then sign in to the app again.', 403);
+          return problemPage('No pod yet', 'Create your pod first, then sign in to the app again.', 403, { way: { href: '/', label: 'Create your pod' } });
         case 'redirect':
           return Response.redirect(out.location, 302);
         case 'consent':
@@ -33,8 +34,8 @@ export async function oidcRoute(request: Request, env: Env, url: URL, person: st
     if (path === '/.oidc/auth/decision' && request.method === 'POST') {
       // SameSite cookies do not stop a page on a sibling subdomain from
       // posting here; only our own consent page may.
-      if (request.headers.get('Origin') !== url.origin) return messagePage('Not allowed', 'Approve apps from this site only.', 403);
-      if (!person) return messagePage('Signed out', 'Sign in again, then retry from the app.', 401);
+      if (request.headers.get('Origin') !== url.origin) return problemPage('Not allowed', 'Apps can be approved from this site only.', 403);
+      if (!person) return problemPage('Signed out', 'Sign in again, then try again from the app.', 401, { way: { href: '/sign-in', label: 'Sign in' } });
       const form = await request.formData();
       return Response.redirect(await op.decide(person, String(form.get('pending') ?? ''), form.get('approve') === 'yes'), 302);
     }
@@ -52,7 +53,9 @@ export async function oidcRoute(request: Request, env: Env, url: URL, person: st
     if (!(e instanceof OidcError)) throw e;
     // Before the client is trusted, an error is shown to the person, never
     // sent to a redirect the client named.
-    if (path.startsWith('/.oidc/auth')) return messagePage('That sign-in request did not work', e.message, 400);
+    if (path.startsWith('/.oidc/auth')) {
+      return problemPage('This sign-in did not work', 'The app sent a request we could not use. Go back to the app and try again.', 400, { detail: e.message });
+    }
     const status = e.code === 'invalid_client' ? 401 : 400;
     return cors(Response.json({ error: e.code, error_description: e.message }, { status, headers: { 'Cache-Control': 'no-store' } }));
   }

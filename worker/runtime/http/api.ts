@@ -11,7 +11,7 @@ import { accounts, provider } from '../composition.js';
 import type { Env } from '../env.js';
 import { hostsFor } from '../hosts.js';
 import { confirmDeletionPage, refusalPage } from './pages/home.js';
-import { escapeHtml, page } from './pages/shell.js';
+import { problemPage, sentenceOf } from './pages/problem.js';
 
 interface Route {
   method: 'GET' | 'POST';
@@ -132,8 +132,9 @@ function callbackUrl(url: URL, provider: string): string {
 async function finish(env: Env, url: URL, person: string, provider: string): Promise<Response> {
   const [accountKey, nonce] = (url.searchParams.get('state') ?? '').split('.');
   const code = url.searchParams.get('code');
-  if (!accountKey || !nonce) return notConnected('The connection request was not recognised.');
-  if (!code) return notConnected(`Storage was not connected (${url.searchParams.get('error') ?? 'no code'}).`);
+  if (!accountKey || !nonce) return notConnected('This is not a connection we started. Start again from your pods page.');
+  const refused = url.searchParams.get('error');
+  if (!code) return notConnected(refused === 'access_denied' ? 'Access was not allowed, so nothing was connected.' : 'Nothing was connected.', refused ?? undefined);
   try {
     await accounts(env, hostsFor(env, url)).completeLink(person, provider, accountKey, nonce, code, callbackUrl(url, provider));
   } catch (e) {
@@ -165,6 +166,6 @@ function error(status: number, code: string, message: string, extra: Record<stri
   return Response.json({ error: code, message, ...extra }, { status });
 }
 
-function notConnected(reason: string): Response {
-  return page('Not connected', `<h1>Not connected</h1><p class="lede">${escapeHtml(reason)}</p><p><a href="/">Back</a></p>`, 400);
+function notConnected(reason: string, detail?: string): Response {
+  return problemPage('Storage not connected', sentenceOf(reason), 400, { detail, way: { href: '/', label: 'Back to your pods' } });
 }
