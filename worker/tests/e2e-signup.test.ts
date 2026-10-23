@@ -59,5 +59,27 @@ describe.skipIf(!APEX)('sign up and connect storage', () => {
     expect((await fetch(second.url)).status).toBe(401);
     expect((await fetch(new URL('/profile/card', second.url), { headers: { 'X-Dev-WebID': webid } })).status).toBe(404);
     expect(await (await fetch(new URL('/profile/card', pod!.url))).text()).toContain(second.url);
+
+    // Deleting: files need the exact sentence; the WebID pod goes only with
+    // the account; storage holding pods cannot be disconnected.
+    const api = (path: string, body: unknown) =>
+      fetch(`${APEX}${path}`, { method: 'POST', headers: { cookie, origin: APEX!, 'content-type': 'application/json' }, body: JSON.stringify(body) });
+    expect(await (await fetch(`${APEX}/api/apps`, { headers: { cookie } })).json()).toEqual([]);
+    const ask = (await (await api(`/api/pods/${second.id}/delete`, { deleteFiles: true })).json()) as { confirmToken: string; sentence: string };
+    expect(ask.sentence).toBe('yes, delete my data in development storage');
+    expect((await api('/api/deletions/confirm', { token: ask.confirmToken, typed: 'yes' })).status).toBe(400);
+    expect((await fetch(second.url, { headers: { 'X-Dev-WebID': webid } })).status).toBe(200);
+    expect((await api(`/api/pods/${second.id}/delete`, { deleteFiles: false })).status).toBe(200);
+    expect((await fetch(second.url, { headers: { 'X-Dev-WebID': webid } })).status).toBe(404);
+    expect(await (await fetch(new URL('/profile/card', pod!.url))).text()).not.toContain(second.url);
+    expect((await api(`/api/pods/${pod!.id}/delete`, { deleteFiles: false })).status).toBe(409);
+    const storage = ((await (await fetch(`${APEX}/api/me`, { headers: { cookie } })).json()) as { account: { storage: { id: string }[] } }).account.storage;
+    const refused = await api(`/api/storage/${storage[0]!.id}/disconnect`, {});
+    expect(refused.status).toBe(409);
+    expect(((await refused.json()) as { pods: string[] }).pods).toEqual([pod!.id]);
+
+    expect((await api('/api/account/delete', { deleteFiles: false })).status).toBe(200);
+    expect(((await (await fetch(`${APEX}/api/me`, { headers: { cookie } })).json()) as { account: unknown }).account).toBeNull();
+    expect((await fetch(pod!.url, { headers: { 'X-Dev-WebID': webid } })).status).toBe(404);
   });
 });

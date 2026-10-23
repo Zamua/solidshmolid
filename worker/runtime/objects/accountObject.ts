@@ -4,7 +4,7 @@
 // handing the person's pods short-lived access tokens over RPC.
 
 import { DurableObject } from 'cloudflare:workers';
-import type { AccountState, LinkSummary, PendingLink, PodRecord } from '../../app/accounts/ports.js';
+import type { AccountState, LinkSummary, PendingDeletion, PendingLink, PodRecord } from '../../app/accounts/ports.js';
 import type { CodeGrant, RefreshFamily } from '../../app/identity/ports.js';
 import type { AuthorizeRequest, ClientInfo } from '../../domain/identity/oidc.js';
 import { type AccessToken, LinkTokens } from '../adapters/linkTokens.js';
@@ -12,7 +12,7 @@ import { Sealer } from '../adapters/sealing.js';
 import type { SqlRunner } from '../adapters/sql.js';
 import { SqlAccountPods } from '../adapters/sqlAccountPods.js';
 import { SqlAccountStore } from '../adapters/sqlAccountStore.js';
-import { storageRefreshers } from '../composition.js';
+import { storageGrants } from '../composition.js';
 import type { Env } from '../env.js';
 
 export class AccountObject extends DurableObject<Env> {
@@ -22,8 +22,14 @@ export class AccountObject extends DurableObject<Env> {
 
   constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, env);
-    this.pods = new SqlAccountPods(ctx.storage.sql as SqlRunner, new Sealer(env.TOKEN_KEY), (fn) => ctx.storage.transactionSync(fn));
-    this.tokens = new LinkTokens((linkId) => this.pods.grant(linkId), storageRefreshers(env));
+    this.pods = new SqlAccountPods(ctx.storage.sql as SqlRunner, new Sealer(env.TOKEN_KEY), (fn) => ctx.storage.transactionSync(fn), {
+      revoke: (linkId) => this.tokens.revoke(linkId),
+      wipe: async () => {
+        await ctx.storage.deleteAll();
+        this.store = null;
+      },
+    });
+    this.tokens = new LinkTokens((linkId) => this.pods.grant(linkId), storageGrants(env));
   }
 
   /** The store, created under `key` on first use. */
@@ -66,7 +72,7 @@ export class AccountObject extends DurableObject<Env> {
   }
 
   async revokeApp(clientId: string): Promise<void> {
-    this.open().revokeApp(clientId);
+    return this.open().revokeApp(clientId);
   }
 
   async savePending(id: string, request: AuthorizeRequest, client: ClientInfo, expires: number): Promise<void> {
@@ -133,6 +139,27 @@ export class AccountObject extends DurableObject<Env> {
 
   async takeLinkPending(nonce: string): Promise<PendingLink | null> {
     return this.pods.takePending(nonce);
+  }
+
+  async rememberDeletion(token: string, pending: PendingDeletion): Promise<void> {
+    return this.pods.rememberDeletion(token, pending);
+  }
+
+  async takeDeletion(token: string): Promise<PendingDeletion | null> {
+    return this.pods.takeDeletion(token);
+  }
+
+  async removePod(podId: string): Promise<void> {
+    return this.pods.removePod(podId);
+  }
+
+  async removeLink(linkId: string): Promise<void> {
+    return this.pods.removeLink(linkId);
+  }
+
+  /** Ends the account: grants given up, every record gone. */
+  async erase(): Promise<void> {
+    return this.pods.erase();
   }
 
   async accessToken(linkId: string, refresh: boolean): Promise<AccessToken> {

@@ -10,8 +10,13 @@ export interface AccessToken {
   expiresAt: number;
 }
 
-/** Mints an access token from a refresh token, per provider. */
-export type Refresher = (refreshToken: string) => Promise<AccessToken>;
+/** What the service can do with a provider's grant. */
+export interface GrantKeeper {
+  /** Mints an access token from the refresh token. */
+  refresh(refreshToken: string): Promise<AccessToken>;
+  /** Gives the grant up with the provider. */
+  revoke(refreshToken: string): Promise<void>;
+}
 
 const MARGIN_MS = 60_000;
 
@@ -20,7 +25,7 @@ export class LinkTokens {
 
   constructor(
     private readonly grant: (linkId: string) => Promise<{ provider: string; refreshToken: string } | null>,
-    private readonly refreshers: Record<string, Refresher>,
+    private readonly keepers: Record<string, GrantKeeper>,
     private readonly nowMs: () => number = () => Date.now(),
   ) {}
 
@@ -36,13 +41,23 @@ export class LinkTokens {
     return fresh;
   }
 
+  /** Gives the link's grant up with its provider. Best effort: a provider
+   * that is down or already revoked it must not keep the link alive here. */
+  async revoke(linkId: string): Promise<void> {
+    this.cache.delete(linkId);
+    const grant = await this.grant(linkId);
+    const keeper = grant && this.keepers[grant.provider];
+    if (!grant || !keeper) return;
+    await keeper.revoke(grant.refreshToken).catch((e: Error) => console.error(JSON.stringify({ level: 'warn', msg: 'revoke failed', provider: grant.provider, error: e.message })));
+  }
+
   private async mint(linkId: string): Promise<AccessToken> {
     const grant = await this.grant(linkId);
     if (!grant) throw new StorageUnavailable('this storage link no longer exists');
-    const refresher = this.refreshers[grant.provider];
-    if (!refresher) throw new StorageUnavailable(`no way to reach ${grant.provider} storage here`);
+    const keeper = this.keepers[grant.provider];
+    if (!keeper) throw new StorageUnavailable(`no way to reach ${grant.provider} storage here`);
     try {
-      return await refresher(grant.refreshToken);
+      return await keeper.refresh(grant.refreshToken);
     } catch (e) {
       throw new StorageUnavailable(`${grant.provider} refused the stored link (${(e as Error).message}); reconnect storage`);
     }

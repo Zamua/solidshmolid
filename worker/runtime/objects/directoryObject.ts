@@ -22,6 +22,14 @@ export class DirectoryObject extends DurableObject<Env> {
     return this.directory.allocatePodId(accountKey);
   }
 
+  async retirePodId(podId: string): Promise<void> {
+    this.directory.retirePodId(podId);
+  }
+
+  async forget(person: string): Promise<void> {
+    this.directory.forget(person);
+  }
+
   async registerClient(doc: Record<string, unknown>): Promise<string> {
     return this.directory.registerClient(doc);
   }

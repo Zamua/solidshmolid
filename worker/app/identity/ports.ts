@@ -9,6 +9,10 @@ export interface AccountStore {
   webid(): Promise<string | null>;
   hasApproval(clientId: string, webid: string): Promise<boolean>;
   approve(clientId: string, clientName: string | null, webid: string): Promise<void>;
+  /** Apps the person approved, newest first. */
+  approvals(): Promise<Approval[]>;
+  /** Removes an app's approval and ends every refresh token it holds. */
+  revokeApp(clientId: string): Promise<void>;
   /** A pending consent, so the decision can be checked against what was shown. */
   savePending(id: string, request: AuthorizeRequest, client: ClientInfo, expires: number): Promise<void>;
   takePending(id: string, now: number): Promise<{ request: AuthorizeRequest; client: ClientInfo } | null>;
@@ -21,6 +25,14 @@ export interface AccountStore {
   revokeFamily(id: string): Promise<void>;
   /** Revokes every family that came from a given code. */
   revokeFromCode(codeHash: string): Promise<void>;
+}
+
+export interface Approval {
+  clientId: string;
+  clientName: string | null;
+  webid: string;
+  /** Unix seconds. */
+  approved: number;
 }
 
 export interface CodeGrant {

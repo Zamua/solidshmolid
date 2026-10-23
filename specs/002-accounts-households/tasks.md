@@ -74,9 +74,9 @@ change that added more pods per person.
 
 ## Phase 6: User Story 4, controls and guardrails (P3)
 
-- [ ] T027 [P] [US4] Tests: disconnect refused while pods use the link (names them); delete keeps files by default; typed sentence required to delete files (red-reachable check run once)
-- [ ] T028 [US4] App list and revoke (`/api/apps`) on the pods page
-- [ ] T029 [US4] Disconnect storage; delete a pod or the account with the two-step confirmation
+- [x] T027 [P] [US4] Tests: disconnect refused while pods use the link (names them); delete keeps files by default; typed sentence required to delete files (red-reachable check run once)
+- [x] T028 [US4] App list and revoke (`/api/apps`) on the pods page
+- [x] T029 [US4] Disconnect storage; delete a pod or the account with the two-step confirmation
 - [ ] T030 [US4] Move a pod to another link (copy, adopt, switch; old copy serves until commit)
 
 ## Phase 11: Polish

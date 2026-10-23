@@ -36,27 +36,28 @@ service disappearing, leaves the user with a complete, self-describing folder.
 
 ## URLs
 
-| what | URL |
-| --- | --- |
 | | production | staging | local dev |
 | --- | --- | --- | --- |
-| pod root | `https://<handle>.solidshmolid.com/` | `https://stg-<handle>.solidshmolid.com/` | `http://<handle>.localhost:8787/` |
+| pod root | `https://<id>.solidshmolid.page/` | `https://stg-<id>.solidshmolid.page/` | `http://<id>.localhost:8787/` |
 | WebID | `<pod root>profile/card#me` | same | same |
-| identity provider | `https://solidshmolid.com/` | `https://stg.solidshmolid.com/` | `http://localhost:8787/` |
+| account site and identity provider | `https://solidshmolid.com/` | `https://stg.solidshmolid.com/` | `http://localhost:8787/` |
 
-Pod hosts come from `POD_HOST_TEMPLATE` (`{handle}.solidshmolid.com`,
-`stg-{handle}.solidshmolid.com`). One pod per host keeps pods in separate
-browser origins. Staging shares the production domain because Cloudflare's
-free certificate covers one wildcard level only: each staging host is an
-exact Worker route, which wins over production's `*.solidshmolid.com` route.
+Pod hosts come from `POD_HOST_TEMPLATE` (`{handle}.solidshmolid.page`,
+`stg-{handle}.solidshmolid.page`); the apex from `APEX_HOST`. One pod per host
+keeps pods in separate browser origins. Staging shares the production domains
+because Cloudflare's free certificate covers one wildcard level only; how
+`stg-` hosts reach the staging Worker is settled with the first staging
+deploy.
 
 Pods serve whatever HTML their folders hold, so a pod host must never be
 able to set cookies the apex reads: a page on a sibling subdomain could plant
 its owner's session in a visitor's browser (cookie tossing) and have them act
-inside the attacker's account. Pods therefore need a registrable domain of
-their own (or a Public Suffix List entry); the production pod domain is still
-to be chosen. The apex also checks `Origin` on every state-changing POST,
-since SameSite cookies do not stop same-site pages.
+inside the attacker's account. Pods therefore live on a registrable domain of
+their own, `solidshmolid.page`, apart from the account site on
+`solidshmolid.com`. Pods can still set cookies for one another; the pod
+server reads no cookies, and a Public Suffix List entry for
+`solidshmolid.page` would close that too. The apex also checks `Origin` on
+every state-changing POST, since SameSite cookies do not stop same-site pages.
 
 A pod's handle is a random pod id: 8 characters from
 `23456789abcdefghjkmnpqrstuvwxyz` (no look-alikes), assigned by the directory,
@@ -297,7 +298,7 @@ config also accepts an `X-Dev-WebID` header.
   token, encrypted at rest); link flow; Dropbox change feed into reconcile.
 - **M3**: our own Solid-OIDC identity provider (done; `make e2e` shows a
   stock CSS accepting its tokens); signup, connecting storage, more pods per
-  person and Clerk sign-in (done); then the app list, disconnecting storage,
-  moving and deleting pods.
+  person, Clerk sign-in, the app list, disconnecting storage and deleting
+  pods or the account (done); then moving pods between storage links.
 - **M4**: Solid Notifications (WebSocketChannel2023 on hibernating DO
   sockets); OneDrive, Drive, WebDAV adapters; conformance suite in CI.

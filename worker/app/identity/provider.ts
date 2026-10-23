@@ -5,7 +5,7 @@
 // the token endpoint can find the account without a global table. Their
 // secret parts are stored only as hashes.
 
-import type { AccountStore, Accounts, ClientRegistry, Clock, Secrets, TokenSigner } from './ports.js';
+import type { AccountStore, Accounts, Approval, ClientRegistry, Clock, Secrets, TokenSigner } from './ports.js';
 import {
   type AuthorizeRequest,
   CODE_TTL_S,
@@ -69,6 +69,17 @@ export class Provider {
     if (!webid) throw new OidcError('invalid_request', 'no pod for this account');
     await account.approve(client.clientId, client.name, webid);
     return this.issueCode(account, request, webid);
+  }
+
+  /** The apps a person approved. */
+  async apps(personId: string): Promise<Approval[]> {
+    return (await this.deps.accounts.forPerson(personId)).approvals();
+  }
+
+  /** Revokes an app: it must ask again, and its refresh tokens stop working.
+   * Access tokens it already holds run out on their own (ACCESS_TOKEN_TTL_S). */
+  async revokeApp(personId: string, clientId: string): Promise<void> {
+    await (await this.deps.accounts.forPerson(personId)).revokeApp(clientId);
   }
 
   /** Dynamic client registration for apps without a Client ID Document. */

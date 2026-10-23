@@ -194,7 +194,9 @@ describe('token', () => {
     const w = world();
     await signedInWithPod(w);
     const first = await exchange(w, await code(w), 'jkt');
-    (await w.accountFor('clerk_sam')).revokeApp(CLIENT);
+    expect((await w.provider.apps('clerk_sam')).map((a) => [a.clientId, a.clientName, a.webid])).toEqual([[CLIENT, 'Sketchpad', WEBID]]);
+    await w.provider.revokeApp('clerk_sam', CLIENT);
+    expect(await w.provider.apps('clerk_sam')).toEqual([]);
     await expect(
       w.provider.token(new URLSearchParams({ grant_type: 'refresh_token', refresh_token: String(first.refresh_token) }), 'jkt'),
     ).rejects.toMatchObject({ code: 'invalid_grant' });

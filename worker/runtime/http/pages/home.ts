@@ -2,6 +2,7 @@
 // the person's pods. One page whose content follows where the person is.
 
 import type { AccountState } from '../../../app/accounts/ports.js';
+import type { Approval } from '../../../app/identity/ports.js';
 import type { Hosts } from '../../hosts.js';
 import { icon } from './icons.js';
 import { escapeHtml, page, podCloud } from './shell.js';
@@ -50,16 +51,24 @@ export function connectPage(provider: string): Response {
   );
 }
 
-export function podsPage(state: AccountState, hosts: Hosts): Response {
+export function podsPage(state: AccountState, apps: Approval[], hosts: Hosts): Response {
   const rows = state.pods
     .map((p, i) => {
       const origin = hosts.podOrigin(p.podId);
       const where = p.linkId ? `<a href="${escapeHtml(origin)}/">${escapeHtml(new URL(origin).host)}</a>` : 'Waiting for storage';
+      const remove = i === 0 ? '' : `<a class="icon-btn" href="/pods/${escapeHtml(p.podId)}/delete" aria-label="Delete pod ${i + 1}">${icon('trash', 20)}</a>`;
       return `<div class="row" style="padding:12px 0${i ? ';border-top:1px solid var(--line)' : ''}">
 ${podCloud(String(i + 1), true)}
 <div class="grow"><div class="row" style="gap:8px;flex-wrap:wrap"><b>${i === 0 ? 'Your pod' : `Pod ${i + 1}`}</b>${i === 0 ? ' <span class="badge">WebID</span>' : ''}</div>
-<div class="small">${where}</div></div></div>`;
+<div class="small">${where}</div></div>${remove}</div>`;
     })
+    .join('');
+  const appRows = apps
+    .map(
+      (a, i) => `<div class="row" style="padding:10px 0${i ? ';border-top:1px solid var(--line)' : ''}">
+<div class="grow"><b>${escapeHtml(a.clientName ?? hostOf(a.clientId))}</b><div class="small">${escapeHtml(hostOf(a.clientId))}</div></div>
+<form method="post" action="/api/apps/revoke"><input type="hidden" name="clientId" value="${escapeHtml(a.clientId)}"><button class="chip-btn">Remove</button></form></div>`,
+    )
     .join('');
   const storage = state.links
     .map(
@@ -76,6 +85,8 @@ ${podCloud(String(i + 1), true)}
 <div class="card" style="padding:6px 16px">${rows}</div>
 ${storage}
 <div class="card row"><div class="icon-tile">${icon('identificationCard')}</div><div class="grow"><b>Your WebID</b><div class="small">${escapeHtml(state.webid)}</div><div class="small">Apps ask for this when you sign in with Solid.</div></div></div>
+<div class="card"><h2>Apps</h2>${appRows ? `<div style="margin-top:4px">${appRows}</div>` : '<p class="small">No apps yet. When you sign in to a Solid app with solidshmolid, it shows up here, and you can remove it.</p>'}</div>
+<p class="small center" style="margin-top:22px"><a href="/account/delete">Delete account</a></p>
 <div class="dock"><div><form method="post" action="/api/pods"><button class="btn primary">${icon('plus')}Add a pod</button></form><a class="btn quiet" href="/sign-out">${icon('signOut')}Sign out</a></div></div>`,
   );
 }
@@ -83,4 +94,57 @@ ${storage}
 function podCount(state: AccountState, linkId: string): string {
   const n = state.pods.filter((p) => p.linkId === linkId).length;
   return n === 1 ? '1 pod lives here' : `${n} pods live here`;
+}
+
+/** What deleting removes, and the choice of keeping the files. */
+export function deletePage(what: 'pod' | 'account', action: string, providerName: string | null): Response {
+  const title = what === 'pod' ? 'Delete this pod?' : 'Delete your account?';
+  const lede =
+    what === 'pod'
+      ? 'Its address stops working and apps lose it. Its folder stays in your storage unless you choose otherwise.'
+      : 'Your pods stop working, your WebID goes away, and apps lose access. Your folders stay in your storage unless you choose otherwise.';
+  const files = providerName
+    ? `<button class="btn danger-quiet" name="deleteFiles" value="true">Delete and remove the files from ${escapeHtml(providerName)}</button>`
+    : '';
+  return page(
+    title,
+    `<h1 style="margin-top:40px">${title}</h1>
+<p class="lede">${lede}</p>
+<form method="post" action="${escapeHtml(action)}" class="card stack">
+<button class="btn danger" name="deleteFiles" value="false">Delete, keep the files</button>
+${files}
+<a class="btn quiet" href="/">Cancel</a>
+</form>`,
+  );
+}
+
+/** The last step before files are deleted: typing the sentence. */
+export function confirmDeletionPage(token: string, sentence: string): Response {
+  return page(
+    'Delete files',
+    `<h1 style="margin-top:40px">This deletes files for good</h1>
+<p class="lede">Type the sentence below exactly to delete the files from your storage. Anything else deletes nothing.</p>
+<form method="post" action="/api/deletions/confirm" class="card">
+<p class="sentence">${escapeHtml(sentence)}</p>
+<input type="hidden" name="token" value="${escapeHtml(token)}">
+<label class="label" for="typed">Type it here</label>
+<input class="field" id="typed" name="typed" autocomplete="off" autocapitalize="off" spellcheck="false" required>
+<button class="btn danger" style="margin-top:16px">Delete the files</button>
+<a class="btn quiet" href="/">Cancel</a>
+</form>`,
+  );
+}
+
+function hostOf(clientId: string): string {
+  try {
+    return new URL(clientId).host;
+  } catch {
+    return clientId;
+  }
+}
+
+/** A request the service refused, with the way back. */
+export function refusalPage(title: string, message: string, status: number): Response {
+  const sentence = message.charAt(0).toUpperCase() + message.slice(1);
+  return page(title, `<h1 style="margin-top:40px">${escapeHtml(title)}</h1><p class="lede">${escapeHtml(sentence)}.</p><p style="margin-top:18px"><a href="/">Back to your pods</a></p>`, status);
 }

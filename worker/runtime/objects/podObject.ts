@@ -9,12 +9,12 @@
 import { DurableObject } from 'cloudflare:workers';
 import type { Placement } from '../../app/accounts/ports.js';
 import { Conflict } from '../../app/shared/errors.js';
-import { addStoragePatch } from '../../domain/pods/profile.js';
+import { addStoragePatch, removeStoragePatch } from '../../domain/pods/profile.js';
 import { NO_CONDITIONS } from '../../domain/pods/requests.js';
 import { placePod } from '../../app/storage/placement.js';
 import type { PlacementOutcome } from '../../app/storage/ports.js';
 import { ProofLedger } from '../adapters/proofLedger.js';
-import { type PodServices, podServices } from '../composition.js';
+import { type PodServices, podServices, storageAround } from '../composition.js';
 import type { Env } from '../env.js';
 import { handleSolid, withCors } from '../http/solid.js';
 
@@ -27,7 +27,7 @@ export const INTERNAL_PREFIX = 'x-solidshmolid-';
 export class PodObject extends DurableObject<Env> {
   private services: PodServices | null = null;
   private servicesFor = '';
-  private readonly proofs: ProofLedger;
+  private proofs: ProofLedger;
 
   constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, env);
@@ -87,6 +87,27 @@ export class PodObject extends DurableObject<Env> {
   async declareStorage(base: string, owner: string, storage: string): Promise<void> {
     const { pod } = this.open(base);
     await pod.patch('/profile/card', { webid: owner }, addStoragePatch(storage), 'text/n3', NO_CONDITIONS);
+  }
+
+  /** Takes another of the owner's pods out of this pod's profile; already
+   * gone is fine, so a retried deletion goes through. */
+  async dropStorage(base: string, owner: string, storage: string): Promise<void> {
+    const { pod } = this.open(base);
+    try {
+      await pod.patch('/profile/card', { webid: owner }, removeStoragePatch(storage), 'text/n3', NO_CONDITIONS);
+    } catch (e) {
+      if (!(e instanceof Conflict)) throw e;
+    }
+  }
+
+  /** Stops serving the pod and forgets it; with `deleteFiles`, its folder is
+   * deleted from storage first. Without, the folder stays a complete pod. */
+  async retire(base: string, deleteFiles: boolean): Promise<void> {
+    const placement = this.open(base).placement.current();
+    if (deleteFiles && placement) await storageAround(this.env, placement)?.removeFolder(placement.folder);
+    await this.ctx.storage.deleteAll();
+    this.services = null;
+    this.proofs = new ProofLedger(this.ctx.storage.sql);
   }
 
   private open(base: string): PodServices {

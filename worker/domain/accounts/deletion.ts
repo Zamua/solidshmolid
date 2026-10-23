@@ -8,3 +8,8 @@ export function confirmationSentence(providerName: string): string {
 export function confirmsDeletion(typed: string, sentence: string): boolean {
   return typed === sentence;
 }
+
+/** How the confirmation sentence names a storage provider. */
+export function providerDisplayName(provider: string): string {
+  return { dropbox: 'Dropbox', dev: 'development storage' }[provider] ?? provider;
+}

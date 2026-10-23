@@ -40,6 +40,14 @@ export class SqlDirectory {
     }
   }
 
+  retirePodId(podId: string): void {
+    this.sql.exec("UPDATE pod_id SET state = 'deleted' WHERE pod_id = ?", podId);
+  }
+
+  forget(person: string): void {
+    this.sql.exec('DELETE FROM person WHERE person = ?', person);
+  }
+
   registerClient(doc: Record<string, unknown>): string {
     const id = `reg_${this.newKey()}`;
     this.sql.exec('INSERT INTO client(id, doc, created) VALUES (?, ?, ?)', id, JSON.stringify({ ...doc, client_id: id }), this.nowS());

@@ -1,7 +1,7 @@
 // One person's provider state in their AccountObject's SQLite: their WebID,
 // app approvals, pending consents, authorization codes and refresh families.
 
-import type { AccountStore, CodeGrant, RefreshFamily } from '../../app/identity/ports.js';
+import type { AccountStore, Approval, CodeGrant, RefreshFamily } from '../../app/identity/ports.js';
 import type { AuthorizeRequest, ClientInfo } from '../../domain/identity/oidc.js';
 import type { SqlRunner } from './sql.js';
 
@@ -55,7 +55,7 @@ export class SqlAccountStore implements AccountStore {
   }
 
   /** Revokes an app: its approval and every refresh family it holds. */
-  revokeApp(clientId: string): void {
+  async revokeApp(clientId: string): Promise<void> {
     this.sql.exec('DELETE FROM approval WHERE client_id = ?', clientId);
     for (const row of this.sql.exec('SELECT id, json FROM family WHERE revoked = 0').toArray()) {
       if ((JSON.parse(String(row.json)) as RefreshFamily).clientId === clientId) {
@@ -64,7 +64,7 @@ export class SqlAccountStore implements AccountStore {
     }
   }
 
-  approvals(): { clientId: string; clientName: string | null; webid: string; approved: number }[] {
+  async approvals(): Promise<Approval[]> {
     return this.sql
       .exec('SELECT client_id, client_name, webid, approved FROM approval ORDER BY approved DESC')
       .toArray()

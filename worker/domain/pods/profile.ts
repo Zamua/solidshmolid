@@ -29,3 +29,12 @@ _:add a solid:InsertDeletePatch;
   solid:inserts { <#me> pim:storage <${storage}>. }.
 `;
 }
+
+/** The reverse of `addStoragePatch`. */
+export function removeStoragePatch(storage: string): string {
+  return `@prefix solid: <http://www.w3.org/ns/solid/terms#>.
+@prefix pim: <http://www.w3.org/ns/pim/space#>.
+_:remove a solid:InsertDeletePatch;
+  solid:deletes { <#me> pim:storage <${storage}>. }.
+`;
+}

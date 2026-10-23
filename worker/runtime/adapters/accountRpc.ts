@@ -35,6 +35,8 @@ function accountStore(stub: DurableObjectStub<AccountObject>, key: string): Acco
     webid: () => stub.webid(),
     hasApproval: (clientId, webid) => stub.hasApproval(clientId, webid),
     approve: (clientId, name, webid) => stub.approve(clientId, name, webid),
+    approvals: () => stub.approvals(),
+    revokeApp: (clientId) => stub.revokeApp(clientId),
     savePending: (id, request, client, expires) => stub.savePending(id, request, client, expires),
     takePending: (id, now) => stub.takePending(id, now),
     saveCode: (hash, grant) => stub.saveCode(hash, grant),
@@ -53,6 +55,8 @@ export function rpcDirectory(env: Env): Directory {
   return {
     accountKeyFor: (person) => stub.accountKeyFor(person),
     allocatePodId: (accountKey) => stub.allocatePodId(accountKey),
+    retirePodId: (podId) => stub.retirePodId(podId),
+    forget: (person) => stub.forget(person),
   };
 }
 
@@ -69,6 +73,11 @@ export function rpcAccountPods(env: Env, key: string): AccountRepository {
     placePod: (podId, linkId) => stub.placePod(podId, linkId),
     rememberPending: (nonce, pending) => stub.rememberLinkPending(nonce, pending),
     takePending: (nonce) => stub.takeLinkPending(nonce),
+    rememberDeletion: (token, pending) => stub.rememberDeletion(token, pending),
+    takeDeletion: (token) => stub.takeDeletion(token),
+    removePod: (podId) => stub.removePod(podId),
+    removeLink: (linkId) => stub.removeLink(linkId),
+    erase: () => stub.erase(),
   };
 }
 
@@ -81,6 +90,9 @@ export function rpcPods(env: Env, hosts: Hosts): Pods {
     },
     declareStorage: (webidPodId: string, owner: string, storagePodId: string) =>
       stub(webidPodId).declareStorage(hosts.podOrigin(webidPodId), owner, `${hosts.podOrigin(storagePodId)}/`),
+    dropStorage: (webidPodId: string, owner: string, storagePodId: string) =>
+      stub(webidPodId).dropStorage(hosts.podOrigin(webidPodId), owner, `${hosts.podOrigin(storagePodId)}/`),
+    retire: (podId: string, deleteFiles: boolean) => stub(podId).retire(hosts.podOrigin(podId), deleteFiles),
   };
 }
 

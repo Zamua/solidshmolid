@@ -3,7 +3,7 @@
 // LOCAL DEVELOPMENT ONLY, like DevFileStore.
 
 import type { Grant, StorageAuthorization } from '../../app/storage/ports.js';
-import type { Refresher } from './linkTokens.js';
+import type { GrantKeeper } from './linkTokens.js';
 
 export const DEV_PROVIDER = 'dev';
 
@@ -14,4 +14,7 @@ export const devAuthorization: StorageAuthorization = {
   exchange: async (): Promise<Grant> => ({ refreshToken: 'dev', accountId: 'dev', accessToken: 'dev', expiresAt: Number.MAX_SAFE_INTEGER }),
 };
 
-export const devRefresher: Refresher = async () => ({ token: 'dev', expiresAt: Number.MAX_SAFE_INTEGER });
+export const devGrants: GrantKeeper = {
+  refresh: async () => ({ token: 'dev', expiresAt: Number.MAX_SAFE_INTEGER }),
+  revoke: async () => {},
+};

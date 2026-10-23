@@ -55,6 +55,13 @@ ul.plain li .icon{color:var(--blue);flex:none;margin-top:1px}
 .btn{display:flex;align-items:center;justify-content:center;gap:10px;width:100%;height:56px;border:0;border-radius:18px;font:600 18px var(--display);cursor:pointer;text-decoration:none}
 .btn.primary{background:var(--blue);color:#fff;box-shadow:0 10px 20px -12px var(--blue)}
 .btn.quiet{background:transparent;color:var(--blue-deep);height:48px}
+.btn.danger{background:var(--berry);color:#fff}
+.btn.danger-quiet{background:transparent;color:var(--berry);border:2px solid var(--berry)}
+.stack>.btn+.btn{margin-top:12px}
+.icon-btn{display:grid;place-items:center;width:40px;height:40px;border-radius:12px;color:var(--ink-soft)}
+.icon-btn:hover{background:var(--mist);color:var(--berry)}
+.chip-btn{font:600 14px var(--body);color:var(--berry);background:var(--mist);border:0;border-radius:999px;padding:6px 12px;cursor:pointer}
+.sentence{font:600 17px var(--body);background:var(--mist);border-radius:14px;padding:12px 14px;margin:0 0 16px;user-select:all}
 .btn:focus-visible,a:focus-visible{outline:3px solid var(--sun);outline-offset:2px}
 .dock{position:fixed;left:0;right:0;bottom:0;padding:26px 22px calc(30px + env(safe-area-inset-bottom));background:linear-gradient(180deg,rgba(234,244,255,0) 0%,var(--sky) 34%)}
 .dock>*{max-width:396px;margin:0 auto}

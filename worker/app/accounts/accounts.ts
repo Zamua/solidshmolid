@@ -4,18 +4,31 @@
 // once storage is connected, in its own folder of that storage. Further pods
 // belong to the same WebID and are listed in its profile.
 
+import { confirmationSentence, confirmsDeletion, providerDisplayName } from '../../domain/accounts/deletion.js';
 import type { StorageAuthorization } from '../storage/ports.js';
-import type { AccountRepository, AccountState, Directory, Identities, Ids, Pods } from './ports.js';
+import type { AccountRepository, AccountState, Directory, Identities, Ids, Logins, PodRecord, Pods } from './ports.js';
 
 export class NotSignedUp extends Error {}
 export class LinkExpired extends Error {}
 export class NoStorageYet extends Error {}
+export class NotFound extends Error {}
+export class HoldsWebid extends Error {}
+export class NotConfirmed extends Error {}
+export class StorageInUse extends Error {
+  constructor(readonly podIds: string[]) {
+    super(`this storage still holds ${podIds.length === 1 ? 'a pod' : `${podIds.length} pods`}; delete ${podIds.length === 1 ? 'it' : 'them'} first`);
+  }
+}
+
+/** A deletion either happened, or waits for the person to type `sentence`. */
+export type DeletionStep = { done: true } | { confirm: { token: string; sentence: string } };
 
 export interface AccountsDeps {
   directory: Directory;
   account: (key: string) => AccountRepository;
   pods: Pods;
   identities: Identities;
+  logins: Logins;
   authorization: StorageAuthorization;
   ids: Ids;
   /** The WebID of a pod id ('https://<id>.solidshmolid.com/profile/card#me'). */
@@ -80,6 +93,80 @@ export class Accounts {
     await this.placeWaiting(state.key, link.linkId, link.provider);
     await this.deps.pods.declareStorage(first.podId, state.webid, podId);
     return (await account.load())!;
+  }
+
+  /** Deletes a pod other than the first (which holds the WebID; deleting the
+   * account removes it). Its files stay unless `deleteFiles`, which first
+   * asks for the typed sentence. */
+  async deletePod(person: string, podId: string, deleteFiles: boolean): Promise<DeletionStep> {
+    const state = await this.signedUp(person);
+    const pod = state.pods.find((p) => p.podId === podId);
+    if (!pod) throw new NotFound('no such pod');
+    if (pod === state.pods[0]) throw new HoldsWebid('this pod holds your WebID; delete your account to remove it');
+    if (deleteFiles && pod.linkId) return this.askToConfirm(state, podId, [pod]);
+    await this.removePod(state, pod, false);
+    return { done: true };
+  }
+
+  /** Deletes the account and every pod. Files stay unless `deleteFiles`,
+   * which first asks for the typed sentence. */
+  async deleteAccount(person: string, deleteFiles: boolean): Promise<DeletionStep> {
+    const state = await this.signedUp(person);
+    if (deleteFiles && state.pods.some((p) => p.linkId)) return this.askToConfirm(state, null, state.pods);
+    await this.erase(person, state, false);
+    return { done: true };
+  }
+
+  /** Step two of deleting files: only the exact sentence deletes anything,
+   * and any answer uses up the request. */
+  async confirmDeletion(person: string, token: string, typed: string): Promise<'pod' | 'account'> {
+    const state = await this.signedUp(person);
+    const pending = await this.deps.account(state.key).takeDeletion(token);
+    if (!pending || !confirmsDeletion(typed, pending.sentence)) throw new NotConfirmed('the sentence did not match; start again and type it exactly');
+    if (pending.podId === null) {
+      await this.erase(person, state, true);
+      return 'account';
+    }
+    const pod = state.pods.find((p) => p.podId === pending.podId);
+    if (!pod) throw new NotFound('no such pod');
+    await this.removePod(state, pod, true);
+    return 'pod';
+  }
+
+  /** Disconnects storage that no pod uses any more. */
+  async disconnect(person: string, linkId: string): Promise<AccountState> {
+    const state = await this.signedUp(person);
+    if (!state.links.some((l) => l.linkId === linkId)) throw new NotFound('no such storage');
+    const using = state.pods.filter((p) => p.linkId === linkId).map((p) => p.podId);
+    if (using.length > 0) throw new StorageInUse(using);
+    const account = this.deps.account(state.key);
+    await account.removeLink(linkId);
+    return (await account.load())!;
+  }
+
+  private async askToConfirm(state: AccountState, podId: string | null, pods: PodRecord[]): Promise<DeletionStep> {
+    const providers = [...new Set(pods.map((p) => state.links.find((l) => l.linkId === p.linkId)?.provider).filter((p) => p !== undefined))];
+    const sentence = confirmationSentence(providers.map(providerDisplayName).join(' and '));
+    const token = this.deps.ids.random();
+    await this.deps.account(state.key).rememberDeletion(token, { podId, sentence });
+    return { confirm: { token, sentence } };
+  }
+
+  private async removePod(state: AccountState, pod: PodRecord, deleteFiles: boolean): Promise<void> {
+    if (pod.linkId) await this.deps.pods.dropStorage(state.pods[0]!.podId, state.webid, pod.podId);
+    await this.deps.pods.retire(pod.podId, deleteFiles);
+    await this.deps.account(state.key).removePod(pod.podId);
+    await this.deps.directory.retirePodId(pod.podId);
+  }
+
+  private async erase(person: string, state: AccountState, deleteFiles: boolean): Promise<void> {
+    for (const pod of [...state.pods].reverse()) {
+      await this.deps.pods.retire(pod.podId, deleteFiles);
+      await this.deps.directory.retirePodId(pod.podId);
+    }
+    await this.deps.account(state.key).erase();
+    await this.deps.directory.forget(person);
+    await this.deps.logins.remove(person);
   }
 
   /** Places every pod still waiting for storage, each in its own folder of
