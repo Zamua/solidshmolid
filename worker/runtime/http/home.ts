@@ -7,7 +7,7 @@ import { providerDisplayName } from '../../domain/accounts/deletion.js';
 import { accounts, provider, storageProviders } from '../composition.js';
 import type { Env } from '../env.js';
 import { hostsFor } from '../hosts.js';
-import { connectPage, deletePage, filesPage, newPodPage, podsPage, removeAppPage, signupPage, welcomePage } from './pages/home.js';
+import { connectPage, connectionsPage, deletePage, filesPage, newPodPage, podsPage, removeAppPage, welcomePage } from './pages/home.js';
 import { PAGE_SCRIPT, PAGE_SCRIPT_PATH } from './assets/pageScript.js';
 import { privacyPage } from './pages/privacy.js';
 import { problemPage } from './pages/problem.js';
@@ -25,11 +25,17 @@ export async function homeRoute(request: Request, env: Env, url: URL, person: st
   }
   const deletingPod = /^\/pods\/([a-z0-9]{1,32})\/delete$/u.exec(url.pathname)?.[1];
   const [, browsing, browseAction] = /^\/pods\/([a-z0-9]{1,32})\/(files|download)$/u.exec(url.pathname) ?? [];
-  if (url.pathname !== '/' && url.pathname !== '/account/delete' && url.pathname !== '/pods/new' && !deletingPod && !browsing) return null;
+  if (url.pathname !== '/' && url.pathname !== '/account/delete' && url.pathname !== '/pods/new' && url.pathname !== '/connections' && !deletingPod && !browsing) return null;
   if (!person) return url.pathname === '/' ? welcomePage(storageProviders(env)) : Response.redirect(`${url.origin}/sign-in?return=${encodeURIComponent(url.pathname)}`, 302);
   const hosts = hostsFor(env, url);
   const state = await accounts(env, hosts).mine(person);
-  if (!state) return url.pathname === '/' ? signupPage() : Response.redirect(`${url.origin}/`, 302);
+  // A signed-in person without a pod gets one on their first visit, so
+  // sign-up goes straight on to choosing storage. Repeating it is harmless.
+  if (!state) {
+    if (url.pathname !== '/') return Response.redirect(`${url.origin}/`, 302);
+    await accounts(env, hosts).signup(person);
+    return connectPage(storageProviders(env));
+  }
   if (deletingPod) {
     const pod = state.pods.find((p) => p.podId === deletingPod);
     if (!pod || pod === state.pods[0]) return Response.redirect(`${url.origin}/`, 302);
@@ -51,6 +57,7 @@ export async function homeRoute(request: Request, env: Env, url: URL, person: st
   if (url.pathname === '/account/delete') return deletePage('account', '/api/account/delete', providerNames(state, state.pods.map((p) => p.linkId)));
   if (state.links.length === 0) return connectPage(storageProviders(env));
   if (url.pathname === '/pods/new') return newPodPage(state, storageProviders(env));
+  if (url.pathname === '/connections') return connectionsPage(state, storageProviders(env));
   return podsPage(state, await (await provider(env, `${url.origin}/`)).apps(person), hosts, storageProviders(env));
 }
 
