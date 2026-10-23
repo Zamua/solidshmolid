@@ -4,13 +4,27 @@
 
 **Created**: 2026-10-22
 
-**Status**: Draft
+**Status**: Clarified
 
 **Input**: User description: "Users sign in with one solidshmolid login (Clerk, as in our other
 apps), then link whatever storage they use. One account can create and manage several pods, for
 example a parent with one Google Drive making pods for a spouse and three kids and handing each
 their own identity. Our site is also the Solid identity provider those people sign in with from
 any Solid app."
+
+## Clarifications
+
+### Session 2026-10-22
+
+- Q: What may a manager do with a managed member's data? → A: Full access: managers read and
+  write member pods in any Solid app. A member who wants privacy gets their own account and
+  storage (handover).
+- Q: What is a managed child, account-wise? → A: A separate Clerk user the manager creates
+  (username, no email), signed in on the child's device by a one-time setup code plus passkey.
+  Revisit after real use.
+- Q: When a pod or account is deleted, what happens to its storage folder? → A: The user chooses
+  at deletion time; the default leaves it untouched. Deleting the files takes several
+  confirmation steps, including typing a sentence naming the storage provider.
 
 ## User Scenarios & Testing *(mandatory)*
 
@@ -77,7 +91,9 @@ is stored in the manager's storage, and its WebID is distinct from the manager's
 1. **Given** a household with connected storage, **When** the manager adds a member pod,
    **Then** it gets its own folder, handle and WebID, and the manager is recorded as its manager.
 2. **Given** a member pod, **When** anyone looks at it, **Then** its owner is the member's
-   WebID, not the manager's; the manager's control is a separate grant.
+   WebID, not the manager's; the manager's full access is a separate grant.
+3. **Given** a member pod, **When** the manager signs in to a Solid app as themselves,
+   **Then** the app can read and write the member's pod.
 
 ---
 
@@ -161,7 +177,8 @@ WebID and URLs; the former manager can no longer manage or read it.
 
 Dana sees each pod's storage use and which apps each member has approved. She can reset a
 member's login, export or delete a member pod, and cannot disconnect storage that still holds
-pods.
+pods. Deleting asks whether to also delete the files in her storage, and deleting them takes
+several deliberate confirmations.
 
 **Why this priority**: Needed before real families rely on it; not needed for a first user.
 
@@ -172,8 +189,10 @@ move or delete first.
 
 1. **Given** storage holding three pods, **When** Dana tries to disconnect it, **Then** it is
    refused and the three pods are named.
-2. **Given** a member pod, **When** Dana deletes it, **Then** its handle stops resolving and its
-   folder is handled per FR-019.
+2. **Given** a member pod, **When** Dana deletes it and keeps the default, **Then** its handle
+   stops resolving and its folder stays in her storage, still a complete pod.
+3. **Given** Dana chooses to delete the files too, **When** she has not typed the confirmation
+   sentence naming her storage provider exactly, **Then** nothing is deleted.
 
 ### Edge Cases
 
@@ -214,12 +233,11 @@ move or delete first.
 - **FR-011**: Each pod MUST live in its own folder inside one storage link; several pods MAY
   share one link.
 - **FR-012**: A member pod's root access rule MUST name the member's WebID as owner and grant
-  the manager the following:
-  [NEEDS CLARIFICATION: manage only (usage, reset login, delete), or also read and write the
-  member's data through the service?].
-- **FR-013**: Managed members MUST be able to exist without an email address:
-  [NEEDS CLARIFICATION: is a managed child a separate Clerk user (username plus passkey, created
-  by the manager) or a profile under the manager's Clerk user that the device setup unlocks?].
+  each manager's WebID Read, Write and Control (inherited by the whole pod). Handover removes
+  the managers' grant.
+- **FR-013**: A managed member MUST be a separate Clerk user created by the manager, with a
+  username and no email address; it signs in with passkeys registered through device setup
+  codes. Handover adds the member's own email or other sign-in method to that same user.
 - **FR-014**: Device setup codes MUST be single-use, member-specific and expire in 15 minutes.
 - **FR-015**: Resetting a member's login MUST revoke their passkeys and app approvals.
 - **FR-016**: Family sharing MUST be expressed as an access rule naming a household group, so
@@ -227,9 +245,10 @@ move or delete first.
 - **FR-017**: Moving a pod to another storage link MUST keep its WebID and every resource URL,
   and MUST leave the old copy serving until the new one is complete.
 - **FR-018**: Storage that still holds pods MUST NOT be disconnectable.
-- **FR-019**: Deleting a pod or account MUST handle its storage folder as follows:
-  [NEEDS CLARIFICATION: left untouched (theirs to keep), deleted, or the user's choice at
-  deletion time?].
+- **FR-019**: Deleting a pod or account MUST ask whether to also delete the pod folders in the
+  user's storage; the default MUST leave them untouched. Deleting the files MUST take at least
+  two separate confirmation steps, the last requiring the user to type a sentence naming the
+  storage provider (for example "yes, delete my data in Dropbox"); anything else cancels.
 
 ### Key Entities
 
@@ -254,6 +273,8 @@ move or delete first.
   authenticated request on the first attempt (checked automatically on every change).
 - **SC-004**: After a handover or storage move, 100% of previously valid resource URLs still resolve.
 - **SC-005**: The service holds no passwords and no storage app secrets.
+- **SC-006**: No storage files are ever deleted without the typed confirmation (checked by a test
+  that attempts deletion with every other input).
 
 ## Assumptions
 

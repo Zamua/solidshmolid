@@ -13,7 +13,7 @@
 
 ## Requirement Completeness
 
-- [ ] No [NEEDS CLARIFICATION] markers remain (3 open: FR-012, FR-013, FR-019; asked 2026-10-22)
+- [x] No [NEEDS CLARIFICATION] markers remain (FR-012, FR-013, FR-019 answered 2026-10-22)
 - [x] Requirements are testable and unambiguous
 - [x] Success criteria are measurable
 - [x] Success criteria are technology-agnostic (no implementation details)
@@ -32,4 +32,4 @@
 ## Notes
 
 - Clerk and the Solid protocols are named because the user chose Clerk and Solid defines the interface; they are constraints, not design.
-- Clarifications pending before /speckit-plan.
+- Clarified 2026-10-22; ready for /speckit-plan.
