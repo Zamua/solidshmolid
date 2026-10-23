@@ -1,0 +1,14 @@
+# Copy to .dev.vars.local and fill in what you have; `make dev` appends it to
+# the generated .dev.vars. Every line is optional: without them, dev storage
+# and the dev sign-in stand-in still work.
+
+# A Dropbox app with App folder access (offer it with `make dev STORAGE=dev,dropbox`).
+# DROPBOX_APP_KEY=
+
+# A Google OAuth web client with the drive.file scope (STORAGE=dev,google-drive).
+# GOOGLE_CLIENT_ID=
+# GOOGLE_CLIENT_SECRET=
+
+# A Clerk development instance, for real sign-in pages.
+# CLERK_PUBLISHABLE_KEY=
+# CLERK_SECRET_KEY=

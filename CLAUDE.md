@@ -52,14 +52,14 @@ make clerk-live  # with `make dev` running: a throwaway Clerk dev user signs in 
 agent, files go to the DO's own SQLite (`DevFileStore`, 2 MB per file), and
 connecting storage grants consent on the spot. `/dev/sign-in?person=<id>`
 signs in without Clerk (its cookie wins over a Clerk session). `make
-.dev.vars` copies the Clerk dev keys from `~/keys/clerk-solidshmolid-dev.env`
-when present; without them `/sign-in` offers only the dev stand-in. `make
+.dev.vars` appends `.dev.vars.local` (see `.dev.vars.example`): with Clerk
+keys there, `/sign-in` shows Clerk; without them, only the dev stand-in. `make
 e2e` leaves the Clerk keys out, so it never talks to Clerk. Deployed
 configs never set any of the dev switches.
 `make dev STORAGE=dev,dropbox,google-drive` offers real Dropbox and Google Drive
-beside dev storage (their keys come from `~/keys`, see the Makefile).
-`wrangler.jsonc` is the deploy contract; per-environment files live in
-`infra/solidshmolid/`.
+beside dev storage, with their keys in `.dev.vars.local`.
+`wrangler.jsonc` is the deploy contract with example hosts; a deployment
+supplies its own copy (README "Self-hosting").
 
 ## Gotchas
 
@@ -82,8 +82,7 @@ beside dev storage (their keys come from `~/keys`, see the Makefile).
   fetches a dev pod host (the verifier, CSS) depends on it.
 - `worker/tests/tsconfig.json` sets `"exclude": []`: inheriting the base's
   `exclude: ["tests"]` silently skipped typechecking every test.
-- Clerk: app `solidshmolid` (`app_3L4g4ToFucNUwJdtcubuwAogbRp`), dev keys in
-  `~/keys/clerk-solidshmolid-dev.env`. clerk-js 6 needs its UI bundle
+- Clerk: clerk-js 6 needs its UI bundle
   (`@clerk/ui`) loaded beside it and passed to `Clerk.load`; Clerk empties the
   element it mounts into, so style a wrapper; a session token minted without
   an `Origin` has no `azp` and the Worker refuses it. `clerk api` reads a request body from
@@ -94,9 +93,6 @@ beside dev storage (their keys come from `~/keys`, see the Makefile).
 - On Cloudflare a Worker's subrequest to its own custom domain or route gets
   522 (wrangler dev allows it, so local tests pass). Anything the Worker
   fetches from itself goes through `runtime/ownHosts.ts`.
-- The mini's tailnet resolver (100.100.100.100) caches NXDOMAIN for a new
-  hostname well past the zone's 30-minute negative TTL; smoke a fresh
-  deployment from a fleet box (see `infra/solidshmolid/DEPLOY.md`).
 - Install scripts for esbuild/workerd are allow-listed in `package.json`
   (`allowScripts`), which npm now requires.
 
@@ -105,11 +101,7 @@ beside dev storage (their keys come from `~/keys`, see the Makefile).
 The resource server, Dropbox and Google Drive storage, reconcile, our
 Solid-OIDC provider, signup with connecting storage, and more pods per person
 (each in storage the person picks) are in; `make e2e` covers signup on the dev
-provider, and `make clerk-live` a real Clerk session. Households and children's
-accounts were dropped on 2026-10-23. The app list, Connections (connect and
-disconnect storage), delete, the WebID card, and browsing a pod's files are in.
-Staging runs on `stg.solidshmolid.com` (pods on `<id>-stg.solidshmolid.page`)
-and production on `solidshmolid.com` (pods on `<id>.solidshmolid.page`); see
-SPEC "URLs" and `infra/solidshmolid/DEPLOY.md`. Still to come: Dropbox
-production approval (before 50 people connect), Google brand verification,
-moving pods between storage links.
+provider, and `make clerk-live` a real Clerk session. The app list,
+Connections (connect and disconnect storage), delete, the WebID card, and
+browsing a pod's files are in. Still to come: moving pods between storage
+links, OneDrive.

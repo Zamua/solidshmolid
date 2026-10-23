@@ -1,5 +1,7 @@
 {
   "name": "solidshmolid",
+  "description": "Solid pods that live in storage you already own",
+  "license": "MIT",
   "private": true,
   "type": "module",
   "scripts": {

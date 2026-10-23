@@ -1,7 +1,7 @@
-// Against a running dev server and the real Clerk dev instance: a throwaway
-// Clerk user signs in with a sign-in token (as a device-setup QR code would),
-// and the Worker accepts the resulting session token for signup and storage.
-// `make clerk-live` runs it; it needs the dev instance's keys.
+// Against a running dev server and a real Clerk development instance: a
+// throwaway Clerk user signs in with a sign-in token, and the Worker accepts
+// the resulting session token for signup and storage. `make clerk-live` runs
+// it; it needs the instance's keys.
 
 import { afterAll, describe, expect, it } from 'vitest';
 import { frontendApiOf } from '../runtime/adapters/clerkSessions.js';

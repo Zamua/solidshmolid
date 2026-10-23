@@ -35,7 +35,7 @@ export interface AccountsDeps {
   /** The providers people may connect, by name. */
   authorizations: Record<string, StorageAuthorization>;
   ids: Ids;
-  /** The WebID of a pod id ('https://<id>.solidshmolid.com/profile/card#me'). */
+  /** The WebID of a pod id ('https://<id>.pods.example/profile/card#me'). */
   webidOf: (podId: string) => string;
 }
 

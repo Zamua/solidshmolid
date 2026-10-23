@@ -1,11 +1,11 @@
 // The privacy page. It states what the service holds today; change it in the
 // same change as anything it describes.
 
-import { page } from './shell.js';
+import { escapeHtml, page } from './shell.js';
 
-const SUPPORT = 'solidshmolid-support@googlegroups.com';
-
-export function privacyPage(): Response {
+/** `support` is where people write with questions; the section goes when
+ * a deployment names none. */
+export function privacyPage(support: string | null): Response {
   return page(
     'Privacy',
     `<h1>Privacy</h1>
@@ -23,8 +23,8 @@ export function privacyPage(): Response {
 <p>We do not sell your data, show ads, or use your files for anything except serving your pod to you and the apps you allow.</p>
 <h2>Leaving</h2>
 <p>You can remove apps, disconnect storage, delete a pod and delete your account. Deleting your account removes what we keep and your sign-in with Clerk. Your storage folders stay yours unless you choose to delete them too, and each is still a complete pod you can use with another Solid server. You can also revoke our access from your storage provider at any time.</p>
-<h2>Contact</h2>
-<p>Questions or requests: <a href="mailto:${SUPPORT}">${SUPPORT}</a>.</p>
+${support ? `<h2>Contact</h2>
+<p>Questions or requests: <a href="mailto:${escapeHtml(support)}">${escapeHtml(support)}</a>.</p>` : ''}
 </div>`,
   );
 }

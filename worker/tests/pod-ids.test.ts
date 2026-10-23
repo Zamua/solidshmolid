@@ -28,11 +28,12 @@ describe('pod ids', () => {
     for (const c of POD_ID_ALPHABET) expect(Math.abs((counts.get(c) ?? 0) - expected)).toBeLessThan(expected * 0.25);
   });
 
-  it('are valid pod hosts, in production and staging', () => {
+  it('are valid pod hosts, and never hold a hyphen a host template could share', () => {
     const id = podIdFrom(crypto.getRandomValues(new Uint8Array(32)))!;
     expect(isValidHandle(id)).toBe(true);
-    expect(handleFromHost(`${id}.solidshmolid.page`, '{handle}.solidshmolid.page')).toBe(id);
-    expect(handleFromHost(`${id}-stg.solidshmolid.page`, '{handle}-stg.solidshmolid.page')).toBe(id);
+    expect(id).not.toContain('-');
+    expect(handleFromHost(`${id}.pods.example`, '{handle}.pods.example')).toBe(id);
+    expect(handleFromHost(`${id}-test.pods.example`, '{handle}-test.pods.example')).toBe(id);
     expect(isPodId('k3x9fqm0')).toBe(false);
     expect(isPodId('k3x9fqm')).toBe(false);
   });

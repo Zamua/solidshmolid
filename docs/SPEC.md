@@ -1,12 +1,13 @@
 # solidshmolid: Solid pods on the user's own storage
 
-Served at `solidshmolid.com`. The code names no domain: hosts come from
-deployment variables.
+The public instance runs at `solidshmolid.com`. The code names no domain:
+hosts come from deployment variables; `account.example` and `pods.example`
+stand in for them below.
 
 ## What it is
 
 A hosted Solid server whose pods live in storage the user already owns
-(Dropbox first, then OneDrive, Google Drive, WebDAV). The service runs the
+(Dropbox and Google Drive; OneDrive and WebDAV could follow). The service runs the
 protocol: identity, access control, containers, PATCH, notifications. The
 user's storage holds every byte of every resource. Revoking our access, or the
 service disappearing, leaves the user with a complete, self-describing folder.
@@ -36,28 +37,27 @@ service disappearing, leaves the user with a complete, self-describing folder.
 
 ## URLs
 
-| | production | staging | local dev |
-| --- | --- | --- | --- |
-| pod root | `https://<id>.solidshmolid.page/` | `https://<id>-stg.solidshmolid.page/` | `http://<id>.localhost:8787/` |
-| WebID | `<pod root>profile/card#me` | same | same |
-| account site and identity provider | `https://solidshmolid.com/` | `https://stg.solidshmolid.com/` | `http://localhost:8787/` |
+| | deployed | local dev |
+| --- | --- | --- |
+| pod root | `https://<id>.pods.example/` | `http://<id>.localhost:8787/` |
+| WebID | `<pod root>profile/card#me` | same |
+| account site and identity provider | `https://account.example/` | `http://localhost:8787/` |
 
-Pod hosts come from `POD_HOST_TEMPLATE` (`{handle}.solidshmolid.page`,
-`{handle}-stg.solidshmolid.page`); the apex from `APEX_HOST`. One pod per host
-keeps pods in separate browser origins. Staging shares the production domains
-because Cloudflare's free certificate covers one wildcard level only. Its pod
-hosts end in `-stg` because Worker routes allow a wildcard only at the start
-of a host: staging's `*-stg.solidshmolid.page/*` is more specific than
-production's `*.solidshmolid.page/*`, so it wins.
+Pod hosts come from `POD_HOST_TEMPLATE` (`{handle}.pods.example`); the apex
+from `APEX_HOST`. One pod per host keeps pods in separate browser origins. A
+second deployment (staging, say) can share the pod domain with a template
+like `{handle}-test.pods.example`: Cloudflare's free certificate covers one
+wildcard level only, and Worker routes allow a wildcard only at the start of
+a host, so `*-test.pods.example/*` is the more specific route and wins over
+`*.pods.example/*`. Pod ids never contain `-`, so the two never overlap.
 
 Pods serve whatever HTML their folders hold, so a pod host must never be
 able to set cookies the apex reads: a page on a sibling subdomain could plant
 its owner's session in a visitor's browser (cookie tossing) and have them act
 inside the attacker's account. Pods therefore live on a registrable domain of
-their own, `solidshmolid.page`, apart from the account site on
-`solidshmolid.com`. Pods can still set cookies for one another; the pod
-server reads no cookies, and a Public Suffix List entry for
-`solidshmolid.page` would close that too. The apex also checks `Origin` on
+their own (`pods.example`), apart from the account site (`account.example`).
+Pods can still set cookies for one another; the pod server reads no cookies,
+and a Public Suffix List entry for the pod domain would close that too. The apex also checks `Origin` on
 every state-changing POST, since SameSite cookies do not stop same-site pages.
 
 A pod's handle is a random pod id: 8 characters from
@@ -87,7 +87,7 @@ client --> Worker (stateless)
            FileStore port --> Dropbox | OneDrive | Drive | WebDAV | dev store
 ```
 
-### Layers (enforced by a test, as in kcal)
+### Layers (enforced by a test)
 
 - `worker/domain/`: pure. Paths, the CSS file layout, content-type mapping,
   RDF graph helpers, WAC evaluation, N3 Patch application, container
@@ -231,7 +231,7 @@ can restore from Drive's trash.
 ## Accounts and storage
 
 Signing up (`POST /api/signup`, contracts in
-`specs/002-accounts-households/contracts/account-api.md`) assigns the person's first pod id
+`docs/account-api.md`) assigns the person's first pod id
 and their WebID, and binds their account to it. Repeating it, or racing it, returns the same
 account: the account keeps the first record written. Each person has one account, one WebID
 and any number of pods; the account's records live in their `AccountObject` beside the
