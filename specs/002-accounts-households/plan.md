@@ -1,0 +1,108 @@
+# Implementation Plan: Accounts, Households and Solid Sign-In
+
+**Branch**: `002-accounts-households` | **Date**: 2026-10-22 | **Spec**: [spec.md](spec.md)
+
+**Input**: Feature specification from `/specs/002-accounts-households/spec.md`
+
+## Summary
+
+People sign in with Clerk; the Worker becomes a Solid-OIDC provider that issues DPoP-bound
+tokens for the WebIDs it hosts, using the Clerk session to know who is signing in. A household
+(Durable Object) owns storage links and pod placements; each pod is a subfolder of one storage
+link. Managers create member pods and Clerk users for children, sign devices in with one-time
+Clerk sign-in tokens plus passkeys, share folders through a WAC group in the manager's pod, move
+or hand over pods without changing their URLs, and delete pods with a typed confirmation before
+any file is removed. Details and alternatives: [research.md](research.md).
+
+## Technical Context
+
+**Language/Version**: TypeScript 5.9 on Cloudflare Workers (`nodejs_compat`)
+
+**Primary Dependencies**: `jose` (token signing and verification), `n3` (RDF), Clerk
+(`@clerk/clerk-js` on pages, Backend API over fetch); no new server framework
+
+**Storage**: Durable Object SQLite (`PodObject`, `HouseholdObject`, `AccountObject`,
+`DirectoryObject`); pod data in the user's Dropbox
+
+**Testing**: vitest with node:sqlite fakes; `make compat` (CSS as an independent resource
+server and identity provider); `make e2e` on wrangler dev with Clerk testing tokens;
+`make live` for Dropbox
+
+**Target Platform**: Cloudflare Workers (staging `stg.solidshmolid.com`, prod `solidshmolid.com`)
+
+**Project Type**: web service with server-rendered pages
+
+**Performance Goals**: token endpoint p95 under 300 ms; consent page under 1 s server time;
+sign-in end to end limited by Clerk's UI
+
+**Constraints**: no passwords and no storage app secrets held (SC-005); secrets only in Worker
+secrets; 100 MB request bodies
+
+**Scale/Scope**: early households in the hundreds; up to 10 pods per household in v1
+
+## Constitution Check
+
+*GATE: Must pass before Phase 0 research. Re-check after Phase 1 design.*
+
+| principle | check | result |
+| --- | --- | --- |
+| I. The Folder Is the Pod | Pods stay whole folders (`Apps/solidshmolid/<handle>/`); the family group document lives in the manager's pod; account and approval data is identity data, not pod data | pass |
+| II. Protocol Fidelity | Solid-OIDC conformance checked against CSS and the Inrupt client library (R10); deviations listed in contracts/oidc.md | pass |
+| III. Least Privilege, Fail Closed | PKCE everywhere, DPoP-bound access and refresh tokens, hashed codes, rotation with reuse detection, Client ID Documents fetched with limits; manager full access is the user's explicit choice (spec clarification Q1) | pass |
+| IV. Identity Is Not Storage | Sign-in through Clerk needs no storage account; moves keep URLs | pass |
+| V. Test First, Red Reachable | Deletion confirmation and token-reuse revocation each get a test that fails with the guard removed | pass |
+| VI. Layered Domain | OP rules and household rules in `domain`/`app`; Clerk and Durable Objects behind ports | pass |
+| VII. Simplicity | Three new Durable Object classes; see Complexity Tracking | justified |
+
+Post-design re-check: unchanged; no new primitive beyond the three objects.
+
+## Project Structure
+
+### Documentation (this feature)
+
+```text
+specs/002-accounts-households/
+├── plan.md
+├── research.md
+├── data-model.md
+├── quickstart.md
+├── contracts/
+│   ├── oidc.md
+│   └── account-api.md
+└── tasks.md            # /speckit-tasks
+```
+
+### Source Code (repository root)
+
+```text
+worker/
+├── domain/
+│   ├── oidc.ts            # claim building, scope and redirect rules, PKCE check (pure)
+│   ├── household.ts       # roles, invariants, ACL shapes for member pods and family groups
+│   └── deletion.ts        # the confirmation sentence and its check
+├── app/
+│   ├── provider.ts        # authorize / token / refresh / revoke over ports
+│   ├── households.ts      # signup, members, setup codes, move, handover, delete
+│   └── ports.ts           # + Sessions (Clerk), ClerkAdmin, Approvals, Codes, Keys, ClientIds
+├── runtime/
+│   ├── worker.ts          # routes: pods, /.oidc/*, /api/*, pages
+│   ├── oidc/              # HTTP for the provider endpoints
+│   ├── api/               # HTTP for the account API
+│   ├── pages/             # sign-in, consent, dashboard, setup (HTML + small TS)
+│   ├── clerk.ts           # session verification + Backend API adapter
+│   └── objects/           # HouseholdObject, AccountObject, DirectoryObject (PodObject moves here)
+└── tests/
+    ├── provider.test.ts, households.test.ts, deletion.test.ts
+    ├── oidc-interop.test.ts  # CSS accepts our tokens (make compat)
+    └── e2e-signin.test.ts    # make e2e
+```
+
+**Structure Decision**: One Worker, one repository; the layers above follow constitution VI.
+
+## Complexity Tracking
+
+| Violation | Why Needed | Simpler Alternative Rejected Because |
+| --- | --- | --- |
+| `HouseholdObject` | Owns storage credentials and placements shared by several pods | Keeping links in each `PodObject` duplicates refresh tokens and cannot enforce "no disconnect while used" |
+| `AccountObject` | Per-person approvals, codes and refresh families, isolated from other people | Storing them in the household would let one member's token handling touch another's |
+| `DirectoryObject` | Global handle uniqueness and lookups by Clerk user or provider account | D1 adds a primitive for a few keyed reads; Clerk metadata cannot enforce uniqueness |
