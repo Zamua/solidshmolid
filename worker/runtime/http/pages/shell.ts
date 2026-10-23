@@ -51,6 +51,8 @@ ul.plain li .icon{color:var(--blue);flex:none;margin-top:1px}
 .dock{position:fixed;left:0;right:0;bottom:0;padding:26px 22px calc(30px + env(safe-area-inset-bottom));background:linear-gradient(180deg,rgba(234,244,255,0) 0%,var(--sky) 34%)}
 .dock>*{max-width:396px;margin:0 auto}
 .center{text-align:center}
+/* Clerk takes over the element it mounts in, so the spacing lives on a wrapper. */
+.clerk-mount{display:flex;justify-content:center;margin-top:28px;min-height:420px}
 @media (min-width:720px){
 .sky{height:420px}
 .sky .near{display:none}
@@ -84,6 +86,33 @@ export function podCloud(label: string | { html: string }, small = false): strin
 
 const LOGO = `<svg viewBox="0 0 34 22" width="34" height="22" aria-hidden="true"><g fill="#3d6fe0"><circle cx="9" cy="14" r="7"/><circle cx="18" cy="9" r="9"/><circle cx="26" cy="14" r="7"/><rect x="9" y="12" width="17" height="9" rx="4.5"/></g></svg>`;
 
+/** Sources a page may load from beyond its own fonts and styles. */
+export interface CspAllow {
+  script?: string[];
+  connect?: string[];
+  img?: string[];
+  frame?: string[];
+  worker?: string[];
+}
+
+export function pageCsp(allow: CspAllow = {}): string {
+  const list = (base: string[], more: string[] = []) => [...base, ...more].join(' ');
+  return [
+    "default-src 'none'",
+    allow.script?.length ? `script-src ${list(["'self'"], allow.script)}` : null,
+    allow.connect?.length ? `connect-src ${list(["'self'"], allow.connect)}` : null,
+    allow.worker?.length ? `worker-src ${list(["'self'"], allow.worker)}` : null,
+    allow.frame?.length ? `frame-src ${list([], allow.frame)}` : null,
+    "style-src 'unsafe-inline' https://fonts.googleapis.com",
+    'font-src https://fonts.gstatic.com',
+    `img-src ${list(["'self'", 'data:'], allow.img)}`,
+    "form-action 'self' https: http://localhost:* http://127.0.0.1:*",
+    "frame-ancestors 'none'",
+  ]
+    .filter(Boolean)
+    .join('; ');
+}
+
 export function page(title: string, body: string, status = 200): Response {
   const html = `<!doctype html><html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
@@ -99,7 +128,7 @@ ${body}
     headers: {
       'Content-Type': 'text/html; charset=utf-8',
       'Cache-Control': 'no-store',
-      'Content-Security-Policy': "default-src 'none'; style-src 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data:; form-action 'self' https: http://localhost:* http://127.0.0.1:*; frame-ancestors 'none'",
+      'Content-Security-Policy': pageCsp(),
       'X-Frame-Options': 'DENY',
     },
   });

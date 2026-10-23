@@ -25,4 +25,8 @@ export interface Env {
   TOKEN_KEY?: string;
   /** Secret: the provider's private ES256 JWK, as JSON. */
   OIDC_SIGNING_JWK?: string;
+  /** Clerk instance keys; without them nobody can sign in (outside dev). */
+  CLERK_PUBLISHABLE_KEY?: string;
+  /** Secret. */
+  CLERK_SECRET_KEY?: string;
 }

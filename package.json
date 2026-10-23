@@ -8,6 +8,7 @@
     "dev": "wrangler dev --config wrangler.dev.jsonc"
   },
   "dependencies": {
+    "@clerk/backend": "3.26.1",
     "jose": "6.2.12",
     "jsonld-streaming-parser": "5.0.1",
     "jsonld-streaming-serializer": "4.0.0",

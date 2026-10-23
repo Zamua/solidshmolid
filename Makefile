@@ -18,13 +18,16 @@ typecheck: ## typecheck the worker and its tests
 test: ## unit tests
 	$(NODE) vitest run --root worker
 
-# The dev Worker's secrets: a fresh token key, and the Dropbox app key when
-# DROPBOX_APP_KEY_FILE exists (the key is public, but it is operator config).
+# The dev Worker's secrets: a fresh token key and signing key, the Dropbox app
+# key when DROPBOX_APP_KEY_FILE exists (public, but operator config), and the
+# Clerk dev instance's keys when CLERK_ENV_FILE exists.
 DROPBOX_APP_KEY_FILE ?= $(HOME)/keys/dropbox-solidshmolid-app-key
+CLERK_ENV_FILE ?= $(HOME)/keys/clerk-solidshmolid-dev.env
 .dev.vars:
 	@printf 'TOKEN_KEY=%s\n' "$$(head -c 32 /dev/urandom | base64)" > .dev.vars
 	@printf "OIDC_SIGNING_JWK='%s'\n" "$$(node scripts/new-signing-jwk.mjs)" >> .dev.vars
 	@if [ -f "$(DROPBOX_APP_KEY_FILE)" ]; then printf 'DROPBOX_APP_KEY=%s\n' "$$(tr -d '\n' < $(DROPBOX_APP_KEY_FILE))" >> .dev.vars; fi
+	@if [ -f "$(CLERK_ENV_FILE)" ]; then grep -E '^CLERK_(PUBLISHABLE|SECRET)_KEY=' "$(CLERK_ENV_FILE)" >> .dev.vars; fi
 	@chmod 600 .dev.vars
 
 dev: .dev.vars ## run the worker locally on :8787 (pods at http://<handle>.localhost:8787; STORAGE=dropbox for real Dropbox)
@@ -33,6 +36,10 @@ dev: .dev.vars ## run the worker locally on :8787 (pods at http://<handle>.local
 live: ## the Dropbox adapter against real Dropbox (DROPBOX_LIVE_TOKEN_FILE holds an app-folder token)
 	DROPBOX_LIVE_TOKEN="$$(tr -d '\n' < $${DROPBOX_LIVE_TOKEN_FILE:-$$HOME/keys/dropbox-dev-token})" \
 	  $(NODE) vitest run --root worker tests/dropbox.live.test.ts
+
+clerk-live: .dev.vars ## a real Clerk dev session through a running `make dev` (CLERK_ENV_FILE holds the keys)
+	set -a && . "$(CLERK_ENV_FILE)" && set +a && CLERK_LIVE_APEX=$${CLERK_LIVE_APEX:-http://localhost:8787} \
+	  $(NODE) vitest run --root worker tests/clerk.live.test.ts
 
 smoke: ## smoke a running pod (POD_URL, optional DEV_WEBID; see scripts/smoke.sh)
 	./scripts/smoke.sh
