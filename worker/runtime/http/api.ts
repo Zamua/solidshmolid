@@ -55,7 +55,7 @@ export async function apiRoute(request: Request, env: Env, url: URL, person: str
     {
       method: 'POST',
       path: /^\/api\/storage\/([\w-]{1,64})\/disconnect$/u,
-      run: async (p, [linkId]) => done(html, '/', view(await service().disconnect(p, linkId!), env, url), 200),
+      run: async (p, [linkId]) => done(html, '/connections', view(await service().disconnect(p, linkId!), env, url), 200),
     },
   ];
   const route = routes.find((r) => r.path.test(url.pathname));

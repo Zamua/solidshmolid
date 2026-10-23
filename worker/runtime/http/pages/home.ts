@@ -51,10 +51,9 @@ ${icon('caretRight', 20)}</button></form>`;
   );
 }
 
-/** The person's WebID, their pods (each naming the storage behind it), and
- * the storage connected. `offered` lists the providers people may connect;
- * with more than the one storage already connected, adding a pod asks where
- * it goes. */
+/** The person's WebID and their pods, each naming the storage behind it.
+ * `offered` lists the providers people may connect; with more than the one
+ * storage already connected, adding a pod asks where it goes. */
 export function podsPage(state: AccountState, apps: Approval[], hosts: Hosts, offered: string[]): Response {
   const choose = state.links.length > 1 || unconnected(state, offered).length > 0;
   const add = choose
@@ -68,17 +67,6 @@ export function podsPage(state: AccountState, apps: Approval[], hosts: Hosts, of
       return p.linkId
         ? `<a class="row list-row row-link" href="/pods/${escapeHtml(p.podId)}/files">${podCloud(String(i + 1), true)}${text}<span class="chevron">${icon('caretRight', 20)}</span></a>`
         : `<div class="row list-row">${podCloud(String(i + 1), true)}${text}</div>`;
-    })
-    .join('');
-  const storage = state.links
-    .map((l) => {
-      const look = lookOf(l.provider);
-      const held = state.pods.filter((p) => p.linkId === l.linkId).length;
-      // Storage holding no pods can be let go; one holding pods cannot.
-      const action = held
-        ? `<span class="small">${held === 1 ? '1 pod' : `${held} pods`}</span>`
-        : `<form method="post" action="/api/storage/${escapeHtml(l.linkId)}/disconnect"><button class="chip-btn">Disconnect</button></form>`;
-      return `<div class="row list-row"><span class="provider-logo"${look.color ? ` style="color:${look.color}"` : ''}>${icon(look.icon, 24)}</span><b class="grow">${escapeHtml(look.name)}</b>${action}</div>`;
     })
     .join('');
   const appRows = apps
@@ -98,13 +86,42 @@ export function podsPage(state: AccountState, apps: Approval[], hosts: Hosts, of
 <button type="button" class="pill-btn copy-btn" data-copy="${escapeHtml(state.webid)}" hidden>${icon('copy', 18)}${icon('check', 18)}<span data-label>Copy</span></button></div></div>
 <div class="card" style="padding:6px 16px">${rows}
 ${add}</div>
-<div class="card" style="padding:6px 16px">
-<div class="row list-row"><div class="icon-tile">${icon('plugs')}</div><div class="grow"><b>Connected storage</b><div class="small">Where your pods' folders live</div></div></div>
-${storage}</div>
 <div class="card">
 <div class="row"><div class="icon-tile">${icon('squaresFour')}</div><div class="grow"><b>Apps</b><div class="small">${appRows ? 'Solid apps you signed in to' : 'None yet. When you sign in to a Solid app with solidshmolid, it shows up here.'}</div></div></div>
 ${appRows ? `<div style="margin-top:8px">${appRows}</div>` : ''}</div>
 <p class="small center" style="margin-top:22px"><a href="/account/delete">Delete account</a></p>`,
+  );
+}
+
+/** The storage connected to the account, and more to connect. Storage
+ * holding no pods can be disconnected; storage holding pods cannot. */
+export function connectionsPage(state: AccountState, offered: string[]): Response {
+  const connected = state.links
+    .map((l) => {
+      const look = lookOf(l.provider);
+      const held = state.pods.filter((p) => p.linkId === l.linkId).length;
+      const action = held
+        ? `<span class="small">${held === 1 ? '1 pod' : `${held} pods`}</span>`
+        : `<form method="post" action="/api/storage/${escapeHtml(l.linkId)}/disconnect"><button class="chip-btn">Disconnect</button></form>`;
+      return `<div class="row list-row"><span class="provider-logo"${look.color ? ` style="color:${look.color}"` : ''}>${icon(look.icon, 24)}</span><div class="grow"><b>${escapeHtml(look.name)}</b><div class="small">${escapeHtml(look.where)}</div></div>${action}</div>`;
+    })
+    .join('');
+  const more = unconnected(state, offered)
+    .map((p) => {
+      const look = lookOf(p);
+      return `<form method="post" action="/api/storage/${escapeHtml(p)}/start"><button class="choice pick">
+<span class="provider-logo"${look.color ? ` style="color:${look.color}"` : ''}>${icon(look.icon, 28)}</span>
+<span class="grow"><b>Connect ${escapeHtml(look.name)}</b><span class="small" style="display:block">${escapeHtml(look.where)}</span></span>
+${icon('caretRight', 20)}</button></form>`;
+    })
+    .join('');
+  return page(
+    'Connections',
+    `<h1>Connections</h1>
+<p class="lede">The storage your pods live in. We can open only our own folder there.</p>
+<div class="card" style="padding:6px 16px">${connected}</div>
+${more ? `<h2 style="margin-top:28px">Add storage</h2><div class="choices" style="margin-top:12px">${more}</div>` : ''}
+<p class="small" style="margin-top:22px">Storage holding pods stays connected while they live there. You can also take our access away in your Dropbox or Google account settings.</p>`,
   );
 }
 
@@ -246,6 +263,7 @@ export function accountMenu(): string {
 <summary aria-label="Your account"><span class="user-chip">${icon('user', 20)}</span></summary>
 <div class="menu">
 <a href="/">${icon('house', 20)}Your pods</a>
+<a href="/connections">${icon('plugs', 20)}Connections</a>
 <a href="/sign-out">${icon('signOut', 20)}Sign out</a>
 </div>
 </details>`;
