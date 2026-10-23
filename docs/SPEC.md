@@ -291,7 +291,10 @@ The pod's DO rejects a `jti` it has seen inside the proof window: a proof
 names the pod's host in `htu`, so per-pod uniqueness suffices. Every URL the
 verifier fetches is chosen by the client, so each fetch is time-boxed (5 s)
 and size-capped (256 KiB). Any Solid issuer is accepted; our own comes in M3.
-A failure is 401 with `WWW-Authenticate: DPoP error="invalid_token"`. The dev
+Lookups of the service's own hosts (its provider's discovery and keys, a
+WebID one of its pods holds) are served in-process (`runtime/ownHosts.ts`):
+Cloudflare answers a Worker's subrequest to its own custom domain or route
+with 522. A failure is 401 with `WWW-Authenticate: DPoP error="invalid_token"`. The dev
 config also accepts an `X-Dev-WebID` header.
 
 ## Milestones

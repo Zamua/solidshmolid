@@ -28,6 +28,7 @@ import { type Signer, signerFromJwk } from './adapters/tokenSigner.js';
 import { UnlinkedStore } from './adapters/unlinked.js';
 import type { Env } from './env.js';
 import type { Hosts } from './hosts.js';
+import type { Fetch } from './ownHosts.js';
 import type { ClerkChrome } from './http/clerkChrome.js';
 
 // Module scope, so keys, JWKS and WebID lookups are cached across requests in
@@ -48,8 +49,9 @@ export async function tokenSigner(env: Env): Promise<Signer> {
   return signer;
 }
 
-export function tokenVerifier(): SolidOidcVerifier {
-  verifier ??= new SolidOidcVerifier({ fetch: fetcher, now: () => Date.now() });
+/** `fetch` must serve the service's own hosts in-process (see ownHosts.ts). */
+export function tokenVerifier(fetch: Fetch): SolidOidcVerifier {
+  verifier ??= new SolidOidcVerifier({ fetch, now: () => Date.now() });
   return verifier;
 }
 

@@ -9,6 +9,7 @@ import { profileDocument } from '../domain/pods/profile.js';
 import { InvalidCredentials, type VerifiedAgent } from './adapters/solidOidcVerifier.js';
 import { clerkChrome, isDev, sessions, tokenVerifier } from './composition.js';
 import { hostsFor } from './hosts.js';
+import { withOwnHosts } from './ownHosts.js';
 import type { Env } from './env.js';
 import { devRoute } from './http/dev.js';
 import { apiRoute } from './http/api.js';
@@ -24,7 +25,7 @@ export { AccountObject } from './objects/accountObject.js';
 export { DirectoryObject } from './objects/directoryObject.js';
 export { PodObject } from './objects/podObject.js';
 
-export default {
+const worker = {
   async fetch(request: Request, env: Env): Promise<Response> {
     const url = new URL(request.url);
     if (url.pathname === '/healthz') {
@@ -36,6 +37,8 @@ export default {
     return new Response('not found\n', { status: 404 });
   },
 } satisfies ExportedHandler<Env>;
+
+export default worker;
 
 /** The apex: who is signed in is settled once, before any route runs. */
 async function apex(request: Request, env: Env, url: URL): Promise<Response> {
@@ -72,7 +75,7 @@ async function pod(request: Request, env: Env, url: URL, handle: string): Promis
   if (request.method !== 'OPTIONS') {
     let agent: VerifiedAgent | null;
     try {
-      agent = await tokenVerifier().verify({
+      agent = await tokenVerifier(withOwnHosts(env, url.port, (r) => worker.fetch(r, env), (input, init) => fetch(input, init))).verify({
         method: request.method,
         url: request.url,
         authorization: request.headers.get('Authorization'),
