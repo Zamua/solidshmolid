@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { parseRdf } from '../domain/rdf.js';
-import { authorizationsOf, grantedModes, wacAllow } from '../domain/wac.js';
+import { parseRdf } from '../domain/shared/rdf.js';
+import { type Mode, authorizationsOf, grantedModes, wacAllow } from '../domain/pods/wac.js';
 
 const POD = 'https://alice.example';
 const ALICE = `${POD}/profile/card#me`;
@@ -21,7 +21,7 @@ const ROOT = await acl(`
     acl:default <./>; acl:mode acl:Append.
 `);
 
-const set = (...m: string[]) => new Set(m);
+const set = (...m: Mode[]) => new Set<Mode>(m);
 
 describe('grantedModes', () => {
   it('grants the owner everything on the container itself', () => {

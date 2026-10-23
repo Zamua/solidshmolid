@@ -6,8 +6,8 @@ import {
   documentFile,
   metaFileOf,
   resourceOfFile,
-} from '../domain/layout.js';
-import { canonicalPath } from '../domain/paths.js';
+} from '../domain/pods/layout.js';
+import { canonicalPath } from '../domain/pods/paths.js';
 
 // Expected file names follow Community Solid Server 7.2's ExtensionBasedMapper
 // rules; compat.test.ts checks them against a running CSS.

@@ -1,7 +1,11 @@
+import type { AccountObject } from './objects/accountObject.js';
+import type { DirectoryObject } from './objects/directoryObject.js';
 import type { PodObject } from './objects/podObject.js';
 
 export interface Env {
   POD: DurableObjectNamespace<PodObject>;
+  ACCOUNT: DurableObjectNamespace<AccountObject>;
+  DIRECTORY: DurableObjectNamespace<DirectoryObject>;
   /** Pod hostnames, with `{handle}` standing for the handle:
    * '{handle}.example.com' in prod, 'stg-{handle}.example.com' in staging. */
   POD_HOST_TEMPLATE: string;
@@ -16,4 +20,6 @@ export interface Env {
   DROPBOX_APP_KEY?: string;
   /** Secret: 32 bytes, base64, encrypting stored refresh tokens. */
   TOKEN_KEY?: string;
+  /** Secret: the provider's private ES256 JWK, as JSON. */
+  OIDC_SIGNING_JWK?: string;
 }

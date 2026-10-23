@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import { NotFound } from '../app/errors.js';
-import { type Agent, NO_CONDITIONS, Pod, type ReadOptions } from '../app/pod.js';
+import { NotFound } from '../app/shared/errors.js';
+import { type Agent, Pod, type ReadOptions } from '../app/pods/pod.js';
+import { NO_CONDITIONS } from '../domain/pods/requests.js';
 import { ALICE, BASE, BOB, MemoryFileStore, newPod, sqliteIndex, streamOf, textOf } from './support/fakes.js';
 
 const alice: Agent = { webid: ALICE };

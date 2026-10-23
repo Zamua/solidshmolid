@@ -24,16 +24,16 @@ red-reachable check.
 - [ ] T002 Spike against the Clerk dev instance: create a username-only user via the Backend API, issue a 900 s sign-in token, sign in with it once, register a passkey, confirm a second use fails (research R3, R4); record results in research.md
 - [ ] T003 [P] Generate `OIDC_SIGNING_JWK` in `make .dev.vars`; add `CLERK_PUBLISHABLE_KEY`/`CLERK_SECRET_KEY` handling in Makefile
 - [x] T004 [P] Mobile-first mockups (sign-up, connect storage, dashboard, member card, consent, device setup QR, delete with typed confirmation) as static HTML at iPhone width with Phosphor icons; screenshots to the operator for approval before any page is built
-- [ ] T005 Move `PodObject` to `worker/runtime/objects/` and register `HouseholdObject`, `AccountObject`, `DirectoryObject` with a v2 migration in `wrangler.jsonc` and `wrangler.dev.jsonc`
+- [x] T005 Move `PodObject` to `worker/runtime/objects/` and register `HouseholdObject`, `AccountObject`, `DirectoryObject` with a v2 migration in `wrangler.jsonc` and `wrangler.dev.jsonc`
 
 ## Phase 2: Foundational (blocks every story)
 
-- [ ] T006 [P] Tests then code: `worker/domain/oidc.ts` (claims for access and ID tokens, scope rules, redirect matching, PKCE S256 check) in `worker/tests/oidc-domain.test.ts`
-- [ ] T007 [P] Tests then code: `worker/domain/household.ts` (roles, at-least-one-manager invariant, member root ACL with manager grants per FR-012, family group document) in `worker/tests/household-domain.test.ts`
-- [ ] T008 [P] Tests then code: `worker/domain/deletion.ts` (sentence for a provider display name; exact-match check) with a test that every other input is refused (SC-006) in `worker/tests/deletion.test.ts`
+- [x] T006 [P] Tests then code: `worker/domain/oidc.ts` (claims for access and ID tokens, scope rules, redirect matching, PKCE S256 check) in `worker/tests/oidc-domain.test.ts`
+- [x] T007 [P] Tests then code: `worker/domain/household.ts` (roles, at-least-one-manager invariant, member root ACL with manager grants per FR-012, family group document) in `worker/tests/household-domain.test.ts`
+- [x] T008 [P] Tests then code: `worker/domain/deletion.ts` (sentence for a provider display name; exact-match check) with a test that every other input is refused (SC-006) in `worker/tests/deletion.test.ts`
 - [ ] T009 Ports in `worker/app/ports.ts`: `Sessions` (current Clerk user), `ClerkAdmin` (create user, sign-in token, remove passkeys), `Approvals`, `Codes`, `RefreshFamilies`, `SigningKeys`, `ClientIds`, `Directory`, `Households`
 - [ ] T010 `worker/runtime/clerk.ts`: session verification against Clerk JWKS and the Backend API adapter; tests with a fake JWKS in `worker/tests/clerk.test.ts`
-- [ ] T011 `DirectoryObject` (handles with 90-day release, account and provider-account lookups) with tests in `worker/tests/directory.test.ts`
+- [x] T011 `DirectoryObject` (handles with 90-day release, account and provider-account lookups) with tests in `worker/tests/directory.test.ts`
 - [ ] T012 Storage links move to `HouseholdObject`; `PodObject` gets access tokens over RPC and stores its folder (`root` = handle); update `worker/tests/link.test.ts` and `make live` to the subfolder layout
 
 ## Phase 3: User Story 1, sign up and get a pod (P1) 🎯 MVP
@@ -54,12 +54,12 @@ red-reachable check.
 
 **Independent Test**: scripted client does code + PKCE + DPoP; our verifier, a stock CSS and the Inrupt client library all accept the result.
 
-- [ ] T018 [P] [US2] Tests for `worker/app/provider.ts`: authorize needs a session; Client ID Document fetch with limits and exact redirect match; code single-use (second use revokes); PKCE; DPoP binding; refresh rotation with reuse revoking the family; revoke approval kills its tokens, in `worker/tests/provider.test.ts`
-- [ ] T019 [US2] `worker/app/provider.ts` and `AccountObject` storage for approvals, codes, refresh families
-- [ ] T020 [US2] Endpoints in `worker/runtime/oidc/`: discovery, JWKS, auth, token, reg, session end (contracts/oidc.md)
+- [x] T018 [P] [US2] Tests for `worker/app/provider.ts`: authorize needs a session; Client ID Document fetch with limits and exact redirect match; code single-use (second use revokes); PKCE; DPoP binding; refresh rotation with reuse revoking the family; revoke approval kills its tokens, in `worker/tests/provider.test.ts`
+- [x] T019 [US2] `worker/app/provider.ts` and `AccountObject` storage for approvals, codes, refresh families
+- [x] T020 [US2] Endpoints in `worker/runtime/oidc/`: discovery, JWKS, auth, token, reg, session end (contracts/oidc.md)
 - [ ] T021 [US2] Consent page and app list (`/api/apps`) in `worker/runtime/pages/` and `worker/runtime/api/`
-- [ ] T022 [US2] Profiles name our issuer (`solid:oidcIssuer`) for every hosted WebID; migrate dev pods
-- [ ] T023 [P] [US2] Interop: a stock CSS pod granting our WebID accepts our token, in `worker/tests/oidc-interop.test.ts` (`make compat`)
+- [x] T022 [US2] Profiles name our issuer (`solid:oidcIssuer`) for every hosted WebID; migrate dev pods
+- [x] T023 [P] [US2] Interop: a stock CSS pod granting our WebID accepts our token, in `worker/tests/oidc-interop.test.ts` (`make compat`)
 - [ ] T024 [P] [US2] Interop: `@inrupt/solid-client-authn-node` completes login against wrangler dev (`make e2e`)
 
 ## Phase 5: User Story 3, member pods (P2)

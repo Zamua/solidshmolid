@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { negotiate } from '../domain/conneg.js';
+import { negotiate } from '../domain/pods/conneg.js';
 
 const RDF = ['text/turtle', 'application/n-triples'];
 

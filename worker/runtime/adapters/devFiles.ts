@@ -2,8 +2,8 @@
 // it keeps user data on our side, which is exactly what deployments must not
 // do, so the deployed configs never select it.
 
-import { type ByteRange, type FileInfo, type FileStore, RevisionConflict, type StoredFile, type WriteOptions } from '../../app/ports.js';
-import type { SqlRunner } from '../sqlIndex.js';
+import { type ByteRange, type FileInfo, type FileStore, RevisionConflict, type StoredFile, type WriteOptions } from '../../app/storage/ports.js';
+import type { SqlRunner } from './sql.js';
 
 /** Durable Object SQLite rows top out near 2 MB. */
 const DEV_FILE_LIMIT = 2 * 1024 * 1024;

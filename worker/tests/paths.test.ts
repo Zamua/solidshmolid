@@ -10,7 +10,7 @@ import {
   otherKind,
   parentOf,
   subjectOfAcl,
-} from '../domain/paths.js';
+} from '../domain/pods/paths.js';
 
 describe('canonicalPath', () => {
   it('keeps plain paths as they are', () => {

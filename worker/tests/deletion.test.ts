@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { confirmationSentence, confirmsDeletion } from '../domain/deletion.js';
+import { confirmationSentence, confirmsDeletion } from '../domain/households/deletion.js';
 
 describe('deleting files needs the exact sentence', () => {
   const sentence = confirmationSentence('Dropbox');

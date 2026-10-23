@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import { HouseholdRuleBroken, type Member, checkManagers, familyGroup, rootAcl } from '../domain/household.js';
-import { parseRdf } from '../domain/rdf.js';
-import { authorizationsOf, grantedModes } from '../domain/wac.js';
+import { HouseholdRuleBroken, type Member, checkManagers, familyGroup, rootAcl } from '../domain/households/household.js';
+import { parseRdf } from '../domain/shared/rdf.js';
+import { authorizationsOf, grantedModes } from '../domain/pods/wac.js';
 
 const DANA = 'https://dana.example/profile/card#me';
 const SAM = 'https://sam.example/profile/card#me';

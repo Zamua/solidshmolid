@@ -10,7 +10,7 @@ import {
   pkceMatches,
   publicClient,
   redirectAllowed,
-} from '../domain/oidc.js';
+} from '../domain/identity/oidc.js';
 
 const CHALLENGE = 'E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM';
 const VERIFIER = 'dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk';

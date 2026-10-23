@@ -1,17 +1,9 @@
 // Test doubles: an in-memory FileStore and the SQLite index over node:sqlite.
 
 import { createRequire } from 'node:module';
-import {
-  type ByteRange,
-  type FileInfo,
-  type FileStore,
-  type ListedEntry,
-  RevisionConflict,
-  type StoredFile,
-  type WriteOptions,
-} from '../../app/ports.js';
-import { Pod } from '../../app/pod.js';
-import { SqlIndex } from '../../runtime/sqlIndex.js';
+import { type ByteRange, type FileInfo, type FileStore, type ListedEntry, RevisionConflict, type StoredFile, type WriteOptions } from '../../app/storage/ports.js';
+import { Pod } from '../../app/pods/pod.js';
+import { SqlIndex } from '../../runtime/adapters/sqlPodIndex.js';
 
 // Vite does not know node:sqlite as a builtin and fails to resolve the import.
 const { DatabaseSync } = createRequire(import.meta.url)('node:sqlite') as typeof import('node:sqlite');

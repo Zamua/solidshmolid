@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import { InsufficientStorage, StorageUnavailable } from '../app/errors.js';
-import { NO_CONDITIONS, Pod } from '../app/pod.js';
-import { RevisionConflict } from '../app/ports.js';
+import { InsufficientStorage, StorageUnavailable } from '../app/shared/errors.js';
+import { Pod } from '../app/pods/pod.js';
+import { NO_CONDITIONS } from '../domain/pods/requests.js';
+import { RevisionConflict } from '../app/storage/ports.js';
 import { DropboxFileStore, dropboxPath, headerJson } from '../runtime/adapters/dropbox.js';
 import { FakeDropbox } from './support/fakeDropbox.js';
 import { ALICE, BASE, PROFILE, sqliteIndex, streamOf, textOf } from './support/fakes.js';

@@ -8,9 +8,16 @@
   "compatibility_date": "2026-10-01",
   "compatibility_flags": ["nodejs_compat"],
   "durable_objects": {
-    "bindings": [{ "name": "POD", "class_name": "PodObject" }]
+    "bindings": [
+      { "name": "POD", "class_name": "PodObject" },
+      { "name": "ACCOUNT", "class_name": "AccountObject" },
+      { "name": "DIRECTORY", "class_name": "DirectoryObject" }
+    ]
   },
-  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["PodObject"] }],
+  "migrations": [
+    { "tag": "v1", "new_sqlite_classes": ["PodObject"] },
+    { "tag": "v2", "new_sqlite_classes": ["AccountObject", "DirectoryObject"] }
+  ],
   "vars": {
     "POD_HOST_TEMPLATE": "{handle}.localhost",
     "APEX_HOST": "localhost",

@@ -2,15 +2,7 @@
 
 import { mkdir, readFile, readdir, rm, stat, writeFile } from 'node:fs/promises';
 import { dirname, join, relative } from 'node:path';
-import {
-  type ByteRange,
-  type FileInfo,
-  type FileStore,
-  type ListedEntry,
-  RevisionConflict,
-  type StoredFile,
-  type WriteOptions,
-} from '../../app/ports.js';
+import { type ByteRange, type FileInfo, type FileStore, type ListedEntry, RevisionConflict, type StoredFile, type WriteOptions } from '../../app/storage/ports.js';
 import { bytesOf, streamOf } from './fakes.js';
 
 export class DirFileStore implements FileStore {

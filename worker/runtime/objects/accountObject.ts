@@ -2,11 +2,11 @@
 // directory assigns; codes and refresh tokens carry that key.
 
 import { DurableObject } from 'cloudflare:workers';
-import type { CodeGrant, RefreshFamily } from '../../app/provider.js';
-import type { AuthorizeRequest, ClientInfo } from '../../domain/oidc.js';
-import { SqlAccountStore } from '../accountStore.js';
+import type { CodeGrant, RefreshFamily } from '../../app/identity/ports.js';
+import type { AuthorizeRequest, ClientInfo } from '../../domain/identity/oidc.js';
+import { SqlAccountStore } from '../adapters/sqlAccountStore.js';
 import type { Env } from '../env.js';
-import type { SqlRunner } from '../sqlIndex.js';
+import type { SqlRunner } from '../adapters/sql.js';
 
 export class AccountObject extends DurableObject<Env> {
   private store: SqlAccountStore | null = null;

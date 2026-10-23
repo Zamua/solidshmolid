@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { InvalidPatch, PatchConflict, applyPatch, modesForPatch, parsePatch } from '../domain/n3patch.js';
-import { parseRdf, serializeRdf } from '../domain/rdf.js';
+import { InvalidPatch, PatchConflict, applyPatch, modesForPatch, parsePatch } from '../domain/pods/n3patch.js';
+import { parseRdf, serializeRdf } from '../domain/shared/rdf.js';
 
 const BASE = 'https://alice.example/notes/a.ttl';
 const PRE = '@prefix solid: <http://www.w3.org/ns/solid/terms#>. @prefix ex: <http://example.org/>.\n';

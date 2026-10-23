@@ -1,10 +1,10 @@
 import { SignJWT, calculateJwkThumbprint, exportJWK, generateKeyPair } from 'jose';
 import { beforeAll, describe, expect, it } from 'vitest';
-import { Provider } from '../app/provider.js';
-import { OidcError, clientFromDocument, publicClient } from '../domain/oidc.js';
-import { SqlAccountStore } from '../runtime/accountStore.js';
-import { SolidOidcVerifier } from '../runtime/auth/solidOidc.js';
-import { newSigningJwk, signerFromJwk, type Signer } from '../runtime/auth/signer.js';
+import { Provider } from '../app/identity/provider.js';
+import { OidcError, clientFromDocument, publicClient } from '../domain/identity/oidc.js';
+import { SqlAccountStore } from '../runtime/adapters/sqlAccountStore.js';
+import { SolidOidcVerifier } from '../runtime/adapters/solidOidcVerifier.js';
+import { newSigningJwk, signerFromJwk, type Signer } from '../runtime/adapters/tokenSigner.js';
 import { sqlRunner } from './support/fakes.js';
 
 const ISSUER = 'https://idp.example/';
@@ -38,14 +38,15 @@ function world() {
   };
   const provider = new Provider({
     issuer: ISSUER,
-    accountFor,
-    accountByKey: async (k) => byKey.get(k) ?? null,
-    resolveClient: async (id) =>
-      id === CLIENT ? clientFromDocument(CLIENT, { client_id: CLIENT, client_name: 'Sketchpad', redirect_uris: [REDIRECT] }) : publicClient(),
-    sign: (c) => signer.sign(c),
-    now: () => clock,
-    random: () => `r${++n}x${Math.random().toString(36).slice(2)}`,
-    hash: async (s) => `h:${s}`,
+    accounts: { forPerson: accountFor, byKey: async (k) => byKey.get(k) ?? null },
+    clients: {
+      resolve: async (id) =>
+        id === CLIENT ? clientFromDocument(CLIENT, { client_id: CLIENT, client_name: 'Sketchpad', redirect_uris: [REDIRECT] }) : publicClient(),
+      register: async () => `reg_${++n}`,
+    },
+    signer,
+    clock: { now: () => clock },
+    secrets: { random: () => `r${++n}x${Math.random().toString(36).slice(2)}`, hash: async (s) => `h:${s}` },
   });
   return { provider, accountFor, tick: (s: number) => (clock += s), now: () => clock };
 }
