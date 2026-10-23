@@ -77,9 +77,9 @@ body of at most 16 KiB; returns `client_id` (and no secret for `token_endpoint_a
 
 ## `GET|POST /.oidc/session/end`
 
-Signs the person out of this site and lands on the front page. A
-`post_logout_redirect_uri` is ignored, so the endpoint cannot send anyone
-elsewhere.
+Asks the person whether to sign out of this site, and signs them out when
+they confirm, landing on the front page. A `post_logout_redirect_uri` is
+ignored, so the endpoint cannot send anyone elsewhere.
 
 ## Deviations
 

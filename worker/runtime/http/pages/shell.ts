@@ -32,9 +32,12 @@ main{max-width:440px;margin:0 auto;padding:calc(env(safe-area-inset-top) + 64px)
 .account-menu summary:focus-visible .user-chip{outline:3px solid var(--blue-deep);outline-offset:3px}
 .account-menu summary:hover .user-chip{box-shadow:0 1px 0 var(--line),0 10px 22px -10px rgba(42,82,184,.6)}
 .menu{position:absolute;right:0;top:52px;z-index:10;min-width:200px;background:#fff;border-radius:18px;padding:8px;box-shadow:0 18px 40px -16px rgba(31,45,77,.35)}
-.menu a{display:flex;align-items:center;gap:10px;min-height:44px;padding:0 12px;border-radius:12px;color:var(--ink);text-decoration:none;font-weight:700}
-.menu a .icon{color:var(--blue-deep)}
-.menu a:hover{background:var(--mist)}
+.menu a,.menu button{display:flex;align-items:center;gap:10px;min-height:44px;padding:0 12px;border-radius:12px;color:var(--ink);text-decoration:none;font-weight:700}
+.menu button{width:100%;border:0;background:none;font:inherit;font-weight:700;cursor:pointer}
+.menu a .icon,.menu button .icon{color:var(--blue-deep)}
+.menu a:hover,.menu button:hover{background:var(--mist)}
+.menu form{margin:0}
+.menu button:focus-visible{outline:3px solid var(--blue-deep);outline-offset:3px}
 h1{font:600 32px/1.12 var(--display);margin:40px 0 10px}
 h2{font:600 22px/1.2 var(--display);margin:0 0 6px}
 p.lede{color:var(--ink-soft);max-width:34ch}

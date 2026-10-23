@@ -21,7 +21,9 @@ export interface AccountStore {
   takeCode(hash: string): Promise<(CodeGrant & { reused: boolean }) | null>;
   saveFamily(family: RefreshFamily): Promise<void>;
   family(id: string): Promise<RefreshFamily | null>;
-  rotateFamily(id: string, newHash: string, expires: number): Promise<void>;
+  /** Replaces the family's current token, only if it is still `fromHash`;
+   * false when another refresh got there first. */
+  rotateFamily(id: string, fromHash: string, newHash: string, expires: number): Promise<boolean>;
   revokeFamily(id: string): Promise<void>;
   /** Revokes every family that came from a given code. */
   revokeFromCode(codeHash: string): Promise<void>;

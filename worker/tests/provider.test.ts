@@ -201,6 +201,17 @@ describe('token', () => {
     await expect(refresh(second.refresh_token)).rejects.toMatchObject({ code: 'invalid_grant' });
   });
 
+  it('lets only one of two simultaneous refreshes with the same token through', async () => {
+    const w = world();
+    await signedInWithPod(w);
+    const first = await exchange(w, await code(w), 'jkt');
+    const refresh = (t: unknown) => w.provider.token(new URLSearchParams({ grant_type: 'refresh_token', refresh_token: String(t) }), 'jkt');
+    const results = await Promise.allSettled([refresh(first.refresh_token), refresh(first.refresh_token)]);
+    expect(results.map((r) => r.status).sort()).toEqual(['fulfilled', 'rejected']);
+    const winner = results.find((r) => r.status === 'fulfilled') as PromiseFulfilledResult<Record<string, unknown>>;
+    expect((await refresh(winner.value.refresh_token)).access_token).toBeTruthy();
+  });
+
   it('revoking an app ends its refresh tokens', async () => {
     const w = world();
     await signedInWithPod(w);

@@ -151,7 +151,11 @@ export class Provider {
     if (family.jkt !== jkt) throw new OidcError('invalid_dpop_proof', 'refresh token is bound to a different DPoP key');
     if (form.get('client_id') && form.get('client_id') !== family.clientId) throw new OidcError('invalid_grant', 'client_id does not match');
     const next = this.deps.secrets.random();
-    await account.rotateFamily(familyId, await this.deps.secrets.hash(next), this.deps.clock.now() + REFRESH_TTL_S);
+    // The loser of a race is refused but revokes nothing: if it was a thief,
+    // its old token coming back later still kills the family.
+    if (!(await account.rotateFamily(familyId, family.currentHash, await this.deps.secrets.hash(next), this.deps.clock.now() + REFRESH_TTL_S))) {
+      throw new OidcError('invalid_grant', 'refresh token already used');
+    }
     const access = await this.deps.signer.sign(
       accessTokenClaims({ issuer: this.deps.issuer, webid: family.webid, clientId: family.clientId, now: this.deps.clock.now(), jkt, jti: this.deps.secrets.random() }),
     );

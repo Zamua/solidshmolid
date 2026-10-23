@@ -16,3 +16,9 @@ export function addColumn(sql: SqlRunner, table: string, column: string): void {
     if (!/duplicate column/iu.test((e as Error).message)) throw e;
   }
 }
+
+/** True for a database nothing was ever stored in, such as a Durable Object
+ * reached by a name no one created. Asking stores nothing. */
+export function isBlank(sql: SqlRunner): boolean {
+  return sql.exec("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name NOT GLOB '_cf_*' LIMIT 1").toArray().length === 0;
+}
