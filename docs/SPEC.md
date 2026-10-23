@@ -252,6 +252,14 @@ replace the polling later; the reconcile path is the same.
 dev config, which grants consent on the spot and keeps files in each pod's
 own SQLite.
 
+## People opening a pod in a browser
+
+A top-level browser navigation (`Sec-Fetch-Mode: navigate`) that a pod would
+answer with 401, 403 or 404 gets a short page for people instead: the pod is
+private (with links to open it in a Solid app and to the account site), or
+there is no pod at that address. Apps never send that header and keep the
+protocol's own answers.
+
 ## Signing in (people, on the apex)
 
 People sign in with Clerk. Every apex page loads clerk-js from the

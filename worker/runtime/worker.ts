@@ -16,6 +16,7 @@ import { withClerk } from './http/clerkChrome.js';
 import { homeRoute } from './http/home.js';
 import { signInRoute } from './http/signIn.js';
 import { oidcRoute } from './http/oidc.js';
+import { isNavigation, podLandingPage } from './http/pages/podPages.js';
 import { withCors } from './http/solid.js';
 import { AGENT_HEADER, BASE_HEADER, INTERNAL_PREFIX, JTI_EXPIRES_HEADER, JTI_HEADER } from './objects/podObject.js';
 
@@ -89,7 +90,11 @@ async function pod(request: Request, env: Env, url: URL, handle: string): Promis
       headers.set(AGENT_HEADER, request.headers.get('X-Dev-WebID') ?? '');
     }
   }
-  return stub.fetch(new Request(request, { headers }));
+  const response = await stub.fetch(new Request(request, { headers }));
+  if (isNavigation(request) && (response.status === 401 || response.status === 403 || response.status === 404)) {
+    return podLandingPage(response.status, `${base}/`, hostsFor(env, url).issuer);
+  }
+  return response;
 }
 
 function invalidToken(reason: string): Response {
