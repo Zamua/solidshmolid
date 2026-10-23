@@ -1,10 +1,11 @@
 import { createRequire } from 'node:module';
 import { describe, expect, it } from 'vitest';
-import { copyPod } from '../app/migrate.js';
-import { NO_CONDITIONS, Pod } from '../app/pod.js';
+import { copyPod } from '../app/storage/migrate.js';
+import { Pod } from '../app/pods/pod.js';
+import { NO_CONDITIONS } from '../domain/pods/requests.js';
 import { DropboxFileStore } from '../runtime/adapters/dropbox.js';
-import { DropboxAuthError, authorizeUrl, exchangeCode, pkce, refreshAccess } from '../runtime/auth/dropboxOAuth.js';
-import { StorageLinks } from '../runtime/storageLink.js';
+import { DropboxAuthError, authorizeUrl, exchangeCode, pkce, refreshAccess } from '../runtime/adapters/dropboxOAuth.js';
+import { StorageLinks } from '../runtime/adapters/storageLinks.js';
 import { FakeDropbox } from './support/fakeDropbox.js';
 import { ALICE, BASE, newPod, sqliteIndex, streamOf, textOf } from './support/fakes.js';
 
@@ -69,21 +70,24 @@ describe('stored links', () => {
   it('keeps the refresh token encrypted and bound to its pod', async () => {
     const { db, runner } = sql();
     const links = new StorageLinks(runner, KEY, 'alice');
-    await links.save({ provider: 'dropbox', account: 'dbid:1', refreshToken: 'secret-refresh', cursor: 'c1' }, new Date(0));
+    await links.save({ provider: 'dropbox', account: 'dbid:1', refreshToken: 'secret-refresh', cursor: 'c1' });
     const raw = db.prepare('SELECT refresh FROM storage_link').get() as { refresh: string };
     expect(raw.refresh).not.toContain('secret-refresh');
     expect((await links.current())?.refreshToken).toBe('secret-refresh');
     await expect(new StorageLinks(runner, KEY, 'mallory').current()).rejects.toThrow();
   });
 
-  it('lets a pending link be taken once, before it expires', () => {
+  it('lets a pending link be taken once, before it expires', async () => {
     const { runner } = sql();
-    const links = new StorageLinks(runner, KEY, 'alice');
-    links.remember('n1', { verifier: 'v', webid: ALICE }, 100);
-    expect(links.take('n1', 101)).toEqual({ verifier: 'v', webid: ALICE });
-    expect(links.take('n1', 101)).toBeNull();
-    links.remember('n2', { verifier: 'v', webid: ALICE }, 100);
-    expect(links.take('n2', 100 + 16 * 60)).toBeNull();
+    let nowMs = 100_000;
+    const links = new StorageLinks(runner, KEY, 'alice', () => nowMs);
+    await links.remember('n1', { verifier: 'v', webid: ALICE });
+    nowMs += 1000;
+    expect(await links.take('n1')).toEqual({ verifier: 'v', webid: ALICE });
+    expect(await links.take('n1')).toBeNull();
+    await links.remember('n2', { verifier: 'v', webid: ALICE });
+    nowMs += 16 * 60 * 1000;
+    expect(await links.take('n2')).toBeNull();
   });
 });
 

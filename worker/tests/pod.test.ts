@@ -11,8 +11,9 @@ import {
   Unauthenticated,
   Unprocessable,
   UnsupportedMediaType,
-} from '../app/errors.js';
-import { type Agent, NO_CONDITIONS, type ReadOptions } from '../app/pod.js';
+} from '../app/shared/errors.js';
+import { type Agent, type ReadOptions } from '../app/pods/pod.js';
+import { NO_CONDITIONS } from '../domain/pods/requests.js';
 import { ALICE, BASE, BOB, newPod, streamOf, textOf } from './support/fakes.js';
 
 const alice: Agent = { webid: ALICE };

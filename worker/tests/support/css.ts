@@ -23,7 +23,8 @@ export interface RunningCss {
   stop(): void;
 }
 
-/** Starts CSS with `args` and waits until `readyPath` answers 2xx. */
+/** Starts CSS with `args` and waits until `readyPath` answers at all (an
+ * authenticated server answers an anonymous probe with 401, which is still up). */
 export async function startCss(args: string[], readyPath: string): Promise<RunningCss> {
   return startCssOn(await freePort(), args, readyPath);
 }
@@ -37,7 +38,7 @@ export async function startCssOn(port: number, args: string[], readyPath: string
     env: { PATH: process.env.PATH, HOME: process.env.HOME },
   });
   for (const deadline = Date.now() + 60_000; ; ) {
-    if (await fetch(`${base}${readyPath}`).then((r) => r.ok, () => false)) break;
+    if (await fetch(`${base}${readyPath}`).then((r) => r.status < 500, () => false)) break;
     if (Date.now() > deadline) {
       child.kill();
       throw new Error('CSS did not start');

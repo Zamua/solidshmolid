@@ -76,25 +76,20 @@ specs/002-accounts-households/
 
 ```text
 worker/
-├── domain/
-│   ├── oidc.ts            # claim building, scope and redirect rules, PKCE check (pure)
-│   ├── household.ts       # roles, invariants, ACL shapes for member pods and family groups
-│   └── deletion.ts        # the confirmation sentence and its check
+├── domain/{shared,pods,identity,households}/   pure rules
 ├── app/
-│   ├── provider.ts        # authorize / token / refresh / revoke over ports
-│   ├── households.ts      # signup, members, setup codes, move, handover, delete
-│   └── ports.ts           # + Sessions (Clerk), ClerkAdmin, Approvals, Codes, Keys, ClientIds
+│   ├── identity/   provider.ts, ports.ts (Accounts, ClientRegistry, TokenSigner, Clock, Secrets)
+│   ├── storage/    linking.ts (StorageLinking, FolderSync), migrate.ts, ports.ts
+│   ├── pods/       pod.ts, reconcile.ts, ports.ts
+│   ├── households/ (US1, US3 onward)
+│   └── shared/     errors.ts, serial.ts, streams.ts
 ├── runtime/
-│   ├── worker.ts          # routes: pods, /.oidc/*, /api/*, pages
-│   ├── oidc/              # HTTP for the provider endpoints
-│   ├── api/               # HTTP for the account API
-│   ├── pages/             # sign-in, consent, dashboard, setup (HTML + small TS)
-│   ├── clerk.ts           # session verification + Backend API adapter
-│   └── objects/           # HouseholdObject, AccountObject, DirectoryObject (PodObject moves here)
+│   ├── composition.ts   the composition root
+│   ├── worker.ts        routes by host
+│   ├── http/            solid.ts, oidc.ts, link.ts, dev.ts, pages/
+│   ├── adapters/        sql*, dropbox*, tokenSigner, solidOidcVerifier, dpopProof, sessions, clientRegistry, accountRpc
+│   └── objects/         PodObject, AccountObject, DirectoryObject (thin shells)
 └── tests/
-    ├── provider.test.ts, households.test.ts, deletion.test.ts
-    ├── oidc-interop.test.ts  # CSS accepts our tokens (make compat)
-    └── e2e-signin.test.ts    # make e2e
 ```
 
 **Structure Decision**: One Worker, one repository; the layers above follow constitution VI.

@@ -6,18 +6,8 @@
 // with 429 `too_many_write_operations`, so writes retry briefly here; the pod's
 // own write queue keeps contention from our side to one request at a time.
 
-import { InsufficientStorage, StorageUnavailable } from '../../app/errors.js';
-import {
-  type ByteRange,
-  type FileInfo,
-  type FileLister,
-  type FileStore,
-  type ListedEntry,
-  type Listing,
-  RevisionConflict,
-  type StoredFile,
-  type WriteOptions,
-} from '../../app/ports.js';
+import { InsufficientStorage, StorageUnavailable } from '../../app/shared/errors.js';
+import { type ByteRange, type FileInfo, type FileLister, type FileStore, type ListedEntry, type Listing, RevisionConflict, type StoredFile, type WriteOptions } from '../../app/storage/ports.js';
 
 const API = 'https://api.dropboxapi.com/2';
 const CONTENT = 'https://content.dropboxapi.com/2';

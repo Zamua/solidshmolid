@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { handleFromHost, isValidHandle } from '../domain/handles.js';
-import { parseRange } from '../runtime/http.js';
+import { handleFromHost, isValidHandle } from '../domain/pods/handles.js';
+import { parseRange } from '../runtime/http/solid.js';
 
 describe('handles', () => {
   it.each(['alice', 'a', 'a1-b2', 'x'.repeat(32)])('accepts %s', (h) => expect(isValidHandle(h)).toBe(true));

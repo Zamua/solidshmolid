@@ -3,9 +3,10 @@
 // gives one for your own account). Works in a scratch subfolder it removes.
 
 import { afterAll, describe, expect, it } from 'vitest';
-import { NotFound } from '../app/errors.js';
-import { NO_CONDITIONS, Pod } from '../app/pod.js';
-import { RevisionConflict } from '../app/ports.js';
+import { NotFound } from '../app/shared/errors.js';
+import { Pod } from '../app/pods/pod.js';
+import { NO_CONDITIONS } from '../domain/pods/requests.js';
+import { RevisionConflict } from '../app/storage/ports.js';
 import { DropboxFileStore } from '../runtime/adapters/dropbox.js';
 import { ALICE, BASE, PROFILE, sqliteIndex, streamOf, textOf } from './support/fakes.js';
 

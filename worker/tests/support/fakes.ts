@@ -1,20 +1,29 @@
 // Test doubles: an in-memory FileStore and the SQLite index over node:sqlite.
 
 import { createRequire } from 'node:module';
-import {
-  type ByteRange,
-  type FileInfo,
-  type FileStore,
-  type ListedEntry,
-  RevisionConflict,
-  type StoredFile,
-  type WriteOptions,
-} from '../../app/ports.js';
-import { Pod } from '../../app/pod.js';
-import { SqlIndex } from '../../runtime/sqlIndex.js';
+import { type ByteRange, type FileInfo, type FileStore, type ListedEntry, RevisionConflict, type StoredFile, type WriteOptions } from '../../app/storage/ports.js';
+import { Pod } from '../../app/pods/pod.js';
+import { SqlIndex } from '../../runtime/adapters/sqlPodIndex.js';
 
 // Vite does not know node:sqlite as a builtin and fails to resolve the import.
 const { DatabaseSync } = createRequire(import.meta.url)('node:sqlite') as typeof import('node:sqlite');
+
+/** A DO-style SQL runner over an in-memory node:sqlite database. */
+export function sqlRunner() {
+  const db = new DatabaseSync(':memory:');
+  return {
+    db,
+    exec(query: string, ...args: unknown[]) {
+      const parts = query.split(';').filter((s) => s.trim());
+      if (args.length === 0 && parts.length > 1) {
+        db.exec(query);
+        return { toArray: () => [] as Record<string, unknown>[] };
+      }
+      const rows = db.prepare(query).all(...(args as never[])) as Record<string, unknown>[];
+      return { toArray: () => rows };
+    },
+  };
+}
 
 export function sqliteIndex(): SqlIndex {
   const db = new DatabaseSync(':memory:');

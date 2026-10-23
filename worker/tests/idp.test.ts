@@ -4,7 +4,7 @@
 
 import { SignJWT, exportJWK, generateKeyPair } from 'jose';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { InvalidCredentials, SolidOidcVerifier } from '../runtime/auth/solidOidc.js';
+import { InvalidCredentials, SolidOidcVerifier } from '../runtime/adapters/solidOidcVerifier.js';
 import { CSS_BIN, type RunningCss, type SolidSession, signUp, startCss } from './support/css.js';
 
 describe.skipIf(!CSS_BIN)('a CSS-issued token', () => {

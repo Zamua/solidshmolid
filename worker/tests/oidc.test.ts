@@ -1,6 +1,6 @@
 import { SignJWT, base64url, calculateJwkThumbprint, exportJWK, generateKeyPair } from 'jose';
 import { beforeAll, describe, expect, it } from 'vitest';
-import { InvalidCredentials, SolidOidcVerifier } from '../runtime/auth/solidOidc.js';
+import { InvalidCredentials, SolidOidcVerifier } from '../runtime/adapters/solidOidcVerifier.js';
 
 const ISS = 'https://idp.example/';
 const WEBID = 'https://alice.example/profile/card#me';

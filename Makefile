@@ -23,6 +23,7 @@ test: ## unit tests
 DROPBOX_APP_KEY_FILE ?= $(HOME)/keys/dropbox-solidshmolid-app-key
 .dev.vars:
 	@printf 'TOKEN_KEY=%s\n' "$$(head -c 32 /dev/urandom | base64)" > .dev.vars
+	@printf "OIDC_SIGNING_JWK='%s'\n" "$$(node scripts/new-signing-jwk.mjs)" >> .dev.vars
 	@if [ -f "$(DROPBOX_APP_KEY_FILE)" ]; then printf 'DROPBOX_APP_KEY=%s\n' "$$(tr -d '\n' < $(DROPBOX_APP_KEY_FILE))" >> .dev.vars; fi
 	@chmod 600 .dev.vars
 
@@ -48,5 +49,5 @@ $(CSS_BIN):
 compat: $(CSS_BIN) ## a stock CSS serves the folders we write, and its tokens verify here
 	COMPAT_CSS_BIN=$(CSS_BIN) $(NODE) vitest run --root worker tests/compat.test.ts tests/idp.test.ts
 
-e2e: $(CSS_BIN) ## a CSS WebID uses a dev pod through the Worker (starts wrangler dev)
+e2e: $(CSS_BIN) .dev.vars ## a CSS WebID uses a dev pod through the Worker (starts wrangler dev)
 	COMPAT_CSS_BIN=$(CSS_BIN) ./scripts/e2e.sh

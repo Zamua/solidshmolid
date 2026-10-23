@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { InvalidRdf, parseRdf, serializeRdf } from '../domain/rdf.js';
+import { InvalidRdf, parseRdf, serializeRdf } from '../domain/shared/rdf.js';
 
 const BASE = 'https://alice.example/a';
 const nt = async (text: string, type: string) =>
