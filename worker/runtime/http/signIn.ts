@@ -21,7 +21,9 @@ export async function signInRoute(request: Request, env: Env, url: URL): Promise
       if (!clerk && !isDev(env)) return null;
       return page(
         'Sign in',
-        `${clerk ? `<div class="clerk-mount"><div data-clerk-mount="sign-in" data-return="${escapeHtml(back)}"></div></div>` : '<h1>Sign in</h1>'}
+        `<h1>Welcome back</h1>
+<p class="lede">Sign in with your email or Google.</p>
+${clerk ? `<div class="clerk-mount"><div data-clerk-mount="sign-in" data-return="${escapeHtml(back)}"></div></div>` : ''}
 ${isDev(env) ? `<p class="small center" style="margin-top:16px">Development: <a href="/dev/sign-in?person=dana&amp;return=${encodeURIComponent(back)}">continue as dana</a></p>` : ''}`,
       );
     case '/sign-up':
