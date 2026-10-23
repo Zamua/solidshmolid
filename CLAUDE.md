@@ -40,7 +40,7 @@ worker/runtime/
 make test        # unit tests (vitest, node:sqlite stands in for DO SQLite)
 make typecheck
 make dev         # wrangler dev on 127.0.0.1:8787, pods at http://<handle>.localhost:8787
-POD_URL=http://smoke.localhost:8787 DEV_WEBID='http://smoke.localhost:8787/profile/card#me' make smoke
+APEX_URL=http://localhost:8787 POD_URL=http://smoke.localhost:8787 DEV_WEBID='http://smoke.localhost:8787/profile/card#me' make smoke
 make build       # wrangler dry-run bundle
 make compat      # a stock CSS 7.2 serves a folder we wrote, and its tokens verify (CSS in ~/.cache/solidshmolid)
 make e2e         # wrangler dev on ::1: CSS WebIDs use a dev pod; our provider signs a client in; CSS accepts our token; signup + connect
@@ -100,7 +100,7 @@ signup with connecting storage, and more pods per person are in; `make e2e` cove
 signup on the dev provider, and `make clerk-live` a real Clerk session.
 Households and children's accounts were dropped on 2026-10-23. The app list,
 disconnect and delete are in. Next: the first staging deploy, with pods on
-`stg-<id>.solidshmolid.page` and the apex on `stg.solidshmolid.com` (see
+`<id>-stg.solidshmolid.page` and the apex on `stg.solidshmolid.com` (see
 SPEC "URLs"); moving pods between storage links comes later. The Clerk
 production instance and Google OAuth client exist (keys in `~/keys`); nothing
 is deployed yet.

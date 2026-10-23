@@ -18,9 +18,9 @@ for themselves and that's it" (households, members and children's accounts are o
 - Q: When a pod or account is deleted, what happens to its storage folder? → A: The user chooses
   at deletion time; the default leaves it untouched. Deleting the files takes several
   confirmation steps, including typing a sentence naming the storage provider.
-- Q: How do staging pods get HTTPS on a single domain? → A: Staging pod hosts are
-  `stg-<id>.solidshmolid.com` (one level, covered by the free certificate); no Advanced
-  Certificate Manager.
+- Q: How do staging pods get HTTPS on a single domain? → A: Staging pod hosts are one label
+  under the production pod domain (`<id>-stg.solidshmolid.page`, covered by the free
+  certificate); no Advanced Certificate Manager.
 - Q: Do people pick their pod's address? → A: No. Each pod gets a short random id
   (`k3x9fqm7.solidshmolid.com`) so names cannot be squatted.
 

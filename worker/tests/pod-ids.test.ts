@@ -31,8 +31,8 @@ describe('pod ids', () => {
   it('are valid pod hosts, in production and staging', () => {
     const id = podIdFrom(crypto.getRandomValues(new Uint8Array(32)))!;
     expect(isValidHandle(id)).toBe(true);
-    expect(handleFromHost(`${id}.solidshmolid.com`, '{handle}.solidshmolid.com')).toBe(id);
-    expect(handleFromHost(`stg-${id}.solidshmolid.com`, 'stg-{handle}.solidshmolid.com')).toBe(id);
+    expect(handleFromHost(`${id}.solidshmolid.page`, '{handle}.solidshmolid.page')).toBe(id);
+    expect(handleFromHost(`${id}-stg.solidshmolid.page`, '{handle}-stg.solidshmolid.page')).toBe(id);
     expect(isPodId('k3x9fqm0')).toBe(false);
     expect(isPodId('k3x9fqm')).toBe(false);
   });

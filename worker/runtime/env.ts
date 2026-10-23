@@ -7,7 +7,7 @@ export interface Env {
   ACCOUNT: DurableObjectNamespace<AccountObject>;
   DIRECTORY: DurableObjectNamespace<DirectoryObject>;
   /** Pod hostnames, with `{handle}` standing for the handle:
-   * '{handle}.example.com' in prod, 'stg-{handle}.example.com' in staging. */
+   * '{handle}.example.com' in prod, '{handle}-stg.example.com' in staging. */
   POD_HOST_TEMPLATE: string;
   /** The identity provider's host. */
   APEX_HOST: string;

@@ -1,16 +1,22 @@
 #!/usr/bin/env bash
 # Smoke a running deployment through its public HTTP surface.
 #
-#   POD_URL=https://alice.example.com ./scripts/smoke.sh
-#   POD_URL=http://smoke.localhost:8787 DEV_WEBID=http://smoke.localhost:8787/profile/card#me ./scripts/smoke.sh
+#   APEX_URL=https://example.com NO_POD_URL=https://zzzzzzzz.pods.example ./scripts/smoke.sh
+#   APEX_URL=http://localhost:8787 POD_URL=http://smoke.localhost:8787 \
+#     DEV_WEBID=http://smoke.localhost:8787/profile/card#me ./scripts/smoke.sh
 #
-# POD_URL is a provisioned pod. With DEV_WEBID (local dev config only) the
-# write cycle runs too. Every request must also finish within
-# SMOKE_LATENCY_BUDGET_MS: a deployment that answers correctly but slowly fails.
+# APEX_URL is the account site and identity provider. POD_URL, when set, is a
+# provisioned pod; NO_POD_URL a pod host that must not exist. With DEV_WEBID
+# (local dev config only) the write cycle runs too. Every request must also
+# finish within SMOKE_LATENCY_BUDGET_MS: a deployment that answers correctly
+# but slowly fails.
 set -uo pipefail
 
-POD_URL="${POD_URL:?set POD_URL to a pod root}"
+APEX_URL="${APEX_URL:?set APEX_URL to the account site}"
+APEX_URL="${APEX_URL%/}"
+POD_URL="${POD_URL:-}"
 POD_URL="${POD_URL%/}"
+NO_POD_URL="${NO_POD_URL:-}"
 BUDGET_MS="${SMOKE_LATENCY_BUDGET_MS:-6000}"
 DEV_WEBID="${DEV_WEBID:-}"
 pass=0
@@ -51,14 +57,27 @@ expect() {
   fi
 }
 
-origin=$(sed -E 's#^(https?://)[^.]+\.#\1#' <<<"$POD_URL")
-request 'healthz' 200 "$origin/healthz"
-request 'profile is public' 200 "$POD_URL/profile/card" && expect 'profile is a profile' "$BODY" 'PersonalProfileDocument'
-request 'root needs credentials' 401 "$POD_URL/" && expect 'root asks for DPoP' "$HEADERS" 'WWW-Authenticate: DPoP'
-request 'CORS preflight' 204 -X OPTIONS -H 'Origin: https://app.example' -H 'Access-Control-Request-Method: PUT' "$POD_URL/x" &&
-  expect 'preflight echoes origin' "$HEADERS" 'Access-Control-Allow-Origin: https://app.example'
+request 'healthz' 200 "$APEX_URL/healthz"
+request 'welcome page' 200 "$APEX_URL/" && expect 'welcome says what it is' "$BODY" 'A home for your data'
+request 'sign-in page' 200 "$APEX_URL/sign-in"
+request 'privacy page' 200 "$APEX_URL/privacy"
+request 'provider discovery' 200 "$APEX_URL/.well-known/openid-configuration" && expect 'names its issuer' "$BODY" "\"issuer\":\"$APEX_URL/\""
+request 'provider keys' 200 "$APEX_URL/.oidc/jwks" && expect 'publishes a key' "$BODY" '"kty"'
+request 'account API needs a session' 401 -X POST -H "Origin: $APEX_URL" "$APEX_URL/api/signup"
+request 'account API refuses other sites' 403 -X POST -H 'Origin: https://elsewhere.example' "$APEX_URL/api/signup"
 
-if [ -n "$DEV_WEBID" ]; then
+if [ -n "$NO_POD_URL" ]; then
+  request 'unknown pod is not found' 404 "${NO_POD_URL%/}/"
+fi
+
+if [ -n "$POD_URL" ]; then
+  request 'profile is public' 200 "$POD_URL/profile/card" && expect 'profile is a profile' "$BODY" 'PersonalProfileDocument'
+  request 'root needs credentials' 401 "$POD_URL/" && expect 'root asks for DPoP' "$HEADERS" 'WWW-Authenticate: DPoP'
+  request 'CORS preflight' 204 -X OPTIONS -H 'Origin: https://app.example' -H 'Access-Control-Request-Method: PUT' "$POD_URL/x" &&
+    expect 'preflight echoes origin' "$HEADERS" 'Access-Control-Allow-Origin: https://app.example'
+fi
+
+if [ -n "$DEV_WEBID" ] && [ -n "$POD_URL" ]; then
   as=(-H "X-Dev-WebID: $DEV_WEBID")
   doc="$POD_URL/smoke/$RANDOM$RANDOM.ttl"
   request 'PUT creates' 201 "${as[@]}" -X PUT -H 'Content-Type: text/turtle' --data '<#s> <#p> "one".' "$doc"
