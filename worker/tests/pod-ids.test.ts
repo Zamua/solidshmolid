@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { POD_ID_ALPHABET, isPodId, podIdFrom } from '../domain/households/podIds.js';
+import { POD_ID_ALPHABET, isPodId, podIdFrom } from '../domain/accounts/podIds.js';
 import { handleFromHost, isValidHandle } from '../domain/pods/handles.js';
 
 describe('pod ids', () => {

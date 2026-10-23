@@ -7,8 +7,10 @@
 // the Worker and stripped from every inbound request before forwarding.
 
 import { DurableObject } from 'cloudflare:workers';
-import type { Placement } from '../../app/households/ports.js';
+import type { Placement } from '../../app/accounts/ports.js';
 import { Conflict } from '../../app/shared/errors.js';
+import { addStoragePatch } from '../../domain/pods/profile.js';
+import { NO_CONDITIONS } from '../../domain/pods/requests.js';
 import { placePod } from '../../app/storage/placement.js';
 import type { PlacementOutcome } from '../../app/storage/ports.js';
 import { ProofLedger } from '../adapters/proofLedger.js';
@@ -65,9 +67,9 @@ export class PodObject extends DurableObject<Env> {
     }
   }
 
-  /** Serves the pod from its folder in a household's storage. Repeating a
+  /** Serves the pod from its folder in its account's storage. Repeating a
    * finished placement is a no-op; moving to other storage is not this call. */
-  async place(podId: string, base: string, placement: Placement, owner: string, profile: string, managers: string[]): Promise<PlacementOutcome> {
+  async place(podId: string, base: string, placement: Placement, owner: string, profile: string | null): Promise<PlacementOutcome> {
     const services = this.open(base);
     const current = services.placement.current();
     if (current?.cursor) {
@@ -76,9 +78,15 @@ export class PodObject extends DurableObject<Env> {
     }
     services.placement.save(placement);
     const { pod, files } = services.podIn(placement);
-    const outcome = await placePod(pod, files, services.placement, { owner, profile, controllers: managers });
+    const outcome = await placePod(pod, files, services.placement, { owner, profile });
     this.services = null;
     return outcome;
+  }
+
+  /** Lists another of the owner's pods as a storage in this pod's profile. */
+  async declareStorage(base: string, owner: string, storage: string): Promise<void> {
+    const { pod } = this.open(base);
+    await pod.patch('/profile/card', { webid: owner }, addStoragePatch(storage), 'text/n3', NO_CONDITIONS);
   }
 
   private open(base: string): PodServices {

@@ -52,20 +52,16 @@ describe.skipIf(!live)('Clerk sign-in', () => {
     expect((await fetch(`${APEX}/api/me`, { headers: { authorization: 'Bearer not-a-token' } })).status).toBe(401);
     const signup = await fetch(`${APEX}/api/signup`, { method: 'POST', headers: { ...auth, origin: APEX! } });
     expect(signup.status).toBe(201);
-    const me = (await (await fetch(`${APEX}/api/me`, { headers: auth })).json()) as { person: string; household: { pods: unknown[] } };
+    const me = (await (await fetch(`${APEX}/api/me`, { headers: auth })).json()) as { person: string; account: { pods: unknown[] } };
     expect(me.person).toBe(user.id);
-    expect(me.household.pods).toHaveLength(1);
+    expect(me.account.pods).toHaveLength(1);
 
-    // Connect storage (the dev provider), then add a child: a real,
-    // username-only Clerk user.
+    // Connect storage (the dev provider), then add a second pod.
     const { authorizeUrl } = (await (await fetch(`${APEX}/api/storage/dev/start`, { method: 'POST', headers: { ...auth, origin: APEX! } })).json()) as { authorizeUrl: string };
     expect((await fetch(authorizeUrl, { headers: auth, redirect: 'manual' })).status).toBe(303);
-    const added = await fetch(`${APEX}/api/members`, { method: 'POST', headers: { ...auth, origin: APEX!, 'content-type': 'application/json' }, body: JSON.stringify({ name: 'Leo' }) });
+    const added = await fetch(`${APEX}/api/pods`, { method: 'POST', headers: { ...auth, origin: APEX! } });
     expect(added.status).toBe(201);
-    const leo = ((await added.json()) as { members: { name: string; person: string; pod: string }[] }).members.find((m) => m.name === 'Leo')!;
-    made.push(leo.person);
-    const login = await bapi(`/users/${leo.person}`);
-    expect(login).toMatchObject({ username: `pod-${leo.pod}`, first_name: 'Leo', email_addresses: [] });
+    expect(((await added.json()) as { pods: unknown[] }).pods).toHaveLength(2);
   });
 
   it('refuses a session minted for another site, such as a pod', async () => {

@@ -18,16 +18,8 @@ export class DirectoryObject extends DurableObject<Env> {
     return this.directory.accountKeyFor(person);
   }
 
-  async householdOf(person: string): Promise<string | null> {
-    return this.directory.householdOf(person);
-  }
-
-  async join(person: string, householdId: string): Promise<string> {
-    return this.directory.join(person, householdId);
-  }
-
-  async allocatePodId(householdId: string): Promise<string> {
-    return this.directory.allocatePodId(householdId);
+  async allocatePodId(accountKey: string): Promise<string> {
+    return this.directory.allocatePodId(accountKey);
   }
 
   async registerClient(doc: Record<string, unknown>): Promise<string> {

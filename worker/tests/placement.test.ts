@@ -28,14 +28,21 @@ function setup(folder = new FakeDropbox(), root = 'k3x9fqm7') {
 }
 
 describe('placing a pod in its folder', () => {
-  it('creates a new pod in an empty folder, its managers in the root ACL', async () => {
+  it('creates a new pod with its WebID profile in an empty folder', async () => {
     const { folder, storage, pod, cursor } = setup();
-    expect(await placePod(pod, storage, cursor, { owner: ALICE, profile: PROFILE, controllers: [BOB] })).toBe('created');
+    expect(await placePod(pod, storage, cursor, { owner: ALICE, profile: PROFILE })).toBe('created');
     expect(Object.keys(folder.files()).sort()).toEqual(['/k3x9fqm7/.acl', '/k3x9fqm7/profile/card$.ttl', '/k3x9fqm7/profile/card.acl']);
     expect(cursor.value).toBeTruthy();
-    expect((await pod.modes('/', { webid: BOB })).has('control')).toBe(true);
+    expect((await pod.modes('/', { webid: ALICE })).has('control')).toBe(true);
     expect((await pod.modes('/profile/card', { webid: null })).has('read')).toBe(true);
     expect((await pod.modes('/', { webid: null })).size).toBe(0);
+    expect((await pod.modes('/', { webid: BOB })).size).toBe(0);
+  });
+
+  it('creates a further pod without a profile', async () => {
+    const { folder, storage, pod, cursor } = setup();
+    expect(await placePod(pod, storage, cursor, { owner: ALICE, profile: null })).toBe('created');
+    expect(Object.keys(folder.files())).toEqual(['/k3x9fqm7/.acl']);
   });
 
   it('adopts the pod already in a folder, leaving its files as they are', async () => {
@@ -44,7 +51,7 @@ describe('placing a pod in its folder', () => {
     folder.editOutOfBand('/k3x9fqm7/old/note.txt', 'from an earlier life');
     folder.editOutOfBand('/elsewhere/secret.txt', 'not this pod');
     const { storage, pod, cursor } = setup(folder);
-    expect(await placePod(pod, storage, cursor, { owner: ALICE, profile: PROFILE, controllers: [BOB] })).toBe('adopted');
+    expect(await placePod(pod, storage, cursor, { owner: ALICE, profile: PROFILE })).toBe('adopted');
     expect(await textOf((await pod.read('/old/note.txt', { webid: ALICE }, READ)).body)).toBe('from an earlier life');
     expect(folder.files()['/k3x9fqm7/profile/card$.ttl']).toBeUndefined();
     expect((await pod.modes('/', { webid: BOB })).size).toBe(0);
@@ -53,7 +60,7 @@ describe('placing a pod in its folder', () => {
 
   it('then folds in edits made in the folder, at most once per interval', async () => {
     const { folder, storage, pod, cursor } = setup();
-    await placePod(pod, storage, cursor, { owner: ALICE, profile: PROFILE, controllers: [] });
+    await placePod(pod, storage, cursor, { owner: ALICE, profile: PROFILE });
     await pod.put('/notes/a.txt', { webid: ALICE }, { stream: streamOf('v1') }, 'text/plain', NO_CONDITIONS);
     let now = 0;
     const sync = new FolderSync(pod, cursor, storage, 30_000, () => now);

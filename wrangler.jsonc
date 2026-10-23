@@ -9,14 +9,12 @@
     "bindings": [
       { "name": "POD", "class_name": "PodObject" },
       { "name": "ACCOUNT", "class_name": "AccountObject" },
-      { "name": "DIRECTORY", "class_name": "DirectoryObject" },
-      { "name": "HOUSEHOLD", "class_name": "HouseholdObject" }
+      { "name": "DIRECTORY", "class_name": "DirectoryObject" }
     ]
   },
   "migrations": [
     { "tag": "v1", "new_sqlite_classes": ["PodObject"] },
-    { "tag": "v2", "new_sqlite_classes": ["AccountObject", "DirectoryObject"] },
-    { "tag": "v3", "new_sqlite_classes": ["HouseholdObject"] }
+    { "tag": "v2", "new_sqlite_classes": ["AccountObject", "DirectoryObject"] }
   ],
   "observability": { "enabled": true },
   "vars": {

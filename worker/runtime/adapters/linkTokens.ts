@@ -1,4 +1,4 @@
-// Short-lived access tokens for a household's storage links, minted from the
+// Short-lived access tokens for an account's storage links, minted from the
 // stored refresh token and kept in memory until shortly before they expire.
 // Concurrent askers share one refresh.
 

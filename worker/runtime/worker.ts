@@ -1,9 +1,9 @@
 // Entry Worker: routes by host. Pod hosts go to that pod's Durable Object
 // after the agent is verified; the apex carries the identity provider, the
-// account and household API, the home page and (in development) stand-ins
+// account API, the home page and (in development) stand-ins
 // for sign-in.
 
-import { isPodId } from '../domain/households/podIds.js';
+import { isPodId } from '../domain/accounts/podIds.js';
 import { handleFromHost } from '../domain/pods/handles.js';
 import { profileDocument } from '../domain/pods/profile.js';
 import { InvalidCredentials, type VerifiedAgent } from './adapters/solidOidcVerifier.js';
@@ -21,7 +21,6 @@ import { AGENT_HEADER, BASE_HEADER, INTERNAL_PREFIX, JTI_EXPIRES_HEADER, JTI_HEA
 
 export { AccountObject } from './objects/accountObject.js';
 export { DirectoryObject } from './objects/directoryObject.js';
-export { HouseholdObject } from './objects/householdObject.js';
 export { PodObject } from './objects/podObject.js';
 
 export default {
@@ -60,7 +59,7 @@ async function pod(request: Request, env: Env, url: URL, handle: string): Promis
   const stub = env.POD.get(env.POD.idFromName(handle));
   const base = url.origin;
   // Named pods are a development convenience; pods with random ids belong to
-  // households and exist once their storage is connected.
+  // accounts and exist once their storage is connected.
   if (isDev(env) && !isPodId(handle)) {
     await stub.ensureProvisioned(base, `${base}/profile/card#me`, profileDocument(`${base}/`, hostsFor(env, url).issuer));
   }

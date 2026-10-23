@@ -1,19 +1,26 @@
-# Data Model: Accounts, Households and Solid Sign-In
+# Data Model: Accounts, Pods and Solid Sign-In
 
 All state lives in Durable Object SQLite. Each entity below names the object that owns it.
 
-## Account (AccountObject, keyed by Clerk user id)
+## Account (AccountObject, keyed by account key)
+
+The directory assigns each Clerk user an account key; codes and refresh tokens carry it.
 
 | field | notes |
 | --- | --- |
-| clerkUserId | key |
-| householdId | one household per account in v1 |
-| kind | `adult` (signs in with own identifiers) or `managed` (username only, created by a manager) |
+| key | random; names the object |
+| webid | the account's one WebID, in its first pod |
 | created | |
 
-**IdentityBinding**: `webid`, `role` (`self` for the account's own pod, never more than one per
-account). A manager's access to member pods comes from their ACLs, not from bindings, so a
-manager can sign in to apps only as themselves (spec story 2, scenario 3).
+**Pod**: `podId`, `linkId` (null until storage is connected), `folder` (= podId), in creation
+order. The first pod holds the WebID profile; the rest are listed in it as `pim:storage`.
+
+**StorageLink**: `linkId`, `provider` (`dropbox`), `providerAccount`, `refreshToken` (AES-GCM
+under `TOKEN_KEY`, associated data `account/<key>/link/<linkId>`), `created`. Cannot be removed
+while any pod uses it (FR-015). Access tokens are minted from it on request and kept in memory.
+
+**PendingLink**: `nonce`, PKCE `verifier`, `expires` (15 min). Consumed on the provider's callback,
+which must come from the same account.
 
 **AppApproval**: `clientId` (URL or registered id), `clientName`, `webid`, `approved`,
 `lastUsed`. Unique on (`clientId`, `webid`). Revoking deletes it and every refresh-token family
@@ -26,50 +33,26 @@ Consumed on first use; a second use revokes tokens issued from it.
 **RefreshTokenFamily**: `familyId`, `clientId`, `webid`, `dpopJkt`, `currentHash`, `expires`.
 Rotation on every use; presenting an old token revokes the family.
 
-## Household (HouseholdObject, keyed by household id)
-
-| field | notes |
-| --- | --- |
-| id | random |
-| name | display only |
-| created | |
-
-**Member**: `clerkUserId`, `role` (`manager` or `member`), `webid`, `handle`. Invariant: at
-least one manager (FR-010). A manager cannot leave or delete their account while they are the
-only manager of other members.
-
-**StorageLink**: `linkId`, `provider` (`dropbox`), `providerAccount`, `ownerClerkUserId`,
-`refreshToken` (AES-GCM under `TOKEN_KEY`, associated data `household/<id>/link/<linkId>`),
-`displayName` (for confirmation sentences), `created`. Cannot be removed while any pod uses it
-(FR-018).
-
-**PodPlacement**: `handle`, `linkId`, `folder` (= handle), `state` (`active`, `moving`,
-`deleted`). A `moving` placement records `toLinkId`; reads keep serving from `linkId` until the
-move commits (FR-017).
-
-**SetupCode** (audit only; the secret lives at Clerk): `memberClerkUserId`, `issuedBy`,
-`issued`, `expires` (15 min), `usedAt`.
-
 ## Directory (DirectoryObject, single instance)
 
 | table | purpose |
 | --- | --- |
-| pod ids | `podId` -> `householdId`, `state` (`active` or `deleted`); ids are random, unique, never reused |
-| accounts | `clerkUserId` -> `householdId` |
-| providerAccounts | `provider`, `providerAccount` -> `householdId`, `linkId` |
+| person | `clerkUserId` -> account key |
+| pod ids | `podId` -> account key, `state` (`active` or `deleted`); ids are random, unique, never reused |
+| clients | dynamically registered clients |
 
-## Pod (PodObject, keyed by handle; exists)
+## Pod (PodObject, keyed by pod id)
 
-Gains `householdId` and `linkId` in its state, replacing its own storage link row. Access tokens
-come from the household over RPC. Root ACL shape per FR-012.
+The resource index and RDF cache, plus its **Placement**: `accountKey`, `linkId`, `provider`,
+`folder`, and the storage change-feed `cursor`. Access tokens come from the account over RPC.
+Root ACL per FR-012.
 
 ## State transitions
 
 ```
-PodPlacement:  (none) -> active -> moving -> active        (move or handover)
-                                \-> deleted               (FR-019; files kept unless confirmed)
-Member:        invited -> member -> (handover) -> adult with own household
-Pod id:        assigned -> active -> deleted (never reassigned)
+Pod:      (waiting for storage) -> placed -> moving -> placed   (FR-014)
+                                          \-> deleted           (FR-016; files kept unless confirmed)
+Pod id:   assigned -> active -> deleted (never reassigned)
 ```
 
 ## Validation rules from the spec
@@ -77,7 +60,4 @@ Pod id:        assigned -> active -> deleted (never reassigned)
 - Pod ids: 8 characters from `23456789abcdefghjkmnpqrstuvwxyz`, assigned by the directory,
   unique and never reused (FR-009).
 - Deleting files: `deleteFiles` requires the first-step token and the exact sentence
-  `yes, delete my data in <displayName>` (FR-019, SC-006).
-- Setup codes: single use, 15 minutes, one member (FR-014).
-- Reset login: removes the member's passkeys at Clerk, revokes their app approvals and refresh
-  families (FR-015).
+  `yes, delete my data in <displayName>` (FR-016, SC-005).

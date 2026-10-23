@@ -1,25 +1,21 @@
-# Contract: Account and Household API
+# Contract: Account API
 
 JSON over HTTPS on the apex host under `/api/`. Every call needs a Clerk session (cookie or
-`Authorization: Bearer <Clerk session token>`); the caller is the signed-in Clerk user. Errors:
-`{ "error": "<code>", "message": "..." }` with 400/401/403/404/409.
+`Authorization: Bearer <Clerk session token>`); the caller is the signed-in Clerk user. A POST
+must carry the apex `Origin`. Pages post plain HTML forms and get a 303 redirect; scripts get
+JSON. Errors: `{ "error": "<code>", "message": "..." }` with 400/401/403/404/409.
 
-| method and path | who | does |
-| --- | --- | --- |
-| `GET /api/me` | anyone signed in | account, household, own pod, role |
-| `POST /api/signup` | new account | creates the household (caller as manager) and assigns the caller's pod id |
-| `POST /api/storage/dropbox/start` | manager | returns the Dropbox authorize URL (PKCE) |
-| `GET /link/dropbox/callback` | browser | finishes linking; creates the caller's pod in the new link if it has none |
-| `GET /api/storage` | manager | storage links with pods using each |
-| `DELETE /api/storage/{linkId}` | manager | 409 with the pod list while any pod uses it (FR-018) |
-| `POST /api/members` `{name, kind}` | manager | `kind: "managed"` creates a Clerk user (username) and its pod; `kind: "adult"` creates an invitation |
-| `POST /api/members/{handle}/setup-code` | manager | returns `{url, expires}` for a QR code (FR-014) |
-| `POST /api/members/{handle}/reset-login` | manager | removes passkeys, approvals, refresh families (FR-015) |
-| `POST /api/invitations/{id}/accept` | invited adult | joins the household and takes the pod |
-| `POST /api/pods/{handle}/move` `{linkId}` | owner or manager | copies to another link, then switches (FR-017) |
-| `POST /api/pods/{handle}/handover` | manager | removes manager grants; member continues with own sign-in and storage |
-| `POST /api/folders/share` `{handle, path, family: bool}` | pod controller | writes the `acl:agentGroup` rule (FR-016) |
-| `GET /api/apps` / `DELETE /api/apps/{clientId}` | anyone signed in | list and revoke own app approvals (FR-007) |
-| `POST /api/pods/{handle}/delete` `{deleteFiles: false}` | owner or manager | deletes the pod; keeps the folder |
-| `POST /api/pods/{handle}/delete` `{deleteFiles: true}` | owner or manager | returns `{confirmToken, sentence}`; nothing deleted yet |
-| `POST /api/pods/{handle}/delete/confirm` `{confirmToken, typed}` | same caller | deletes the files only when `typed` equals `sentence` exactly (SC-006) |
+| method and path | does |
+| --- | --- |
+| `GET /api/me` | the person and their account (WebID, pods, storage) or null |
+| `POST /api/signup` | creates the account and its first pod id and WebID; repeating returns the same |
+| `POST /api/storage/{provider}/start` | returns the provider's authorize URL (PKCE) |
+| `GET /link/{provider}/callback` | finishes linking; places every pod waiting for storage |
+| `POST /api/pods` | adds a pod beside the first, owned by the WebID and listed in its profile (409 before storage is connected) |
+| `GET /api/storage` | storage links with the pods using each |
+| `DELETE /api/storage/{linkId}` | 409 with the pod list while any pod uses it (FR-015) |
+| `GET /api/apps` / `DELETE /api/apps/{clientId}` | list and revoke app approvals (FR-007) |
+| `POST /api/pods/{id}/move` `{linkId}` | copies to another link, then switches (FR-014) |
+| `POST /api/pods/{id}/delete` `{deleteFiles: false}` | deletes the pod; keeps the folder |
+| `POST /api/pods/{id}/delete` `{deleteFiles: true}` | returns `{confirmToken, sentence}`; nothing deleted yet |
+| `POST /api/pods/{id}/delete/confirm` `{confirmToken, typed}` | deletes the files only when `typed` equals `sentence` exactly (SC-005) |

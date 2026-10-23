@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { SqlDirectory } from '../runtime/adapters/sqlDirectory.js';
 import { sqlRunner } from './support/fakes.js';
-import { isPodId } from '../domain/households/podIds.js';
+import { isPodId } from '../domain/accounts/podIds.js';
 
 function directory() {
   let n = 0;
@@ -15,14 +15,6 @@ describe('directory', () => {
     const k = d.accountKeyFor('clerk_a');
     expect(d.accountKeyFor('clerk_a')).toBe(k);
     expect(d.accountKeyFor('clerk_b')).not.toBe(k);
-  });
-
-  it('keeps a person in the first household they join', () => {
-    const { d } = directory();
-    expect(d.householdOf('clerk_a')).toBeNull();
-    expect(d.join('clerk_a', 'h1')).toBe('h1');
-    expect(d.join('clerk_a', 'h2')).toBe('h1');
-    expect(d.householdOf('clerk_a')).toBe('h1');
   });
 
   it('never hands out the same pod id twice, even when the draw repeats', () => {
