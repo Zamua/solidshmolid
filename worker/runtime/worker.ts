@@ -17,6 +17,7 @@ import { withClerk } from './http/clerkChrome.js';
 import { homeRoute } from './http/home.js';
 import { signInRoute } from './http/signIn.js';
 import { oidcRoute } from './http/oidc.js';
+import { appIconRoute } from './http/assets/appIcons.js';
 import { PAGE_SCRIPT_PATH } from './http/assets/pageScript.js';
 import { accountMenu } from './http/pages/home.js';
 import { problemPage } from './http/pages/problem.js';
@@ -47,6 +48,8 @@ export default worker;
 
 /** The apex: who is signed in is settled once, before any route runs. */
 async function apex(request: Request, env: Env, url: URL): Promise<Response> {
+  const icon = appIconRoute(request, url);
+  if (icon) return icon;
   const session = await sessions(env, url.origin).check(request);
   if (session.redirect) return session.redirect;
   let response =
