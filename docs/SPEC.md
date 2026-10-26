@@ -299,6 +299,12 @@ browse their own pods' folders, reading as their WebID through the pod
 service, and download files: always as attachments (`application/octet-stream`,
 a sandbox CSP), so nothing a pod holds ever runs on the account site.
 
+The apex serves the favicon (`/favicon.svg`, `/favicon.ico`), home-screen
+icons (`/apple-touch-icon.png`, `/icons/*.png`) and a web app manifest
+(`/manifest.webmanifest`, `display: browser`, since sign-in and connecting
+storage leave the site and come back) ahead of the session check. Pages on
+pod hosts link the apex's icons and no manifest.
+
 ## Signing in (people, on the apex)
 
 People sign in with Clerk. Every apex page loads clerk-js from the

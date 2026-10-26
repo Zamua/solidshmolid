@@ -1,6 +1,9 @@
 // The page shell shared by every apex page: the morning-sky look from
 // design/mockups, inlined so a page is one response.
 
+import { CLOUD } from '../assets/appIconData.js';
+import { FAVICON_PATH, MANIFEST_PATH, THEME_COLOR, TOUCH_ICON_PATH } from '../assets/appIcons.js';
+
 export function escapeHtml(s: string): string {
   return s.replace(/[&<>"']/gu, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]!);
 }
@@ -190,7 +193,7 @@ export function podCloud(label: string | { html: string }, small = false): strin
   return `<div class="pod-cloud${small ? ' small' : ''}"><svg viewBox="0 0 92 64" aria-hidden="true"><path fill="#fff" stroke="#dbe7fa" stroke-width="2" d="M22 60 h50 a16 16 0 0 0 1-32 a22 22 0 0 0-42-6 a17 17 0 0 0-9 38z"/></svg><span>${inner}</span></div>`;
 }
 
-const LOGO = `<svg viewBox="0 0 34 22" width="34" height="22" aria-hidden="true"><g fill="#3d6fe0"><circle cx="9" cy="14" r="7"/><circle cx="18" cy="9" r="9"/><circle cx="26" cy="14" r="7"/><rect x="9" y="12" width="17" height="9" rx="4.5"/></g></svg>`;
+const LOGO = `<svg viewBox="0 0 34 22" width="34" height="22" aria-hidden="true"><g fill="#3d6fe0">${CLOUD}</g></svg>`;
 
 /** Sources a page may load from beyond its own fonts and styles. */
 export interface CspAllow {
@@ -212,6 +215,7 @@ export function pageCsp(allow: CspAllow = {}): string {
     "style-src 'unsafe-inline' https://fonts.googleapis.com",
     'font-src https://fonts.gstatic.com',
     `img-src ${list(["'self'", 'data:'], allow.img)}`,
+    "manifest-src 'self'",
     "form-action 'self' https: http://localhost:* http://127.0.0.1:*",
     "frame-ancestors 'none'",
   ]
@@ -219,12 +223,17 @@ export function pageCsp(allow: CspAllow = {}): string {
     .join('; ');
 }
 
-/** `home` is where the wordmark leads: the account site's front page. */
+/** `home` is where the wordmark leads: the account site's front page. On a
+ * pod's host it is the account site's full address, and the icons come from
+ * there too. */
 export function page(title: string, body: string, status = 200, home = '/'): Response {
+  const apex = URL.canParse(home) ? new URL(home).origin : '';
   const html = `<!doctype html><html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<meta name="theme-color" content="#cfe4ff">
-<title>${escapeHtml(title)}</title>
+<meta name="theme-color" content="${THEME_COLOR}">
+<link rel="icon" href="${escapeHtml(apex)}${FAVICON_PATH}" type="image/svg+xml">
+<link rel="apple-touch-icon" href="${escapeHtml(apex)}${TOUCH_ICON_PATH}">
+${apex ? '' : `<link rel="manifest" href="${MANIFEST_PATH}">\n`}<title>${escapeHtml(title)}</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:wght@400;700&family=Fredoka:wght@500;600&display=swap" rel="stylesheet">
 <style>${STYLE}</style></head><body>${SKY}
@@ -238,7 +247,7 @@ ${body}
     headers: {
       'Content-Type': 'text/html; charset=utf-8',
       'Cache-Control': 'no-store',
-      'Content-Security-Policy': pageCsp(),
+      'Content-Security-Policy': pageCsp(apex ? { img: [apex] } : {}),
       'X-Frame-Options': 'DENY',
     },
   });
