@@ -302,7 +302,8 @@ a sandbox CSP), so nothing a pod holds ever runs on the account site.
 The apex serves the favicon (`/favicon.svg`, `/favicon.ico`), home-screen
 icons (`/apple-touch-icon.png`, `/icons/*.png`) and a web app manifest
 (`/manifest.webmanifest`, `display: browser`, since sign-in and connecting
-storage leave the site and come back) ahead of the session check. Pages on
+storage leave the site and come back; iOS ignores it and opens a Home Screen
+icon as a web app unless the person turns that off) ahead of the session check. Pages on
 pod hosts link the apex's icons and no manifest.
 
 ## Signing in (people, on the apex)

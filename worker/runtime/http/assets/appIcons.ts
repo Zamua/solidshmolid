@@ -10,9 +10,9 @@ export const MANIFEST_PATH = '/manifest.webmanifest';
 
 const CACHE = 'public, max-age=86400';
 
-// Opens in the browser rather than standalone: signing in and connecting
-// storage leave the site and come back, which a standalone window does not
-// reliably carry through.
+// `browser`, not standalone: signing in and connecting storage leave the site
+// and come back, which a standalone window does not reliably carry through.
+// iOS ignores it and offers "Open as Web App" when adding to the Home Screen.
 const MANIFEST = JSON.stringify({
   name: 'solidshmolid',
   short_name: 'solidshmolid',
