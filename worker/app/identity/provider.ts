@@ -49,13 +49,13 @@ export class Provider {
     const client = await this.deps.clients.resolve(request.clientId);
     if (!redirectAllowed(client, request.redirectUri)) throw new OidcError('invalid_request', 'redirect_uri is not registered for this client');
     if (!personId) return { kind: 'sign-in' };
-    const account = await this.deps.accounts.forPerson(personId);
+    const { key, store: account } = await this.deps.accounts.forPerson(personId);
     const webid = await account.webid();
     if (!webid) return { kind: 'no-pod' };
     // Every public-client app shares one id and may name any redirect, so an
     // approval says nothing about who would receive the code: always ask.
     if (request.prompt !== 'consent' && !client.isPublic && (await account.hasApproval(client.clientId, webid))) {
-      return { kind: 'redirect', location: await this.issueCode(account, request, webid) };
+      return { kind: 'redirect', location: await this.issueCode(key, account, request, webid) };
     }
     const pendingId = this.deps.secrets.random();
     await account.savePending(pendingId, request, client, this.deps.clock.now() + PENDING_TTL_S);
@@ -64,7 +64,7 @@ export class Provider {
 
   /** Step two: the person's answer on the consent page. */
   async decide(personId: string, pendingId: string, approve: boolean): Promise<string> {
-    const account = await this.deps.accounts.forPerson(personId);
+    const { key, store: account } = await this.deps.accounts.forPerson(personId);
     const pending = await account.takePending(pendingId, this.deps.clock.now());
     if (!pending) throw new OidcError('invalid_request', 'this sign-in request expired; start again from the app');
     const { request, client } = pending;
@@ -72,18 +72,18 @@ export class Provider {
     const webid = await account.webid();
     if (!webid) throw new OidcError('invalid_request', 'no pod for this account');
     await account.approve({ clientId: client.clientId, name: client.name, site: clientSite(client) }, webid);
-    return this.issueCode(account, request, webid);
+    return this.issueCode(key, account, request, webid);
   }
 
   /** The apps a person approved. */
   async apps(personId: string): Promise<Approval[]> {
-    return (await this.deps.accounts.forPerson(personId)).approvals();
+    return (await this.deps.accounts.forPerson(personId)).store.approvals();
   }
 
   /** Revokes an app: it must ask again, and its refresh tokens stop working.
    * Access tokens it already holds run out on their own (ACCESS_TOKEN_TTL_S). */
   async revokeApp(personId: string, clientId: string): Promise<void> {
-    await (await this.deps.accounts.forPerson(personId)).revokeApp(clientId);
+    await (await this.deps.accounts.forPerson(personId)).store.revokeApp(clientId);
   }
 
   /** Dynamic client registration for apps without a Client ID Document. */
@@ -102,7 +102,7 @@ export class Provider {
     throw new OidcError('unsupported_grant_type', `grant_type ${grant ?? '(none)'} is not supported`);
   }
 
-  private async issueCode(account: AccountStore, request: AuthorizeRequest, webid: string): Promise<string> {
+  private async issueCode(key: string, account: AccountStore, request: AuthorizeRequest, webid: string): Promise<string> {
     const secret = this.deps.secrets.random();
     await account.saveCode(await this.deps.secrets.hash(secret), {
       clientId: request.clientId,
@@ -113,7 +113,7 @@ export class Provider {
       scopes: request.scopes,
       expires: this.deps.clock.now() + CODE_TTL_S,
     });
-    return redirectWith(request.redirectUri, { code: `${account.key}.${secret}`, state: request.state, iss: this.deps.issuer });
+    return redirectWith(request.redirectUri, { code: `${key}.${secret}`, state: request.state, iss: this.deps.issuer });
   }
 
   private async redeemCode(form: URLSearchParams, jkt: string): Promise<Record<string, unknown>> {
@@ -134,7 +134,7 @@ export class Provider {
     }
     if (!(await pkceMatches(form.get('code_verifier') ?? '', grant.codeChallenge))) throw new OidcError('invalid_grant', 'PKCE verification failed');
     await this.deps.clients.signedIn(grant.clientId);
-    return this.tokens(account, grant.webid, grant.clientId, grant.scopes, grant.nonce, jkt, codeHash);
+    return this.tokens(key, account, grant.webid, grant.clientId, grant.scopes, grant.nonce, jkt, codeHash);
   }
 
   private async refresh(form: URLSearchParams, jkt: string): Promise<Record<string, unknown>> {
@@ -165,12 +165,13 @@ export class Provider {
       access_token: access,
       token_type: 'DPoP',
       expires_in: ACCESS_TOKEN_TTL_S,
-      refresh_token: `${account.key}.${familyId}.${next}`,
+      refresh_token: `${key}.${familyId}.${next}`,
       scope: family.scopes.join(' '),
     };
   }
 
   private async tokens(
+    key: string,
     account: AccountStore,
     webid: string,
     clientId: string,
@@ -192,7 +193,7 @@ export class Provider {
       const id = this.deps.secrets.random();
       const secret = this.deps.secrets.random();
       await account.saveFamily({ id, clientId, webid, jkt, scopes, currentHash: await this.deps.secrets.hash(secret), fromCode, expires: now + REFRESH_TTL_S });
-      out.refresh_token = `${account.key}.${id}.${secret}`;
+      out.refresh_token = `${key}.${id}.${secret}`;
     }
     return out;
   }

@@ -89,14 +89,14 @@ export class SqlAccountPods implements AccountRepository {
     this.sql.exec('UPDATE pod SET link_id = ? WHERE pod_id = ?', linkId, podId);
   }
 
-  async rememberPending(nonce: string, pending: PendingLink): Promise<void> {
+  async rememberLinkPending(nonce: string, pending: PendingLink): Promise<void> {
     const nowS = Math.floor(this.nowMs() / 1000);
     this.sql.exec('DELETE FROM link_pending WHERE expires < ?', nowS);
     this.sql.exec('INSERT INTO link_pending(nonce, verifier, provider, new_pod, expires) VALUES (?, ?, ?, ?, ?)', nonce, pending.verifier, pending.provider, pending.newPod ? 1 : 0, nowS + PENDING_TTL_S);
   }
 
   /** Consumed on read, so a provider callback cannot be replayed. */
-  async takePending(nonce: string): Promise<PendingLink | null> {
+  async takeLinkPending(nonce: string): Promise<PendingLink | null> {
     const row = this.sql.exec('SELECT verifier, provider, new_pod, expires FROM link_pending WHERE nonce = ?', nonce).toArray()[0];
     this.sql.exec('DELETE FROM link_pending WHERE nonce = ?', nonce);
     if (!row || Number(row.expires) < Math.floor(this.nowMs() / 1000)) return null;

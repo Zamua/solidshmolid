@@ -124,11 +124,12 @@ export class AccountObject extends DurableObject<Env> {
 
   // ---- pods and storage ---------------------------------------------------
 
-  async loadPods(): Promise<AccountState | null> {
+  async load(): Promise<AccountState | null> {
     return this.pods.load();
   }
 
-  async createPods(state: AccountState): Promise<AccountState> {
+  async create(state: AccountState): Promise<AccountState> {
+    this.open(state.key);
     return this.pods.create(state);
   }
 
@@ -145,11 +146,11 @@ export class AccountObject extends DurableObject<Env> {
   }
 
   async rememberLinkPending(nonce: string, pending: PendingLink): Promise<void> {
-    return this.pods.rememberPending(nonce, pending);
+    return this.pods.rememberLinkPending(nonce, pending);
   }
 
   async takeLinkPending(nonce: string): Promise<PendingLink | null> {
-    return this.pods.takePending(nonce);
+    return this.pods.takeLinkPending(nonce);
   }
 
   async rememberDeletion(token: string, pending: PendingDeletion): Promise<void> {

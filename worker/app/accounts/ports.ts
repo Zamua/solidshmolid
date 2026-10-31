@@ -49,9 +49,9 @@ export interface AccountRepository {
   /** Stores a new storage link; the grant stays inside the repository. */
   addLink(link: LinkSummary, refreshToken: string): Promise<void>;
   placePod(podId: string, linkId: string): Promise<void>;
-  rememberPending(nonce: string, pending: PendingLink): Promise<void>;
+  rememberLinkPending(nonce: string, pending: PendingLink): Promise<void>;
   /** Consumed on read; null when absent or expired. */
-  takePending(nonce: string): Promise<PendingLink | null>;
+  takeLinkPending(nonce: string): Promise<PendingLink | null>;
   rememberDeletion(token: string, pending: PendingDeletion): Promise<void>;
   /** Consumed on read; null when absent or expired. */
   takeDeletion(token: string): Promise<PendingDeletion | null>;

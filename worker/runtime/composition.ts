@@ -58,15 +58,11 @@ export function tokenVerifier(fetch: Fetch): SolidOidcVerifier {
   return verifier;
 }
 
-export function directory(env: Env) {
-  return env.DIRECTORY.get(env.DIRECTORY.idFromName('directory'));
-}
-
 export async function provider(env: Env, issuer: string): Promise<Provider> {
   return new Provider({
     issuer,
     accounts: new RpcAccounts(env),
-    clients: new HttpClientRegistry(directory(env), fetcher),
+    clients: new HttpClientRegistry(rpcDirectory(env), fetcher),
     signer: await tokenSigner(env),
     clock: systemClock,
     secrets: webCryptoSecrets,

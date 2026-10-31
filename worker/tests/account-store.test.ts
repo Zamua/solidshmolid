@@ -83,13 +83,13 @@ describe("an account's pods", () => {
     let now = 100_000;
     const { account } = store(() => now);
     await account.create(STATE);
-    await account.rememberPending('n1', { verifier: 'v', provider: 'google-drive', newPod: true });
+    await account.rememberLinkPending('n1', { verifier: 'v', provider: 'google-drive', newPod: true });
     now += 1000;
-    expect(await account.takePending('n1')).toEqual({ verifier: 'v', provider: 'google-drive', newPod: true });
-    expect(await account.takePending('n1')).toBeNull();
-    await account.rememberPending('n2', { verifier: 'v', provider: 'dropbox', newPod: false });
+    expect(await account.takeLinkPending('n1')).toEqual({ verifier: 'v', provider: 'google-drive', newPod: true });
+    expect(await account.takeLinkPending('n1')).toBeNull();
+    await account.rememberLinkPending('n2', { verifier: 'v', provider: 'dropbox', newPod: false });
     now += 16 * 60 * 1000;
-    expect(await account.takePending('n2')).toBeNull();
+    expect(await account.takeLinkPending('n2')).toBeNull();
   });
 });
 
