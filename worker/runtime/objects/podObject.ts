@@ -11,7 +11,7 @@ import type { Placement } from '../../app/accounts/ports.js';
 import type { FileContent, FileEntry } from '../../app/accounts/ports.js';
 import { BadRequest, Conflict } from '../../app/shared/errors.js';
 import { InvalidPath, canonicalPath } from '../../domain/pods/paths.js';
-import { addStoragePatch, removeStoragePatch } from '../../domain/pods/profile.js';
+import { PROFILE_PATH, addStoragePatch, removeStoragePatch } from '../../domain/pods/profile.js';
 import { NO_CONDITIONS } from '../../domain/pods/requests.js';
 import { placePod } from '../../app/storage/placement.js';
 import type { PlacementOutcome } from '../../app/storage/ports.js';
@@ -87,7 +87,7 @@ export class PodObject extends DurableObject<Env> {
   /** Lists another of the owner's pods as a storage in this pod's profile. */
   async declareStorage(base: string, owner: string, storage: string): Promise<void> {
     const { pod } = this.open(base);
-    await pod.patch('/profile/card', { webid: owner }, addStoragePatch(storage), 'text/n3', NO_CONDITIONS);
+    await pod.patch(PROFILE_PATH, { webid: owner }, addStoragePatch(storage), 'text/n3', NO_CONDITIONS);
   }
 
   /** A folder's entries, for the owner browsing on the account site. */
@@ -108,7 +108,7 @@ export class PodObject extends DurableObject<Env> {
   async dropStorage(base: string, owner: string, storage: string): Promise<void> {
     const { pod } = this.open(base);
     try {
-      await pod.patch('/profile/card', { webid: owner }, removeStoragePatch(storage), 'text/n3', NO_CONDITIONS);
+      await pod.patch(PROFILE_PATH, { webid: owner }, removeStoragePatch(storage), 'text/n3', NO_CONDITIONS);
     } catch (e) {
       if (!(e instanceof Conflict)) throw e;
     }

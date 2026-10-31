@@ -1,6 +1,6 @@
 // The apex home page, for whoever is looking at it.
 
-import { NoStorageYet } from '../../app/accounts/accounts.js';
+import { NoStorageYet, webidPod } from '../../app/accounts/accounts.js';
 import type { AccountState, FileContent } from '../../app/accounts/ports.js';
 import { PodError } from '../../app/shared/errors.js';
 import { providerDisplayName } from '../../domain/accounts/deletion.js';
@@ -38,7 +38,7 @@ export async function homeRoute(request: Request, env: Env, url: URL, person: st
   }
   if (deletingPod) {
     const pod = state.pods.find((p) => p.podId === deletingPod);
-    if (!pod || pod === state.pods[0]) return Response.redirect(`${url.origin}/`, 302);
+    if (!pod || pod === webidPod(state)) return Response.redirect(`${url.origin}/`, 302);
     const index = state.pods.indexOf(pod);
     return deletePage('pod', `/api/pods/${pod.podId}/delete`, providerNames(state, [pod.linkId]), { index, host: new URL(hosts.podOrigin(pod.podId)).host });
   }

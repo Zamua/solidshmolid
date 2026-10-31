@@ -5,13 +5,12 @@
 import type { AccountRepository, Directory, Identities, Placement, Pods } from '../../app/accounts/ports.js';
 import type { AccountStore, Accounts, KeyedAccount } from '../../app/identity/ports.js';
 import { BadRequest, Forbidden, InsufficientStorage, NotFound, PodError, StorageUnavailable } from '../../app/shared/errors.js';
+import { isAccountKey } from '../../domain/accounts/keys.js';
 import { profileDocument } from '../../domain/pods/profile.js';
 import type { Env } from '../env.js';
 import type { Hosts } from '../hosts.js';
 import type { AccountObject } from '../objects/accountObject.js';
 import type { DirectoryObject } from '../objects/directoryObject.js';
-
-const ACCOUNT_KEY = /^[0-9a-f]{32}$/u;
 
 export class RpcAccounts implements Accounts {
   constructor(private readonly env: Env) {}
@@ -24,7 +23,7 @@ export class RpcAccounts implements Accounts {
   }
 
   async byKey(key: string): Promise<AccountStore | null> {
-    if (!ACCOUNT_KEY.test(key)) return null;
+    if (!isAccountKey(key)) return null;
     const stub = accountStub(this.env, key);
     return (await stub.exists()) ? stub : null;
   }

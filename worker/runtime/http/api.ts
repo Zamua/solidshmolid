@@ -6,6 +6,7 @@
 
 import { type DeletionStep, HoldsWebid, LinkExpired, NoStorageYet, NotConfirmed, NotSignedUp, StorageInUse } from '../../app/accounts/accounts.js';
 import { NotFound } from '../../app/shared/errors.js';
+import { parseLinkState } from '../../domain/accounts/keys.js';
 import type { AccountState } from '../../app/accounts/ports.js';
 import { GrantRefused } from '../../app/storage/ports.js';
 import { accounts, provider } from '../composition.js';
@@ -149,13 +150,13 @@ function callbackUrl(url: URL, provider: string): string {
 }
 
 async function finish(env: Env, url: URL, person: string, provider: string): Promise<Response> {
-  const [accountKey, nonce] = (url.searchParams.get('state') ?? '').split('.');
+  const state = parseLinkState(url.searchParams.get('state'));
   const code = url.searchParams.get('code');
-  if (!accountKey || !nonce) return notConnected('This is not a connection we started. Start again from your pods page.');
+  if (!state) return notConnected('This is not a connection we started. Start again from your pods page.');
   const refused = url.searchParams.get('error');
   if (!code) return notConnected(refused === 'access_denied' ? 'Access was not allowed, so nothing was connected.' : 'Nothing was connected.', refused ?? undefined);
   try {
-    await accounts(env, hostsFor(env, url)).completeLink(person, provider, accountKey, nonce, code, callbackUrl(url, provider));
+    await accounts(env, hostsFor(env, url)).completeLink(person, provider, state.accountKey, state.nonce, code, callbackUrl(url, provider));
   } catch (e) {
     if (e instanceof LinkExpired || e instanceof GrantRefused) return notConnected(e.message);
     throw e;

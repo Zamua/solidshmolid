@@ -6,7 +6,7 @@
 import { isPodId } from '../domain/accounts/podIds.js';
 import { DPOP_CHALLENGE } from '../domain/identity/oidc.js';
 import { handleFromHost } from '../domain/pods/handles.js';
-import { profileDocument } from '../domain/pods/profile.js';
+import { PROFILE_PATH, profileDocument, webidAt } from '../domain/pods/profile.js';
 import { InvalidCredentials, type VerifiedAgent } from './adapters/solidOidcVerifier.js';
 import { accounts, clerkChrome, isDev, sessions, tokenVerifier } from './composition.js';
 import { hostsFor } from './hosts.js';
@@ -95,14 +95,14 @@ async function pod(request: Request, env: Env, url: URL, handle: string): Promis
   // Named pods are a development convenience; pods with random ids belong to
   // accounts and exist once their storage is connected.
   if (isDev(env) && !isPodId(handle)) {
-    await stub.ensureProvisioned(base, `${base}/profile/card#me`, profileDocument(`${base}/`, hostsFor(env, url).issuer));
+    await stub.ensureProvisioned(base, webidAt(base), profileDocument(`${base}/`, hostsFor(env, url).issuer));
   }
 
   const headers = new Headers(request.headers);
   for (const name of [...headers.keys()]) if (name.toLowerCase().startsWith(INTERNAL_PREFIX)) headers.delete(name);
   headers.set(BASE_HEADER, base);
   // A person opening the profile gets it rendered (below), so ask the pod for the data.
-  const viewingProfile = isNavigation(request) && request.method === 'GET' && url.pathname === '/profile/card';
+  const viewingProfile = isNavigation(request) && request.method === 'GET' && url.pathname === PROFILE_PATH;
   if (viewingProfile) headers.set('Accept', 'text/turtle');
 
   if (request.method !== 'OPTIONS') {
@@ -132,8 +132,8 @@ async function pod(request: Request, env: Env, url: URL, handle: string): Promis
     return podLandingPage(response.status, `${base}/`, hostsFor(env, url).issuer, handle);
   }
   if (viewingProfile && response.status === 200) {
-    const webid = `${base}/profile/card#me`;
-    const quads = await parseRdf(await response.text(), response.headers.get('Content-Type') ?? 'text/turtle', `${base}/profile/card`);
+    const webid = webidAt(base);
+    const quads = await parseRdf(await response.text(), response.headers.get('Content-Type') ?? 'text/turtle', `${base}${PROFILE_PATH}`);
     return publicProfilePage(webid, summarizeProfile(quads, webid), hostsFor(env, url).issuer);
   }
   return response;

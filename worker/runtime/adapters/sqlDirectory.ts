@@ -3,6 +3,7 @@
 
 import { podIdFrom } from '../../domain/accounts/podIds.js';
 import { type SqlRunner, addColumn } from './sql.js';
+import { randomHex } from './system.js';
 
 /** Registration is open to anyone, so one no one has signed in through within
  * this long is dropped. Apps register just before sending someone to sign in. */
@@ -12,7 +13,7 @@ export class SqlDirectory {
   constructor(
     private readonly sql: SqlRunner,
     private readonly nowS: () => number = () => Math.floor(Date.now() / 1000),
-    private readonly newKey: () => string = () => crypto.randomUUID().replaceAll('-', ''),
+    private readonly newKey: () => string = randomHex,
     private readonly randomBytes: (n: number) => Uint8Array = (n) => crypto.getRandomValues(new Uint8Array(n)),
   ) {
     this.sql.exec(`
