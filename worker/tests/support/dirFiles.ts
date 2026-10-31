@@ -48,7 +48,7 @@ export class DirFileStore implements FileStore {
         const full = join(dir, d.name);
         const rel = relative(this.root, full);
         if (d.isDirectory()) {
-          out.push({ kind: 'folder', path: `${rel}/`, rev: null, size: 0, modified: null });
+          out.push({ kind: 'folder', path: `${rel}/` });
           await walk(full);
         } else {
           const st = await stat(full);

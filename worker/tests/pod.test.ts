@@ -311,17 +311,17 @@ describe('outsiders', () => {
 
   it('cannot patch, or make a pod parse, a document they may only read', async () => {
     const { pod, index } = await newPod();
-    const before = index.get('/profile/card')!.rev;
+    const before = index.get('/profile/card')!.etag;
     await expect(pod.patch('/profile/card', anon, where(1), N3, NO_CONDITIONS)).rejects.toThrow(Unauthenticated);
     await expect(pod.patch('/profile/card', anon, 'not even n3 {{{', N3, NO_CONDITIONS)).rejects.toThrow(Unauthenticated);
-    expect(index.get('/profile/card')!.rev).toBe(before);
+    expect(index.get('/profile/card')!.etag).toBe(before);
   });
 
   it('a patch that only tests its where clause changes nothing', async () => {
     const { pod, index } = await newPod();
-    const before = index.get('/profile/card')!.rev;
+    const before = index.get('/profile/card')!.etag;
     await pod.patch('/profile/card', alice, `${PRE}_:p a solid:InsertDeletePatch; solid:where { <#me> a <http://xmlns.com/foaf/0.1/Person> }.`, N3, NO_CONDITIONS);
-    expect(index.get('/profile/card')!.rev).toBe(before);
+    expect(index.get('/profile/card')!.etag).toBe(before);
   });
 
   it('refuses a where clause that would match in too many ways, quickly', async () => {

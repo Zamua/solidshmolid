@@ -161,7 +161,7 @@ describe('DriveFileStore', () => {
       ['folder', 'z/'],
       ['file', 'z/3.txt'],
     ]);
-    expect(changes.entries[0]!.rev).toBe('2');
+    expect(changes.entries[0]).toMatchObject({ kind: 'file', rev: '2' });
     expect(kinds((await files.changes(changes.cursor)).entries)).toEqual([]);
   });
 

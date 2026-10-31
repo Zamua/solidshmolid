@@ -75,7 +75,7 @@ describe('changes made outside the server', () => {
     const added = await files.write('n/c.ttl', new TextEncoder().encode('<#c> <#d> 1.'));
     await pod.applyChanges([
       { kind: 'file', path: 'n/a.txt', rev: edited.rev, size: 3, modified: null },
-      { kind: 'deleted', path: 'n/b.txt', rev: null, size: 0, modified: null },
+      { kind: 'deleted', path: 'n/b.txt' },
       { kind: 'file', path: 'n/c.ttl', rev: added.rev, size: 12, modified: null },
     ]);
 
@@ -91,7 +91,7 @@ describe('changes made outside the server', () => {
   it('drops a whole deleted folder', async () => {
     const { pod } = await newPod();
     await pod.put('/tree/x/y.txt', alice, body('y'), 'text/plain', NO_CONDITIONS);
-    await pod.applyChanges([{ kind: 'deleted', path: 'tree', rev: null, size: 0, modified: null }]);
+    await pod.applyChanges([{ kind: 'deleted', path: 'tree' }]);
     await expect(pod.read('/tree/x/y.txt', alice, GET)).rejects.toThrow(NotFound);
     await expect(pod.read('/tree/', alice, GET)).rejects.toThrow(NotFound);
   });

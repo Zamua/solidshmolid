@@ -65,7 +65,7 @@ export class DevFileStore implements FileStore, FileLister {
     const files = this.sql.exec('SELECT file, rev, length(body) AS size, modified FROM dev_file').toArray();
     return {
       entries: [
-        ...folders.map((r) => ({ kind: 'folder' as const, path: String(r.folder).replace(/\/?$/u, '/'), rev: null, size: 0, modified: null })),
+        ...folders.map((r) => ({ kind: 'folder' as const, path: String(r.folder).replace(/\/?$/u, '/') })),
         ...files.map((r) => ({ kind: 'file' as const, path: String(r.file), rev: String(r.rev), size: Number(r.size), modified: String(r.modified) })),
       ],
       cursor: DEV_CURSOR,

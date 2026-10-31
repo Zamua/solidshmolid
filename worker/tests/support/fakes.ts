@@ -103,7 +103,7 @@ export class MemoryFileStore implements FileStore {
     }
     folders.delete('/');
     return [
-      ...[...folders].filter((f) => f !== '').map((path) => ({ kind: 'folder' as const, path, rev: null, size: 0, modified: null })),
+      ...[...folders].filter((f) => f !== '').map((path) => ({ kind: 'folder' as const, path })),
       ...[...this.files].map(([path, e]) => ({ kind: 'file' as const, path, rev: e.rev, size: e.bytes.byteLength, modified: e.modified })),
     ];
   }

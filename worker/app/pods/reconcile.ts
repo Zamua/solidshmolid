@@ -9,7 +9,6 @@ import {
   type MappedFile,
   UNKNOWN_EXTENSION,
   UnmappablePath,
-  basePathOf,
   containerOfFolder,
   isMetaFile,
   metaFileOf,
@@ -19,8 +18,9 @@ import { bareType } from '../../domain/shared/mediaTypes.js';
 import { type PodPath, ancestorsOf, parentOf } from '../../domain/pods/paths.js';
 import { parseRdf } from '../../domain/shared/rdf.js';
 import { MA } from '../../domain/shared/vocab.js';
-import type { PodIndex, ResourceRow } from './ports.js';
-import type { FileStore, ListedEntry } from '../storage/ports.js';
+import type { DocumentRow, PodIndex, ResourceRow } from './ports.js';
+import { newContainerRow, touch } from './rows.js';
+import type { FileEntry, FileStore, ListedEntry } from '../storage/ports.js';
 
 export interface ReconcileDeps {
   index: PodIndex;
@@ -47,16 +47,17 @@ export async function rebuildIndex(deps: ReconcileDeps, entries: ListedEntry[]):
   const { index } = deps;
   const report: ReconcileReport = { updated: 0, removed: 0, skipped: [] };
   const wanted = new Map<PodPath, ResourceRow>();
-  wanted.set('/', containerRow(deps, '/', index.get('/')));
+  wanted.set('/', kept(index.get('/'), '/', deps));
 
   const live = entries.filter((e) => e.kind !== 'deleted' && !FOREIGN.some((f) => e.path.startsWith(f)));
   const metaFiles = new Set(live.filter((e) => e.kind === 'file' && isMetaFile(e.path)).map((e) => e.path));
 
   for (const e of live.filter((x) => x.kind === 'folder')) {
     const path = mapFolder(e.path, report);
-    if (path) wanted.set(path, containerRow(deps, path, index.get(path)));
+    if (path) wanted.set(path, kept(index.get(path), path, deps));
   }
-  for (const e of live.filter((x) => x.kind === 'file' && !isMetaFile(x.path)).sort((a, b) => a.path.localeCompare(b.path))) {
+  const files = live.filter((x): x is FileEntry => x.kind === 'file' && !isMetaFile(x.path));
+  for (const e of files.sort((a, b) => a.path.localeCompare(b.path))) {
     const mapped = mapFile(e.path, report);
     if (!mapped) continue;
     if (wanted.has(mapped.path)) {
@@ -65,7 +66,7 @@ export async function rebuildIndex(deps: ReconcileDeps, entries: ListedEntry[]):
     }
     const row = await documentRow(deps, e, mapped, metaFiles.has(metaFileOf(mapped.path)));
     wanted.set(mapped.path, row);
-    for (const a of ancestorsOf(mapped.path)) if (!wanted.has(a)) wanted.set(a, containerRow(deps, a, index.get(a)));
+    for (const a of ancestorsOf(mapped.path)) if (!wanted.has(a)) wanted.set(a, kept(index.get(a), a, deps));
   }
 
   const current = allRows(index);
@@ -78,7 +79,7 @@ export async function rebuildIndex(deps: ReconcileDeps, entries: ListedEntry[]):
     }
     for (const row of wanted.values()) {
       const existing = index.get(row.path);
-      if (existing && existing.kind === row.kind && existing.rev === row.rev && existing.file === row.file) continue;
+      if (unchanged(existing, row)) continue;
       index.upsert(row);
       index.setCachedText(row.path, null);
       report.updated++;
@@ -86,7 +87,7 @@ export async function rebuildIndex(deps: ReconcileDeps, entries: ListedEntry[]):
     for (const container of [...wanted.values()].filter((r) => r.kind === 'container')) {
       const before = current.filter((r) => parentOf(r.path) === container.path).map((r) => r.path).sort();
       const after = [...wanted.keys()].filter((p) => parentOf(p) === container.path).sort();
-      if (before.join('\n') !== after.join('\n')) touch(deps, container.path);
+      if (before.join('\n') !== after.join('\n')) touch(index, container.path, deps);
     }
   });
   return report;
@@ -101,7 +102,7 @@ export async function applyChanges(deps: ReconcileDeps, entries: ListedEntry[]):
       for (const row of rowsForDeleted(index, e.path)) {
         index.atomically(() => {
           index.delete(row.path);
-          touch(deps, parentOf(row.path));
+          touch(index, parentOf(row.path), deps);
         });
         report.removed++;
       }
@@ -119,7 +120,7 @@ export async function applyChanges(deps: ReconcileDeps, entries: ListedEntry[]):
       // A changed metadata file can change its resource's type: re-read it.
       const owner = rowForMeta(index, e.path);
       if (owner?.file.endsWith(`$.${UNKNOWN_EXTENSION}`)) {
-        const row = await documentRow(deps, { ...e, path: owner.file, rev: owner.rev, size: owner.size }, { path: owner.path, contentType: owner.contentType ?? '' }, true);
+        const row = await documentRow(deps, { ...e, path: owner.file, rev: owner.rev, size: owner.size }, { path: owner.path, contentType: owner.contentType }, true);
         index.atomically(() => index.upsert({ ...row, etag: deps.newId() }));
         report.updated++;
       }
@@ -132,13 +133,13 @@ export async function applyChanges(deps: ReconcileDeps, entries: ListedEntry[]):
       report.skipped.push({ file: e.path, reason: `${mapped.path} is held by ${existing.file}` });
       continue;
     }
-    if (existing?.rev === e.rev) continue;
-    const row = await documentRow(deps, e, mapped, existing?.hasMeta ?? false);
+    if (existing?.kind === 'document' && existing.rev === e.rev) continue;
+    const row = await documentRow(deps, e, mapped, existing?.kind === 'document' && existing.hasMeta);
     index.atomically(() => {
       ensureContainers(deps, ancestorsOf(mapped.path));
       index.upsert(row);
       index.setCachedText(mapped.path, null);
-      if (!existing) touch(deps, parentOf(mapped.path));
+      if (!existing) touch(index, parentOf(mapped.path), deps);
     });
     report.updated++;
   }
@@ -165,7 +166,7 @@ function mapFile(file: string, report: ReconcileReport): MappedFile | null {
   }
 }
 
-async function documentRow(deps: ReconcileDeps, e: ListedEntry, mapped: MappedFile, hasMeta: boolean): Promise<ResourceRow> {
+async function documentRow(deps: ReconcileDeps, e: FileEntry, mapped: MappedFile, hasMeta: boolean): Promise<DocumentRow> {
   let contentType = mapped.contentType;
   if (hasMeta && e.path.endsWith(`$.${UNKNOWN_EXTENSION}`)) contentType = (await storedType(deps, mapped.path)) ?? contentType;
   return {
@@ -174,7 +175,7 @@ async function documentRow(deps: ReconcileDeps, e: ListedEntry, mapped: MappedFi
     contentType: bareType(contentType),
     file: e.path,
     rev: e.rev,
-    etag: (e.rev ?? deps.newId()).replace(/["+\\]/gu, ''),
+    etag: e.rev.replace(/["+\\]/gu, ''),
     size: e.size,
     modified: e.modified ?? deps.now().toISOString(),
     hasMeta,
@@ -194,33 +195,23 @@ async function storedType(deps: ReconcileDeps, path: PodPath): Promise<string | 
   }
 }
 
-function containerRow(deps: ReconcileDeps, path: PodPath, existing: ResourceRow | null): ResourceRow {
-  if (existing?.kind === 'container') return existing;
-  return {
-    path,
-    kind: 'container',
-    contentType: null,
-    file: basePathOf(path),
-    rev: null,
-    etag: deps.newId(),
-    size: 0,
-    modified: deps.now().toISOString(),
-    hasMeta: false,
-  };
+/** The container row for `path`, keeping its ETag if it is one already. */
+function kept(existing: ResourceRow | null, path: PodPath, deps: ReconcileDeps): ResourceRow {
+  return existing?.kind === 'container' ? existing : newContainerRow(path, deps);
+}
+
+/** Whether the index already holds `row` as the folder has it. */
+function unchanged(existing: ResourceRow | null, row: ResourceRow): boolean {
+  if (existing?.kind !== row.kind || existing.file !== row.file) return false;
+  return existing.kind === 'container' || (row.kind === 'document' && existing.rev === row.rev);
 }
 
 function ensureContainers(deps: ReconcileDeps, paths: PodPath[]): void {
   for (const p of paths) {
     if (deps.index.get(p)) continue;
-    deps.index.upsert(containerRow(deps, p, null));
-    touch(deps, parentOf(p));
+    deps.index.upsert(newContainerRow(p, deps));
+    touch(deps.index, parentOf(p), deps);
   }
-}
-
-function touch(deps: ReconcileDeps, path: PodPath | null): void {
-  if (path === null) return;
-  const row = deps.index.get(path);
-  if (row) deps.index.upsert({ ...row, etag: deps.newId(), modified: deps.now().toISOString() });
 }
 
 /** Rows a deleted file or folder took with it. */
@@ -230,8 +221,8 @@ function rowsForDeleted(index: PodIndex, file: string): ResourceRow[] {
   return all.filter((r) => r.file === file || r.file === asFolder || r.file.startsWith(asFolder)).sort((a, b) => b.path.length - a.path.length);
 }
 
-function rowForMeta(index: PodIndex, metaFile: string): ResourceRow | null {
-  return allRows(index).find((r) => r.kind === 'document' && metaFileOf(r.path) === metaFile) ?? null;
+function rowForMeta(index: PodIndex, metaFile: string): DocumentRow | null {
+  return allRows(index).find((r): r is DocumentRow => r.kind === 'document' && metaFileOf(r.path) === metaFile) ?? null;
 }
 
 function allRows(index: PodIndex): ResourceRow[] {
