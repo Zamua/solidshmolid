@@ -13,7 +13,7 @@ import { BadRequest, Conflict } from '../../app/shared/errors.js';
 import { InvalidPath, canonicalPath } from '../../domain/pods/paths.js';
 import { PROFILE_PATH, addStoragePatch, removeStoragePatch } from '../../domain/pods/profile.js';
 import { NO_CONDITIONS } from '../../domain/pods/requests.js';
-import { placePod } from '../../app/storage/placement.js';
+import { alreadyPlaced, placePod } from '../../app/storage/placement.js';
 import type { PlacementOutcome } from '../../app/storage/ports.js';
 import { ProofLedger } from '../adapters/proofLedger.js';
 import { isBlank } from '../adapters/sql.js';
@@ -70,13 +70,9 @@ export class PodObject extends DurableObject<Env> {
 
   /** Serves the pod from its folder in its account's storage. Repeating a
    * finished placement is a no-op; moving to other storage is not this call. */
-  async place(podId: string, base: string, placement: Placement, owner: string, profile: string | null): Promise<PlacementOutcome> {
+  async place(base: string, placement: Placement, owner: string, profile: string | null): Promise<PlacementOutcome> {
     const services = this.open(base);
-    const current = services.placement.current();
-    if (current?.cursor) {
-      if (current.linkId === placement.linkId && current.folder === placement.folder) return 'adopted';
-      throw new Conflict(`pod ${podId} already lives in other storage`);
-    }
+    if (alreadyPlaced(services.placement.current(), placement)) return 'adopted';
     services.placement.save(placement);
     const { pod, files } = services.podIn(placement);
     const outcome = await placePod(pod, files, services.placement, { owner, profile });

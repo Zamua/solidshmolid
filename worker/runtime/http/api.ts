@@ -1,4 +1,4 @@
-// The account API on the apex host (contracts/account-api.md), and the
+// The account API on the apex host (docs/account-api.md), and the
 // storage providers' callbacks. Translation only: who is asking comes from the
 // session, everything else from the accounts service.
 //

@@ -47,7 +47,7 @@ export function rpcPods(env: Env, hosts: Hosts): Pods {
   return {
     place: (podId: string, placement: Placement, owner: string, withProfile: boolean) => {
       const base = hosts.podOrigin(podId);
-      return stub(podId).place(podId, base, placement, owner, withProfile ? profileDocument(`${base}/`, hosts.issuer) : null);
+      return stub(podId).place(base, placement, owner, withProfile ? profileDocument(`${base}/`, hosts.issuer) : null);
     },
     declareStorage: (webidPodId: string, owner: string, storagePodId: string) =>
       stub(webidPodId).declareStorage(hosts.podOrigin(webidPodId), owner, `${hosts.podOrigin(storagePodId)}/`),

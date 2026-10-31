@@ -64,7 +64,7 @@ supplies its own copy (`docs/self-hosting.md`).
 ## Gotchas
 
 - The folder layout must stay byte-compatible with Community Solid Server's
-  file backend (`domain/layout.ts`); CSS 7.2 uses `mime-types` 2.1.35, so that
+  file backend (`worker/domain/pods/layout.ts`); CSS 7.2 uses `mime-types` 2.1.35, so that
   version is pinned on purpose. Bumping it can rename users' files.
 - The pod base is per request (`x-solidshmolid-base`); the owner WebID baked
   into a pod's ACL at provisioning uses the base of that first request. In dev,

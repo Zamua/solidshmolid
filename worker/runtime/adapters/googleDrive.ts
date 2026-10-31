@@ -13,7 +13,7 @@ import { type ByteRange, type FileInfo, type FileLister, type FileStore, type Li
 import { chunked } from './chunks.js';
 import { type Fetch, withAccessToken } from './http.js';
 import { randomHex } from './system.js';
-import { type DriveNode, type DriveNodes, descendants, pathOf } from './driveNodes.js';
+import { type DriveNode, type DriveNodes, descendants, placedPathOf } from './driveNodes.js';
 
 const API = 'https://www.googleapis.com/drive/v3';
 const UPLOAD = 'https://www.googleapis.com/upload/drive/v3';
@@ -214,7 +214,7 @@ export class DriveFileStore implements FileStore, FileLister {
       for (const f of await this.query(`'${parent}' in parents and trashed = false`)) {
         if (this.nodes.child(parent, f.name) || !isContent(f)) continue;
         const node = this.remember(f, parent);
-        entries.push(entryOf(node, pathOf(this.nodes, node.id)!));
+        entries.push(entryOf(node, placedPathOf(this.nodes, node.id)));
         if (node.folder) queue.push(node.id);
       }
     }
@@ -248,14 +248,14 @@ export class DriveFileStore implements FileStore, FileLister {
     const live = !change.removed && f !== undefined && !f.trashed && parent !== undefined && isContent(f);
     if (change.fileId === root) {
       if (live) return true;
-      for (const child of this.nodes.children(root)) out.push(deletedAt(pathOf(this.nodes, child.id)!));
+      for (const child of this.nodes.children(root)) out.push(deletedAt(placedPathOf(this.nodes, child.id)));
       this.nodes.forget(root);
       return true;
     }
     const placed = live && (parent === root || this.nodes.get(parent)?.folder === true);
     if (!placed) {
       if (known && known.parent !== null) {
-        out.push(deletedAt(pathOf(this.nodes, known.id)!));
+        out.push(deletedAt(placedPathOf(this.nodes, known.id)));
         this.nodes.forget(known.id);
         return true;
       }
@@ -266,7 +266,7 @@ export class DriveFileStore implements FileStore, FileLister {
     if (twin && twin.id !== change.fileId) {
       // The older same-named file keeps the path.
       if (known) {
-        out.push(deletedAt(pathOf(this.nodes, known.id)!));
+        out.push(deletedAt(placedPathOf(this.nodes, known.id)));
         this.nodes.forget(known.id);
       }
       return true;
@@ -274,11 +274,11 @@ export class DriveFileStore implements FileStore, FileLister {
     const moved = known !== null && (known.parent !== parent || known.name !== f.name);
     // Already known as it is: this adapter's own write, or a walk took it in.
     if (known && !moved && (known.folder || known.version === (f.version ?? null))) return true;
-    if (moved) out.push(deletedAt(pathOf(this.nodes, known.id)!));
+    if (moved) out.push(deletedAt(placedPathOf(this.nodes, known.id)));
     const node = this.remember(f, parent);
-    out.push(entryOf(node, pathOf(this.nodes, node.id)!));
+    out.push(entryOf(node, placedPathOf(this.nodes, node.id)));
     if (node.folder) {
-      if (known) for (const d of descendants(this.nodes, node.id)) out.push(entryOf(d, pathOf(this.nodes, d.id)!));
+      if (known) for (const d of descendants(this.nodes, node.id)) out.push(entryOf(d, placedPathOf(this.nodes, d.id)));
       else out.push(...(await this.walk(node.id)));
     }
     return true;

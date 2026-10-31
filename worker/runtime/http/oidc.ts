@@ -1,4 +1,4 @@
-// HTTP for the Solid-OIDC provider on the apex host (contracts/oidc.md).
+// HTTP for the Solid-OIDC provider on the apex host (docs/oidc.md).
 // Translation only: parse the request, call the provider, shape the response.
 
 import { OidcError, discovery } from '../../domain/identity/oidc.js';
