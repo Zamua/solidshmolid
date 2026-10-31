@@ -139,6 +139,8 @@ export class SolidOidcVerifier {
       throw new InvalidCredentials('DPoP proof is stale');
     }
     if (typeof payload.jti !== 'string' || payload.jti === '') throw new InvalidCredentials('DPoP proof has no jti');
+    // RFC 9449 requires ath here, but Solid clients predating it omit it and
+    // CSS's verifier accepts them; one that is sent must match.
     if (payload.ath !== undefined) {
       const ath = base64url.encode(new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(token))));
       if (payload.ath !== ath) throw new InvalidCredentials('DPoP ath does not match the token');

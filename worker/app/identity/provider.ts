@@ -132,6 +132,7 @@ export class Provider {
       throw new OidcError('invalid_grant', 'client_id or redirect_uri does not match the authorization');
     }
     if (!(await pkceMatches(form.get('code_verifier') ?? '', grant.codeChallenge))) throw new OidcError('invalid_grant', 'PKCE verification failed');
+    await this.deps.clients.signedIn(grant.clientId);
     return this.tokens(account, grant.webid, grant.clientId, grant.scopes, grant.nonce, jkt, codeHash);
   }
 

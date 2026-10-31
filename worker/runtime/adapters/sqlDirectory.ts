@@ -2,7 +2,11 @@
 // every pod id ever assigned, and dynamically registered clients.
 
 import { podIdFrom } from '../../domain/accounts/podIds.js';
-import type { SqlRunner } from './sql.js';
+import { type SqlRunner, addColumn } from './sql.js';
+
+/** Registration is open to anyone, so one no one has signed in through within
+ * this long is dropped. Apps register just before sending someone to sign in. */
+export const UNUSED_CLIENT_TTL_S = 7 * 24 * 3600;
 
 export class SqlDirectory {
   constructor(
@@ -16,6 +20,8 @@ export class SqlDirectory {
       CREATE TABLE IF NOT EXISTS pod_id(pod_id TEXT PRIMARY KEY, account_key TEXT NOT NULL, state TEXT NOT NULL, assigned INTEGER NOT NULL);
       CREATE TABLE IF NOT EXISTS client(id TEXT PRIMARY KEY, doc TEXT NOT NULL, created INTEGER NOT NULL);
     `);
+    addColumn(this.sql, 'client', 'signed_in INTEGER');
+    this.sql.exec('CREATE INDEX IF NOT EXISTS client_unused ON client(created) WHERE signed_in IS NULL');
   }
 
   /** The account key for a person, assigned on first sight. */
@@ -49,9 +55,15 @@ export class SqlDirectory {
   }
 
   registerClient(doc: Record<string, unknown>): string {
+    const now = this.nowS();
+    this.sql.exec('DELETE FROM client WHERE signed_in IS NULL AND created < ?', now - UNUSED_CLIENT_TTL_S);
     const id = `reg_${this.newKey()}`;
-    this.sql.exec('INSERT INTO client(id, doc, created) VALUES (?, ?, ?)', id, JSON.stringify({ ...doc, client_id: id }), this.nowS());
+    this.sql.exec('INSERT INTO client(id, doc, created) VALUES (?, ?, ?)', id, JSON.stringify({ ...doc, client_id: id }), now);
     return id;
+  }
+
+  clientSignedIn(id: string): void {
+    this.sql.exec('UPDATE client SET signed_in = ? WHERE id = ? AND signed_in IS NULL', this.nowS(), id);
   }
 
   registeredClient(id: string): Record<string, unknown> | null {

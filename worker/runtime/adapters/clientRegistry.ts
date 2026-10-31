@@ -33,6 +33,10 @@ export class HttpClientRegistry implements ClientRegistry {
     return this.directory.registerClient(registration as unknown as Record<string, unknown>);
   }
 
+  async signedIn(clientId: string): Promise<void> {
+    if (clientId.startsWith(REGISTERED)) await this.directory.clientSignedIn(clientId);
+  }
+
   private async fetchDocument(url: string): Promise<unknown> {
     let res: Response;
     try {

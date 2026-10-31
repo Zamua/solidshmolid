@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { SqlDirectory } from '../runtime/adapters/sqlDirectory.js';
+import { SqlDirectory, UNUSED_CLIENT_TTL_S } from '../runtime/adapters/sqlDirectory.js';
 import { sqlRunner } from './support/fakes.js';
 import { isPodId } from '../domain/accounts/podIds.js';
 
@@ -33,5 +33,21 @@ describe('directory', () => {
     expect(id).toMatch(/^reg_/u);
     expect(d.registeredClient(id)).toMatchObject({ client_id: id, client_name: 'A' });
     expect(d.registeredClient('reg_nope')).toBeNull();
+  });
+
+  it('drops registrations no one signed in through once they age out', () => {
+    let now = 1_000_000;
+    let n = 0;
+    const d = new SqlDirectory(sqlRunner(), () => now, () => `k${++n}`);
+    const idle = d.registerClient({ redirect_uris: ['https://a.example/cb'] });
+    const used = d.registerClient({ redirect_uris: ['https://b.example/cb'] });
+    d.clientSignedIn(used);
+    now += UNUSED_CLIENT_TTL_S;
+    d.registerClient({ redirect_uris: ['https://c.example/cb'] });
+    expect(d.registeredClient(idle)).not.toBeNull();
+    now += 1;
+    d.registerClient({ redirect_uris: ['https://c.example/cb'] });
+    expect(d.registeredClient(idle)).toBeNull();
+    expect(d.registeredClient(used)).not.toBeNull();
   });
 });
