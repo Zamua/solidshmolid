@@ -2,6 +2,7 @@
 // files by id, not path; this map is how the Drive adapter turns paths into
 // ids, and its change feed (which names ids) back into paths.
 
+import { StorageUnavailable } from '../../app/shared/errors.js';
 import type { SqlRunner } from './sql.js';
 
 export interface DriveNode {
@@ -41,6 +42,14 @@ export function pathOf(nodes: DriveNodes, id: string): string | null {
   }
   if (!node || node.id !== nodes.root() || names.length === 0) return null;
   return names.join('/') + (folder ? '/' : '');
+}
+
+/** `pathOf` for a node just placed under the root; a tree that no longer
+ * reaches it (a loop, a lost parent) fails the sync rather than misplace it. */
+export function placedPathOf(nodes: DriveNodes, id: string): string {
+  const path = pathOf(nodes, id);
+  if (path === null) throw new StorageUnavailable(`Drive item ${id} is no longer under the pod's folder`);
+  return path;
 }
 
 /** Every node below `id`, parents before children. */

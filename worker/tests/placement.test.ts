@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { Pod } from '../app/pods/pod.js';
-import { placePod } from '../app/storage/placement.js';
+import { Conflict } from '../app/shared/errors.js';
+import { alreadyPlaced, placePod } from '../app/storage/placement.js';
 import { FolderSync } from '../app/storage/sync.js';
 import type { SyncCursor } from '../app/storage/ports.js';
 import { NO_CONDITIONS } from '../domain/pods/requests.js';
@@ -72,5 +73,15 @@ describe('placing a pod in its folder', () => {
     now += 30_000;
     expect(await sync.syncIfStale()).toBeGreaterThan(0);
     expect(await textOf((await pod.read('/notes/a.txt', { webid: ALICE }, READ)).body)).toBe('edited again');
+  });
+});
+
+describe('placing a pod again', () => {
+  const here = { linkId: 'l1', folder: 'p1' };
+  it('is a no-op where it finished, refused elsewhere, and resumed when unfinished', () => {
+    expect(alreadyPlaced(null, here)).toBe(false);
+    expect(alreadyPlaced({ ...here, cursor: null }, { linkId: 'l2', folder: 'p1' })).toBe(false);
+    expect(alreadyPlaced({ ...here, cursor: 'c' }, here)).toBe(true);
+    expect(() => alreadyPlaced({ ...here, cursor: 'c' }, { linkId: 'l2', folder: 'p1' })).toThrow(Conflict);
   });
 });

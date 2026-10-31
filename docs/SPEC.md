@@ -350,7 +350,8 @@ and size-capped (256 KiB). Any Solid issuer is accepted; our own comes in M3.
 Lookups of the service's own hosts (its provider's discovery and keys, a
 WebID one of its pods holds) are served in-process (`runtime/ownHosts.ts`):
 Cloudflare answers a Worker's subrequest to its own custom domain or route
-with 522. A failure is 401 with `WWW-Authenticate: DPoP error="invalid_token"`. The dev
+with 522. A failure is 401 with `WWW-Authenticate: DPoP algs="...", error="invalid_token"`, the
+algorithms being those discovery advertises. The dev
 config also accepts an `X-Dev-WebID` header.
 
 ## Milestones

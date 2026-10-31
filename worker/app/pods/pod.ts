@@ -26,7 +26,7 @@ import {
   subjectOfAcl,
 } from '../../domain/pods/paths.js';
 import { InvalidRdf, N3, RDF_TYPES, TURTLE, isRdfType, parseRdf, serializeRdf } from '../../domain/shared/rdf.js';
-import { type Authorization, type Mode, MODES, authorizationsOf, grantedModes } from '../../domain/pods/wac.js';
+import { type Mode, MODES, authorizationsOf, grantedModes } from '../../domain/pods/wac.js';
 import { MA } from '../../domain/shared/vocab.js';
 import { PROFILE_PATH } from '../../domain/pods/profile.js';
 import { podRootAcl, profileAcl } from '../../domain/pods/starter.js';
@@ -54,6 +54,7 @@ import {
   Unprocessable,
   UnsupportedMediaType,
 } from '../shared/errors.js';
+import { AclResolver } from './acl.js';
 import { type ContainerRow, type DocumentRow, type PodIndex, type ResourceRow } from './ports.js';
 import { newContainerRow, touch } from './rows.js';
 import { type ByteRange, type FileStore, type ListedEntry, RevisionConflict } from '../storage/ports.js';
@@ -126,9 +127,11 @@ const ACL_TYPE = TURTLE;
 
 export class Pod {
   private readonly writes = new Serial();
-  private readonly aclCache = new Map<PodPath, { etag: string; auths: Authorization[] }>();
+  private readonly acls: AclResolver;
 
-  constructor(private readonly deps: PodDeps) {}
+  constructor(private readonly deps: PodDeps) {
+    this.acls = new AclResolver(deps.index, (path) => this.url(path), (row) => this.readText(row));
+  }
 
   url(path: PodPath): string {
     return `${this.deps.base}${path}`;
@@ -181,7 +184,7 @@ export class Pod {
       const onSubject = await this.modes(subjectOfAcl(path), agent);
       return onSubject.has('control') ? new Set(ALL_MODES) : new Set();
     }
-    const { auths, inheritedFrom } = await this.effectiveAcl(path);
+    const { auths, inheritedFrom } = await this.acls.effective(path);
     return grantedModes(auths, { url: this.url(path), inheritedFrom }, agent.webid);
   }
 
@@ -194,34 +197,6 @@ export class Pod {
     if (needs.every((m) => held.has(m))) return;
     const label = `${needs.join('+')} on ${path}`;
     throw agent.webid === null ? new Unauthenticated(label) : new Forbidden(label);
-  }
-
-  private async effectiveAcl(path: PodPath): Promise<{ auths: Authorization[]; inheritedFrom: string | null }> {
-    const candidates = [path, ...ancestorsOf(path).reverse()];
-    for (const candidate of candidates) {
-      if (!isContainer(candidate) && candidate !== path) continue;
-      const row = this.deps.index.get(aclPathOf(candidate));
-      if (row?.kind !== 'document') continue;
-      return { auths: await this.loadAcl(row), inheritedFrom: candidate === path ? null : this.url(candidate) };
-    }
-    return { auths: [], inheritedFrom: null };
-  }
-
-  private async loadAcl(row: DocumentRow): Promise<Authorization[]> {
-    const hit = this.aclCache.get(row.path);
-    if (hit && hit.etag === row.etag) return hit.auths;
-    let auths: Authorization[] = [];
-    const text = await this.readText(row);
-    if (text !== null) {
-      try {
-        auths = authorizationsOf(await parseRdf(text, ACL_TYPE, this.url(row.path)));
-      } catch {
-        // An ACL that does not parse grants nothing.
-        auths = [];
-      }
-    }
-    this.aclCache.set(row.path, { etag: row.etag, auths });
-    return auths;
   }
 
   // ---- reads --------------------------------------------------------------

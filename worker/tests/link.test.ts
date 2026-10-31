@@ -1,5 +1,4 @@
 import { describe, expect, it } from 'vitest';
-import { copyPod } from '../app/storage/migrate.js';
 import { Pod } from '../app/pods/pod.js';
 import { NO_CONDITIONS } from '../domain/pods/requests.js';
 import { DropboxFileStore } from '../runtime/adapters/dropbox.js';
@@ -8,7 +7,7 @@ import { DRIVE_FILE_SCOPE, exchangeGoogleCode, googleAuthorizeUrl, refreshGoogle
 import { pkce } from '../runtime/adapters/pkce.js';
 import { GrantRefused } from '../app/storage/ports.js';
 import { FakeDropbox } from './support/fakeDropbox.js';
-import { ALICE, BASE, newPod, sqliteIndex, streamOf, textOf } from './support/fakes.js';
+import { ALICE, BASE, PROFILE, sqliteIndex, streamOf, textOf } from './support/fakes.js';
 
 describe('Dropbox OAuth with PKCE', () => {
   it('builds an offline authorize URL around an S256 challenge', async () => {
@@ -91,14 +90,15 @@ describe('Google Drive OAuth with PKCE', () => {
   });
 });
 
-describe('moving a pod into Dropbox', () => {
-  it('copies every file, and the copy adopts to the same pod', async () => {
-    const { pod, index, files } = await newPod();
-    await pod.put('/notes/a.ttl', { webid: ALICE }, { stream: streamOf('<#a> <#b> "c".') }, 'text/turtle', NO_CONDITIONS);
-    await pod.put('/odd', { webid: ALICE }, { stream: streamOf('?') }, 'application/x-odd', NO_CONDITIONS);
+describe('a pod in Dropbox', () => {
+  it('lays its files out as CSS does, and adopts back to the same pod', async () => {
     const fake = new FakeDropbox();
     const dropbox = new DropboxFileStore({ fetch: fake.fetch, accessToken: async () => fake.validToken, sleep: async () => {} });
-    expect(await copyPod(index, files, dropbox)).toBe(6);
+    let id = 0;
+    const pod = new Pod({ index: sqliteIndex(), files: dropbox, base: BASE, now: () => new Date(), newId: () => `p${++id}` });
+    await pod.provision(ALICE, PROFILE);
+    await pod.put('/notes/a.ttl', { webid: ALICE }, { stream: streamOf('<#a> <#b> "c".') }, 'text/turtle', NO_CONDITIONS);
+    await pod.put('/odd', { webid: ALICE }, { stream: streamOf('?') }, 'application/x-odd', NO_CONDITIONS);
     expect(Object.keys(fake.files()).sort()).toEqual([
       '/.acl',
       '/notes/a.ttl',
@@ -107,7 +107,6 @@ describe('moving a pod into Dropbox', () => {
       '/profile/card$.ttl',
       '/profile/card.acl',
     ]);
-    let id = 0;
     const moved = new Pod({ index: sqliteIndex(), files: dropbox, base: BASE, now: () => new Date(), newId: () => `m${++id}` });
     await moved.adopt(ALICE, (await dropbox.listAll()).entries);
     const odd = await moved.read('/odd', { webid: ALICE }, { accept: null, range: null, head: false });

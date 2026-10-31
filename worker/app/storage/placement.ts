@@ -4,7 +4,21 @@
 // was. Either way the folder is the truth afterwards.
 
 import type { Pod } from '../pods/pod.js';
+import { Conflict } from '../shared/errors.js';
 import type { FileLister, FileStore, PlacementOutcome, SyncCursor } from './ports.js';
+
+interface Folder {
+  linkId: string;
+  folder: string;
+}
+
+/** Whether the pod already sits in `wanted`. Placing it again there is a
+ * no-op; a pod placed elsewhere is refused, since moving it is not placing. */
+export function alreadyPlaced(current: (Folder & { cursor: string | null }) | null, wanted: Folder): boolean {
+  if (!current?.cursor) return false;
+  if (current.linkId === wanted.linkId && current.folder === wanted.folder) return true;
+  throw new Conflict('the pod already lives in other storage');
+}
 
 export interface Starter {
   owner: string;
