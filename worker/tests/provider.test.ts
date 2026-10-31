@@ -25,6 +25,7 @@ const thumb = async (k: Keys) => calculateJwkThumbprint(await exportJWK(k.public
 function world() {
   let clock = 1_800_000_000;
   let n = 0;
+  const signedIn: string[] = [];
   const accounts = new Map<string, SqlAccountStore>();
   const byKey = new Map<string, SqlAccountStore>();
   const accountFor = async (person: string) => {
@@ -43,12 +44,13 @@ function world() {
       resolve: async (id) =>
         id === CLIENT ? clientFromDocument(CLIENT, { client_id: CLIENT, client_name: 'Sketchpad', redirect_uris: [REDIRECT] }) : publicClient(),
       register: async () => `reg_${++n}`,
+      signedIn: async (id) => void signedIn.push(id),
     },
     signer,
     clock: { now: () => clock },
     secrets: { random: () => `r${++n}x${Math.random().toString(36).slice(2)}`, hash: async (s) => `h:${s}` },
   });
-  return { provider, accountFor, tick: (s: number) => (clock += s), now: () => clock };
+  return { provider, accountFor, signedIn, tick: (s: number) => (clock += s), now: () => clock };
 }
 
 const authQuery = (over: Record<string, string> = {}) =>
@@ -168,6 +170,15 @@ describe('token', () => {
     const w = world();
     await signedInWithPod(w);
     await expect(exchange(w, await code(w), 'jkt', over)).rejects.toMatchObject({ code: 'invalid_grant' });
+  });
+
+  it('keeps the client a code was redeemed for, and only once it is', async () => {
+    const w = world();
+    await signedInWithPod(w);
+    const c = await code(w);
+    expect(w.signedIn).toEqual([]);
+    await exchange(w, c, 'jkt');
+    expect(w.signedIn).toEqual([CLIENT]);
   });
 
   it('refuses an expired code', async () => {

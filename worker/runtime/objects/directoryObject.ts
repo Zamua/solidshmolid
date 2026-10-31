@@ -37,4 +37,8 @@ export class DirectoryObject extends DurableObject<Env> {
   async registeredClient(id: string): Promise<Record<string, unknown> | null> {
     return this.directory.registeredClient(id);
   }
+
+  async clientSignedIn(id: string): Promise<void> {
+    this.directory.clientSignedIn(id);
+  }
 }

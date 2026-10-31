@@ -334,14 +334,15 @@ signs out. A link from another site cannot sign anyone out.
 
 ## Authentication
 
-Resource-server side of Solid-OIDC (`runtime/auth/solidOidc.ts`, in the
-Worker): `Authorization: DPoP <jwt>` plus a `DPoP` proof. Bearer tokens are
+Resource-server side of Solid-OIDC (`runtime/adapters/solidOidcVerifier.ts`,
+in the Worker): `Authorization: DPoP <jwt>` plus a `DPoP` proof. Bearer tokens are
 refused. Checked: the token signature against the issuer's JWKS (discovered
 from `/.well-known/openid-configuration`, cached 5 minutes, refetched once on
 an unknown key), `iss`, `exp`, `aud` including `solid`, a `webid` claim and a
 `cnf.jkt`; the proof's signature, `typ`, key thumbprint equal to `cnf.jkt`,
 `htm`, `htu` (query ignored), `iat` within 5 minutes, a `jti`, and `ath` when
-present; and that the WebID document names the issuer as `solid:oidcIssuer`.
+present (RFC 9449 requires it, but Solid clients that omit it work against
+CSS, whose verifier also checks it only when sent); and that the WebID document names the issuer as `solid:oidcIssuer`.
 The pod's DO rejects a `jti` it has seen inside the proof window: a proof
 names the pod's host in `htu`, so per-pod uniqueness suffices. Every URL the
 verifier fetches is chosen by the client, so each fetch is time-boxed (5 s)

@@ -74,6 +74,8 @@ export interface ClientRegistry {
   resolve(clientId: string): Promise<ClientInfo>;
   /** Stores a dynamically registered client and returns its id. */
   register(registration: Registration): Promise<string>;
+  /** Someone signed in through the client: its registration is kept. */
+  signedIn(clientId: string): Promise<void>;
 }
 
 export interface TokenSigner {

@@ -74,6 +74,7 @@ Errors follow RFC 6749 (`invalid_grant`, `invalid_client`, `invalid_dpop_proof`,
 Dynamic client registration for clients without a Client ID Document: accepts up to 10
 `redirect_uris` (each at most 2048 characters) and a `client_name` (cut to 100 characters) in a
 body of at most 16 KiB; returns `client_id` (and no secret for `token_endpoint_auth_method: none`).
+A registration no one has signed in through (redeemed a code for) within 7 days is dropped.
 
 ## `GET|POST /.oidc/session/end`
 

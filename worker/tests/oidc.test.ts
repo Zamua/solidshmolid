@@ -79,6 +79,12 @@ describe('Solid-OIDC verification', () => {
     expect(await verifier().verify({ method: 'GET', url: URL_, authorization: null, dpop: null })).toBeNull();
   });
 
+  it('accepts a proof without ath, as Community Solid Server does', async () => {
+    reset();
+    await publish(issuerKeys, 'k1');
+    expect((await verifier().verify(await req(await token(), await proof())))?.webid).toBe(WEBID);
+  });
+
   it('ignores the query string when matching htu', async () => {
     reset();
     await publish(issuerKeys, 'k1');
