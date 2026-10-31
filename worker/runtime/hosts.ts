@@ -1,6 +1,7 @@
 // The service's URLs, on the scheme and port the apex was reached on, so the
 // dev server (http, :8787) and deployments derive them the same way.
 
+import { webidAt } from '../domain/pods/profile.js';
 import type { Env } from './env.js';
 
 export interface Hosts {
@@ -17,6 +18,6 @@ export function hostsFor(env: Env, apex: URL): Hosts {
   return {
     issuer: `${apex.protocol}//${env.APEX_HOST}${port}/`,
     podOrigin,
-    webidOf: (handle) => `${podOrigin(handle)}/profile/card#me`,
+    webidOf: (handle) => webidAt(podOrigin(handle)),
   };
 }

@@ -12,6 +12,7 @@ import { InsufficientStorage, StorageUnavailable } from '../../app/shared/errors
 import { type ByteRange, type FileInfo, type FileLister, type FileStore, type ListedEntry, type Listing, RevisionConflict, type StoredFile, type WriteOptions } from '../../app/storage/ports.js';
 import { chunked } from './chunks.js';
 import { type Fetch, withAccessToken } from './http.js';
+import { randomHex } from './system.js';
 import { type DriveNode, type DriveNodes, descendants, pathOf } from './driveNodes.js';
 
 const API = 'https://www.googleapis.com/drive/v3';
@@ -325,7 +326,7 @@ export class DriveFileStore implements FileStore, FileLister {
     if (target.id) {
       return this.uploadResult(await this.call(`${UPLOAD}/files/${target.id}?uploadType=media&fields=${FIELDS}`, { method: 'PATCH', body: bytes }));
     }
-    const boundary = `solidshmolid${crypto.randomUUID().replaceAll('-', '')}`;
+    const boundary = `solidshmolid${randomHex()}`;
     const head = new TextEncoder().encode(
       `--${boundary}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n${JSON.stringify({ name: target.name, parents: [target.parent] })}\r\n--${boundary}\r\nContent-Type: application/octet-stream\r\n\r\n`,
     );

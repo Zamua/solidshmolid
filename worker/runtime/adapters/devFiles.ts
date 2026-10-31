@@ -5,6 +5,7 @@
 
 import { type ByteRange, type FileInfo, type FileLister, type FileStore, type Listing, RevisionConflict, type StoredFile, type WriteOptions } from '../../app/storage/ports.js';
 import type { SqlRunner } from './sql.js';
+import { randomHex } from './system.js';
 
 /** Durable Object SQLite rows top out near 2 MB. */
 const DEV_FILE_LIMIT = 2 * 1024 * 1024;
@@ -35,7 +36,7 @@ export class DevFileStore implements FileStore, FileLister {
     if (typeof options.ifRev === 'string' && String(current?.rev) !== options.ifRev) throw new RevisionConflict(`${file} changed`);
     const bytes = body instanceof Uint8Array ? body : new Uint8Array(await new Response(body).arrayBuffer());
     if (bytes.byteLength > DEV_FILE_LIMIT) throw new Error(`the dev store holds files up to ${DEV_FILE_LIMIT} bytes`);
-    const rev = crypto.randomUUID().replaceAll('-', '');
+    const rev = randomHex();
     const modified = new Date().toISOString();
     this.sql.exec(
       'INSERT INTO dev_file(file, body, rev, modified) VALUES (?, ?, ?, ?) ON CONFLICT(file) DO UPDATE SET body = excluded.body, rev = excluded.rev, modified = excluded.modified',

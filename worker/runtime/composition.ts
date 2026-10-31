@@ -26,7 +26,7 @@ import type { SqlRunner } from './adapters/sql.js';
 import { SqlPlacement } from './adapters/sqlPlacement.js';
 import { SqlIndex } from './adapters/sqlPodIndex.js';
 import { SolidOidcVerifier } from './adapters/solidOidcVerifier.js';
-import { systemClock, webCryptoSecrets } from './adapters/system.js';
+import { randomHex, systemClock, webCryptoSecrets } from './adapters/system.js';
 import { type Signer, signerFromJwk } from './adapters/tokenSigner.js';
 import { UnlinkedStore } from './adapters/unlinked.js';
 import type { Env } from './env.js';
@@ -40,7 +40,6 @@ let signer: Signer | null = null;
 let verifier: SolidOidcVerifier | null = null;
 
 const fetcher = (input: string, init?: RequestInit) => fetch(input, init);
-const randomId = () => crypto.randomUUID().replaceAll('-', '');
 
 export function isDev(env: Env): boolean {
   return env.DEV_MODE === '1';
@@ -135,7 +134,7 @@ export function accounts(env: Env, hosts: Hosts): Accounts {
     identities: rpcIdentities(env),
     logins: logins(env),
     authorizations: storageAuthorizations(env),
-    ids: { random: randomId },
+    ids: { random: randomHex },
     webidOf: hosts.webidOf,
   });
 }
@@ -156,7 +155,7 @@ export function podServices(env: Env, storage: DurableObjectStorage, base: strin
   const sql = storage.sql as SqlRunner;
   const index = new SqlIndex(sql, (fn) => storage.transactionSync(fn));
   const placement = new SqlPlacement(sql);
-  const podOn = (files: FileStore) => new Pod({ index, files, base, now: () => new Date(), newId: randomId });
+  const podOn = (files: FileStore) => new Pod({ index, files, base, now: () => new Date(), newId: randomHex });
   const podIn = (p: Placement) => {
     const files = placedStorage(env, sql, p);
     return { pod: podOn(files), files };

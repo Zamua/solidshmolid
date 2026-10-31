@@ -28,6 +28,7 @@ import {
 import { InvalidRdf, N3, RDF_TYPES, TURTLE, isRdfType, parseRdf, serializeRdf } from '../../domain/shared/rdf.js';
 import { type Authorization, type Mode, MODES, authorizationsOf, grantedModes } from '../../domain/pods/wac.js';
 import { MA } from '../../domain/shared/vocab.js';
+import { PROFILE_PATH } from '../../domain/pods/profile.js';
 import { podRootAcl, profileAcl } from '../../domain/pods/starter.js';
 import {
   type Conditions,
@@ -149,8 +150,8 @@ export class Pod {
       index.atomically(() => index.upsert(newContainerRow('/', this.deps)));
       await this.storeRdf('/.acl', ACL_TYPE, podRootAcl(owner), null);
       if (profile !== null) {
-        await this.storeRdf('/profile/card', TURTLE, profile, null);
-        await this.storeRdf('/profile/card.acl', ACL_TYPE, profileAcl(owner), null);
+        await this.storeRdf(PROFILE_PATH, TURTLE, profile, null);
+        await this.storeRdf(aclPathOf(PROFILE_PATH), ACL_TYPE, profileAcl(owner), null);
       }
       index.setState({ owner, created: this.deps.now().toISOString() });
     });

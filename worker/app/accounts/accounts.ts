@@ -4,10 +4,16 @@
 // once storage is connected, in its own folder of that storage. Further pods
 // belong to the same WebID and are listed in its profile.
 
+import { linkState } from '../../domain/accounts/keys.js';
 import { confirmationSentence, confirmsDeletion, providerDisplayName } from '../../domain/accounts/deletion.js';
 import { NotFound } from '../shared/errors.js';
 import type { StorageAuthorization } from '../storage/ports.js';
 import type { AccountRepository, AccountState, Directory, FileContent, FileEntry, Identities, Ids, Logins, PodRecord, Pods } from './ports.js';
+
+/** The pod that holds the person's WebID profile: always their first. */
+export function webidPod(state: AccountState): PodRecord {
+  return state.pods[0]!;
+}
 
 export class NotSignedUp extends Error {}
 export class LinkExpired extends Error {}
@@ -68,7 +74,7 @@ export class Accounts {
     const { verifier, challenge } = await authorization.pkce();
     const nonce = this.deps.ids.random();
     await this.deps.account(state.key).rememberLinkPending(nonce, { verifier, provider, newPod });
-    return authorization.authorizeUrl(redirectUri, `${state.key}.${nonce}`, challenge);
+    return authorization.authorizeUrl(redirectUri, linkState(state.key, nonce), challenge);
   }
 
   /** Finishes connecting storage, then places every pod still waiting for
@@ -92,7 +98,7 @@ export class Accounts {
    * storage `linkId` names; the first pod's storage by default. */
   async addPod(person: string, linkId: string | null = null): Promise<AccountState> {
     const state = await this.signedUp(person);
-    const link = state.links.find((l) => l.linkId === (linkId ?? state.pods[0]!.linkId));
+    const link = state.links.find((l) => l.linkId === (linkId ?? webidPod(state).linkId));
     if (!link) throw linkId ? new NotFound('no such storage') : new NoStorageYet('connect storage before adding a pod');
     return this.newPodIn(state, link);
   }
@@ -116,7 +122,7 @@ export class Accounts {
     const state = await this.signedUp(person);
     const pod = state.pods.find((p) => p.podId === podId);
     if (!pod) throw new NotFound('no such pod');
-    if (pod === state.pods[0]) throw new HoldsWebid('this pod holds your WebID; delete your account to remove it');
+    if (pod === webidPod(state)) throw new HoldsWebid('this pod holds your WebID; delete your account to remove it');
     if (deleteFiles && pod.linkId) return this.askToConfirm(state, podId, [pod]);
     await this.removePod(state, pod, false);
     return { done: true };
@@ -174,7 +180,7 @@ export class Accounts {
   }
 
   private async removePod(state: AccountState, pod: PodRecord, deleteFiles: boolean): Promise<void> {
-    if (pod.linkId) await this.deps.pods.dropStorage(state.pods[0]!.podId, state.webid, pod.podId);
+    if (pod.linkId) await this.deps.pods.dropStorage(webidPod(state).podId, state.webid, pod.podId);
     await this.deps.pods.retire(pod.podId, deleteFiles);
     await this.deps.account(state.key).removePod(pod.podId);
     await this.deps.directory.retirePodId(pod.podId);
@@ -202,7 +208,7 @@ export class Accounts {
     const account = this.deps.account(state.key);
     await account.addPod({ podId, linkId: null, folder: podId });
     await this.placeWaiting(state.key, link.linkId, link.provider);
-    await this.deps.pods.declareStorage(state.pods[0]!.podId, state.webid, podId);
+    await this.deps.pods.declareStorage(webidPod(state).podId, state.webid, podId);
     return (await account.load())!;
   }
 
@@ -212,7 +218,7 @@ export class Accounts {
     const account = this.deps.account(accountKey);
     const state = (await account.load())!;
     for (const pod of state.pods.filter((p) => p.linkId === null)) {
-      const withProfile = pod.podId === state.pods[0]!.podId;
+      const withProfile = pod.podId === webidPod(state).podId;
       await this.deps.pods.place(pod.podId, { accountKey, linkId, provider, folder: pod.folder }, state.webid, withProfile);
       await account.placePod(pod.podId, linkId);
     }

@@ -4,6 +4,14 @@
 import type { Quad } from 'n3';
 import { FOAF, PIM, SOLID } from '../shared/vocab.js';
 
+/** Where a WebID pod keeps its profile document. */
+export const PROFILE_PATH = '/profile/card';
+
+/** The WebID of the person whose pod is at `origin` (no trailing slash). */
+export function webidAt(origin: string): string {
+  return `${origin}${PROFILE_PATH}#me`;
+}
+
 /** Turtle for `/profile/card`. `issuer` is the Solid-OIDC issuer trusted to
  * authenticate this WebID; null until the pod's owner has one. */
 export function profileDocument(storage: string, issuer: string | null): string {
