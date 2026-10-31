@@ -136,8 +136,10 @@ case folding is refused with 409, so the layout stays one-to-one.
   `ldp:BasicContainer`, `ldp:Resource`, `ldp:contains` per child, from the
   index (no storage round trip).
 - `PUT` creates or replaces a document and creates missing intermediate
-  containers. `PUT` on a container URL creates the container. A document and a
-  container may not share a name ignoring the trailing slash (409).
+  containers. `PUT` on a container URL creates the container; on an existing
+  container, the root included, it is 409 once Write on it is shown. A
+  document and a container may not share a name ignoring the trailing slash
+  (409).
 - `POST` to a container creates a child: name from `Slug` (sanitized, made
   unique) or generated; `Link: <ldp:BasicContainer>; rel="type"` makes a
   container. Responds `201` with `Location`.
@@ -155,6 +157,9 @@ case folding is refused with 409, so the layout stays one-to-one.
 - Response headers: `ETag`, `Last-Modified`, `Link` (`rel="type"` for LDP
   types and `pim:Storage` on the root, `rel="acl"`), `Allow`, `Accept-Patch:
   text/n3`, `Accept-Post: */*` on containers, `Accept-Put: */*`, `WAC-Allow`.
+  `Allow`, and the list a 405 carries, are one set per kind of resource:
+  containers take POST, documents PATCH, the root has no DELETE, and `.meta`
+  files only OPTIONS.
 - CORS on every response: echo `Origin`, allow credentials, expose
   `Accept-Patch, Accept-Post, Accept-Put, Allow, Content-Range, ETag, Link,
   Location, WAC-Allow`. `OPTIONS` answers preflights with 204.

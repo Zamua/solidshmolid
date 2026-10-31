@@ -152,6 +152,13 @@ describe('documents and containers', () => {
     await expect(pod.read('/gone.bin', alice, GET)).rejects.toThrow(NotFound);
     expect(index.get('/gone.bin')).toBeNull();
   });
+
+  it('answers PUT on the root as a write to an existing container', async () => {
+    const { pod } = await newPod();
+    await expect(pod.put('/', alice, body(''), null, NO_CONDITIONS)).rejects.toThrow(Conflict);
+    await expect(pod.put('/', bob, body(''), null, NO_CONDITIONS)).rejects.toThrow(Forbidden);
+    await expect(pod.put('/', anon, body(''), null, NO_CONDITIONS)).rejects.toThrow(Unauthenticated);
+  });
 });
 
 describe('conditional requests', () => {
@@ -173,6 +180,7 @@ describe('conditional requests', () => {
     const { etag } = await read(pod, '/a.ttl', alice, { ...GET, accept: 'application/n-triples' });
     await pod.put('/a.ttl', alice, body('<#s> <#p> 2.'), TTL, { ifMatch: [`"${etag}"`], ifNoneMatch: null });
   });
+
 });
 
 describe('POST', () => {

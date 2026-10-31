@@ -22,6 +22,7 @@ import { type Access, type Agent, Pod, type ReadResult } from '../../app/pods/po
 import { readAll } from '../../app/shared/streams.js';
 import type { Conditions, EtagList, RangeRequest } from '../../domain/pods/requests.js';
 import { InvalidPath, type PodPath, aclPathOf, canonicalPath, isAclPath, isContainer } from '../../domain/pods/paths.js';
+import { METHODS, allowedMethods } from '../../domain/pods/methods.js';
 import { LDP, PIM } from '../../domain/shared/vocab.js';
 import { wacAllow } from '../../domain/pods/wac.js';
 
@@ -42,8 +43,6 @@ const EXPOSED = [
   'WAC-Allow',
   'WWW-Authenticate',
 ].join(', ');
-
-const METHODS = ['OPTIONS', 'HEAD', 'GET', 'PUT', 'POST', 'PATCH', 'DELETE'];
 
 /** Serves one Solid request against `pod` as `agent`. */
 export async function handleSolid(pod: Pod, request: Request, agent: Agent): Promise<Response> {
@@ -68,7 +67,7 @@ async function dispatch(pod: Pod, request: Request, path: PodPath, agent: Agent)
   const h = request.headers;
   switch (request.method) {
     case 'OPTIONS':
-      return new Response(null, { status: 204, headers: { Allow: allowFor(path).join(', '), ...acceptHeaders(path) } });
+      return new Response(null, { status: 204, headers: { Allow: allowedMethods(path).join(', '), ...acceptHeaders(path) } });
     case 'GET':
     case 'HEAD': {
       const result = await pod.read(path, agent, {
@@ -96,7 +95,7 @@ async function dispatch(pod: Pod, request: Request, path: PodPath, agent: Agent)
       await pod.remove(path, agent, conditionsOf(h));
       return new Response(null, { status: 204 });
     default:
-      throw new MethodNotAllowed(`${request.method} is not supported`, METHODS);
+      throw new MethodNotAllowed(`${request.method} is not supported`, allowedMethods(path));
   }
 }
 
@@ -107,7 +106,7 @@ function readResponse(pod: Pod, r: ReadResult): Response {
     'Last-Modified': new Date(r.modified).toUTCString(),
     'WAC-Allow': wacAllow(r.access.user, r.access.public),
     Link: linkHeader(pod, r.path),
-    Allow: allowFor(r.path).join(', '),
+    Allow: allowedMethods(r.path).join(', '),
     ...acceptHeaders(r.path),
   });
   if (r.kind === 'document') headers.set('Accept-Ranges', 'bytes');
@@ -136,12 +135,6 @@ function linkHeader(pod: Pod, path: PodPath): string {
   if (path === '/') links.push(`<${PIM('Storage')}>; rel="type"`);
   if (!isAclPath(path)) links.push(`<${pod.url(aclPathOf(path))}>; rel="acl"`);
   return links.join(', ');
-}
-
-function allowFor(path: PodPath): string[] {
-  if (path === '/') return ['OPTIONS', 'HEAD', 'GET', 'POST', 'PUT'];
-  if (isContainer(path)) return ['OPTIONS', 'HEAD', 'GET', 'POST', 'PUT', 'DELETE'];
-  return ['OPTIONS', 'HEAD', 'GET', 'PUT', 'PATCH', 'DELETE'];
 }
 
 function acceptHeaders(path: PodPath): Record<string, string> {
