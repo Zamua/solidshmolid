@@ -1,30 +1,58 @@
-// A DPoP proof on its own (RFC 9449), as the token endpoint receives it:
-// no access token yet, so no `ath` and no `cnf` to compare against.
+// A DPoP proof (RFC 9449), as the token endpoint and the resource server both
+// receive it. Only a resource request carries an access token for `ath` to bind.
 
-import { EmbeddedJWK, calculateJwkThumbprint, jwtVerify } from 'jose';
-import { OidcError } from '../../domain/identity/oidc.js';
+import { EmbeddedJWK, type JWTPayload, base64url, calculateJwkThumbprint, jwtVerify } from 'jose';
+import { SIGNING_ALGORITHMS } from '../../domain/identity/oidc.js';
 
-const ALGORITHMS = ['ES256', 'ES384', 'PS256', 'RS256', 'EdDSA'];
-const WINDOW_S = 300;
+/** How far a proof's `iat` may sit from our clock. */
+export const PROOF_WINDOW_S = 300;
 
-export async function verifyDpopProof(proof: string | null, method: string, url: string, nowS: number): Promise<{ jkt: string; jti: string }> {
-  if (!proof) throw new OidcError('invalid_dpop_proof', 'a DPoP proof is required');
-  let payload;
+export class InvalidDpopProof extends Error {}
+
+export interface ProofContext {
+  method: string;
+  url: string;
+  nowS: number;
+  /** The access token sent beside the proof, at a resource. */
+  accessToken?: string;
+}
+
+export interface VerifiedProof {
+  /** The thumbprint of the key that signed the proof. */
+  jkt: string;
+  jti: string;
+  iat: number;
+}
+
+export async function verifyDpopProof(proof: string, context: ProofContext): Promise<VerifiedProof> {
+  let payload: JWTPayload;
   let jwk;
   try {
-    const verified = await jwtVerify(proof, EmbeddedJWK, { typ: 'dpop+jwt', algorithms: ALGORITHMS, currentDate: new Date(nowS * 1000) });
+    const verified = await jwtVerify(proof, EmbeddedJWK, { typ: 'dpop+jwt', algorithms: SIGNING_ALGORITHMS, currentDate: new Date(context.nowS * 1000) });
     payload = verified.payload;
     jwk = verified.protectedHeader.jwk!;
   } catch (e) {
-    throw new OidcError('invalid_dpop_proof', (e as Error).message);
+    throw new InvalidDpopProof((e as Error).message);
   }
-  const strip = (u: string) => {
-    const x = new URL(u);
-    return `${x.origin}${x.pathname}`;
-  };
-  if (payload.htm !== method) throw new OidcError('invalid_dpop_proof', 'htm does not match');
-  if (typeof payload.htu !== 'string' || strip(payload.htu) !== strip(url)) throw new OidcError('invalid_dpop_proof', 'htu does not match');
-  if (typeof payload.iat !== 'number' || Math.abs(nowS - payload.iat) > WINDOW_S) throw new OidcError('invalid_dpop_proof', 'proof is stale');
-  if (typeof payload.jti !== 'string' || !payload.jti) throw new OidcError('invalid_dpop_proof', 'proof has no jti');
-  return { jkt: await calculateJwkThumbprint(jwk, 'sha256'), jti: payload.jti };
+  if (payload.htm !== context.method) throw new InvalidDpopProof('htm does not match the method');
+  if (typeof payload.htu !== 'string' || withoutQuery(payload.htu) !== withoutQuery(context.url)) throw new InvalidDpopProof('htu does not match the URL');
+  const { iat, jti } = payload;
+  if (typeof iat !== 'number' || Math.abs(context.nowS - iat) > PROOF_WINDOW_S) throw new InvalidDpopProof('proof is stale');
+  if (typeof jti !== 'string' || jti === '') throw new InvalidDpopProof('proof has no jti');
+  // RFC 9449 requires ath at a resource, but Solid clients predating it omit
+  // it and CSS's verifier accepts them; one that is sent must match.
+  if (context.accessToken !== undefined && payload.ath !== undefined && payload.ath !== (await tokenHash(context.accessToken))) {
+    throw new InvalidDpopProof('ath does not match the token');
+  }
+  return { jkt: await calculateJwkThumbprint(jwk, 'sha256'), jti, iat };
+}
+
+async function tokenHash(token: string): Promise<string> {
+  return base64url.encode(new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(token))));
+}
+
+function withoutQuery(url: string): string | null {
+  if (!URL.canParse(url)) return null;
+  const u = new URL(url);
+  return `${u.origin}${u.pathname}`;
 }

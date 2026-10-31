@@ -7,6 +7,7 @@
 
 import type { AccountStore, Accounts, Approval, ClientRegistry, Clock, Secrets, TokenSigner } from './ports.js';
 import {
+  ACCESS_TOKEN_TTL_S,
   type AuthorizeRequest,
   CODE_TTL_S,
   type ClientInfo,
@@ -163,7 +164,7 @@ export class Provider {
     return {
       access_token: access,
       token_type: 'DPoP',
-      expires_in: 3600,
+      expires_in: ACCESS_TOKEN_TTL_S,
       refresh_token: `${account.key}.${familyId}.${next}`,
       scope: family.scopes.join(' '),
     };
@@ -183,7 +184,7 @@ export class Provider {
     const out: Record<string, unknown> = {
       access_token: await this.deps.signer.sign(accessTokenClaims({ ...base, jkt, jti: this.deps.secrets.random() })),
       token_type: 'DPoP',
-      expires_in: 3600,
+      expires_in: ACCESS_TOKEN_TTL_S,
       id_token: await this.deps.signer.sign(idTokenClaims({ ...base, nonce })),
       scope: scopes.join(' '),
     };

@@ -5,19 +5,11 @@
 // by whoever sent the request, so each fetch is time-boxed, size-capped and
 // cached.
 
-import {
-  EmbeddedJWK,
-  type JWTPayload,
-  type JWTVerifyGetKey,
-  base64url,
-  calculateJwkThumbprint,
-  createLocalJWKSet,
-  decodeJwt,
-  errors,
-  jwtVerify,
-} from 'jose';
+import { type JWTPayload, type JWTVerifyGetKey, createLocalJWKSet, decodeJwt, errors, jwtVerify } from 'jose';
+import { SIGNING_ALGORITHMS } from '../../domain/identity/oidc.js';
 import { parseRdf } from '../../domain/shared/rdf.js';
 import { SOLID } from '../../domain/shared/vocab.js';
+import { InvalidDpopProof, PROOF_WINDOW_S, type VerifiedProof, verifyDpopProof } from './dpopProof.js';
 
 export class InvalidCredentials extends Error {}
 
@@ -43,9 +35,6 @@ export interface VerifierDeps {
   now: () => number;
 }
 
-const ALGORITHMS = ['ES256', 'ES384', 'ES512', 'PS256', 'PS384', 'PS512', 'RS256', 'RS384', 'RS512', 'EdDSA'];
-/** How far a proof's `iat` may sit from our clock. */
-export const PROOF_WINDOW_S = 300;
 const CACHE_MS = 5 * 60_000;
 const FETCH_TIMEOUT_MS = 5_000;
 const FETCH_LIMIT = 256 * 1024;
@@ -90,7 +79,8 @@ export class SolidOidcVerifier {
     const jkt = (payload.cnf as { jkt?: unknown } | undefined)?.jkt;
     if (typeof jkt !== 'string') throw new InvalidCredentials('token is not DPoP-bound');
 
-    const proof = await this.verifyProof(request, token, jkt, now);
+    const proof = await this.verifyProof(request, token, now);
+    if (proof.jkt !== jkt) throw new InvalidCredentials('DPoP key does not match the token');
 
     if (!(await this.issuersOf(webid)).some((i) => sameIssuer(i, issuer))) {
       throw new InvalidCredentials(`${webid} does not name ${issuer} as its issuer`);
@@ -101,7 +91,7 @@ export class SolidOidcVerifier {
 
   private async verifyToken(token: string, issuer: string, now: Date): Promise<JWTPayload> {
     const attempt = async (fresh: boolean) =>
-      (await jwtVerify(token, await this.keysOf(issuer, fresh), { issuer, algorithms: ALGORITHMS, currentDate: now, clockTolerance: 30, requiredClaims: ['exp'] }))
+      (await jwtVerify(token, await this.keysOf(issuer, fresh), { issuer, algorithms: SIGNING_ALGORITHMS, currentDate: now, clockTolerance: 30, requiredClaims: ['exp'] }))
         .payload;
     try {
       return await attempt(false);
@@ -119,33 +109,13 @@ export class SolidOidcVerifier {
     }
   }
 
-  private async verifyProof(request: AuthRequest, token: string, jkt: string, now: Date): Promise<{ jti: string; iat: number }> {
-    let payload: JWTPayload;
-    let jwk;
+  private async verifyProof(request: AuthRequest, token: string, now: Date): Promise<VerifiedProof> {
     try {
-      const verified = await jwtVerify(request.dpop!, EmbeddedJWK, { typ: 'dpop+jwt', algorithms: ALGORITHMS, currentDate: now });
-      payload = verified.payload;
-      jwk = verified.protectedHeader.jwk!;
+      return await verifyDpopProof(request.dpop!, { method: request.method, url: request.url, nowS: now.getTime() / 1000, accessToken: token });
     } catch (e) {
-      throw new InvalidCredentials(`DPoP proof: ${(e as Error).message}`);
+      if (e instanceof InvalidDpopProof) throw new InvalidCredentials(`DPoP proof: ${e.message}`);
+      throw e;
     }
-    if ((await calculateJwkThumbprint(jwk, 'sha256')) !== jkt) throw new InvalidCredentials('DPoP key does not match the token');
-    if (payload.htm !== request.method) throw new InvalidCredentials('DPoP htm does not match the method');
-    if (typeof payload.htu !== 'string' || stripQuery(payload.htu) !== stripQuery(request.url)) {
-      throw new InvalidCredentials('DPoP htu does not match the URL');
-    }
-    const iat = payload.iat;
-    if (typeof iat !== 'number' || Math.abs(now.getTime() / 1000 - iat) > PROOF_WINDOW_S) {
-      throw new InvalidCredentials('DPoP proof is stale');
-    }
-    if (typeof payload.jti !== 'string' || payload.jti === '') throw new InvalidCredentials('DPoP proof has no jti');
-    // RFC 9449 requires ath here, but Solid clients predating it omit it and
-    // CSS's verifier accepts them; one that is sent must match.
-    if (payload.ath !== undefined) {
-      const ath = base64url.encode(new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(token))));
-      if (payload.ath !== ath) throw new InvalidCredentials('DPoP ath does not match the token');
-    }
-    return { jti: payload.jti, iat };
   }
 
   private async keysOf(issuer: string, fresh: boolean): Promise<JWTVerifyGetKey> {
@@ -221,11 +191,6 @@ async function limitedText(res: Response): Promise<string> {
     chunks.push(value);
   }
   return new TextDecoder().decode(await new Blob(chunks).arrayBuffer());
-}
-
-function stripQuery(url: string): string {
-  const u = new URL(url);
-  return `${u.origin}${u.pathname}`;
 }
 
 function sameIssuer(a: string, b: string): boolean {
