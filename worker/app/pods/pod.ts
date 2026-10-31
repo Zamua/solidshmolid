@@ -10,6 +10,7 @@ import { containerDescription } from '../../domain/pods/container.js';
 import { negotiate } from '../../domain/pods/conneg.js';
 import { UnmappablePath, basePathOf, documentFile, metaFileOf } from '../../domain/pods/layout.js';
 import { bareType } from '../../domain/shared/mediaTypes.js';
+import { allowedMethods } from '../../domain/pods/methods.js';
 import { InvalidPatch, PatchConflict, applyPatch, modesForPatch, parsePatch } from '../../domain/pods/n3patch.js';
 import {
   type PodPath,
@@ -343,7 +344,7 @@ export class Pod {
       // Authorization comes before preconditions and conflicts, so their
       // answers never tell an outsider whether a resource exists.
       if (isContainer(path)) {
-        await this.authorizeCreate(path, agent);
+        await this.authorizeWrite(path, existing, agent);
         this.checkConditions(existing, conditions);
         if (existing) throw new Conflict('the container already exists; PUT cannot replace a container');
         await this.createContainer(path);
@@ -361,7 +362,7 @@ export class Pod {
     return this.writes.run(async () => {
       const target = this.deps.index.get(container);
       if (!target) throw new NotFound(container);
-      if (target.kind !== 'container') throw new MethodNotAllowed('POST is for containers', ['GET', 'HEAD', 'OPTIONS', 'PUT', 'PATCH', 'DELETE']);
+      if (target.kind !== 'container') throw new MethodNotAllowed('POST is for containers', allowedMethods(container));
       await this.require(container, agent, ['append']);
       const path = this.freeChildPath(container, slug, asContainer);
       if (asContainer) {
@@ -378,7 +379,7 @@ export class Pod {
     return this.writes.run(async () => {
       this.refuseMeta(path);
       if (!contentType || bareType(contentType) !== N3) throw new UnsupportedMediaType('PATCH takes text/n3');
-      if (isContainer(path)) throw new MethodNotAllowed('containers cannot be patched', ['GET', 'HEAD', 'OPTIONS', 'POST', 'PUT', 'DELETE']);
+      if (isContainer(path)) throw new MethodNotAllowed('containers cannot be patched', allowedMethods(path));
       const existing = this.deps.index.get(path);
       // Any patch that can change something needs Append at least, so check
       // that before preconditions and before parsing an outsider's body.
@@ -415,7 +416,7 @@ export class Pod {
 
   remove(path: PodPath, agent: Agent, conditions: Conditions): Promise<void> {
     return this.writes.run(async () => {
-      if (path === '/') throw new MethodNotAllowed('the root cannot be deleted', ['GET', 'HEAD', 'OPTIONS', 'POST', 'PUT']);
+      if (path === '/') throw new MethodNotAllowed('the root cannot be deleted', allowedMethods(path));
       this.refuseMeta(path);
       const { index, files } = this.deps;
       const row = index.get(path);
@@ -451,7 +452,7 @@ export class Pod {
   // ---- write internals ----------------------------------------------------
 
   private refuseMeta(path: PodPath): void {
-    if (isMetaPath(path)) throw new MethodNotAllowed('metadata files are managed by the server', ['OPTIONS']);
+    if (isMetaPath(path)) throw new MethodNotAllowed('metadata files are managed by the server', allowedMethods(path));
   }
 
   private async authorizeWrite(path: PodPath, existing: ResourceRow | null, agent: Agent): Promise<void> {
@@ -465,7 +466,10 @@ export class Pod {
   }
 
   private async authorizeCreate(path: PodPath, agent: Agent): Promise<void> {
-    await this.require(parentOf(path)!, agent, ['append']);
+    const parent = parentOf(path);
+    // Provisioning makes the root; no request does.
+    if (parent === null) throw new Conflict('the root container always exists');
+    await this.require(parent, agent, ['append']);
   }
 
   /** A free name in `container` for a POST, from the Slug when it is usable. */
