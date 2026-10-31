@@ -39,7 +39,7 @@ function world() {
   };
   const provider = new Provider({
     issuer: ISSUER,
-    accounts: { forPerson: accountFor, byKey: async (k) => byKey.get(k) ?? null },
+    accounts: { forPerson: async (p) => ({ key: (await accountFor(p)).key, store: await accountFor(p) }), byKey: async (k) => byKey.get(k) ?? null },
     clients: {
       resolve: async (id) =>
         id === CLIENT ? clientFromDocument(CLIENT, { client_id: CLIENT, client_name: 'Sketchpad', redirect_uris: [REDIRECT] }) : publicClient(),

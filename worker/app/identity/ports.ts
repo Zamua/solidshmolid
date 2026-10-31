@@ -4,7 +4,6 @@ import type { AuthorizeRequest, ClientInfo, Registration } from '../../domain/id
 
 /** What the provider needs to know about one person. */
 export interface AccountStore {
-  key: string;
   /** The WebID this person signs in as, or null before they have a pod. */
   webid(): Promise<string | null>;
   hasApproval(clientId: string, webid: string): Promise<boolean>;
@@ -61,9 +60,15 @@ export interface RefreshFamily {
 }
 
 /** Finds a person's provider state. */
+/** An account and the key that codes and refresh tokens name it by. */
+export interface KeyedAccount {
+  key: string;
+  store: AccountStore;
+}
+
 export interface Accounts {
   /** The account of a signed-in person (a Clerk user id), created on first use. */
-  forPerson(personId: string): Promise<AccountStore>;
+  forPerson(personId: string): Promise<KeyedAccount>;
   /** The account a code or refresh token names, or null. */
   byKey(key: string): Promise<AccountStore | null>;
 }

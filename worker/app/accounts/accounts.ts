@@ -67,7 +67,7 @@ export class Accounts {
     const state = await this.signedUp(person);
     const { verifier, challenge } = await authorization.pkce();
     const nonce = this.deps.ids.random();
-    await this.deps.account(state.key).rememberPending(nonce, { verifier, provider, newPod });
+    await this.deps.account(state.key).rememberLinkPending(nonce, { verifier, provider, newPod });
     return authorization.authorizeUrl(redirectUri, `${state.key}.${nonce}`, challenge);
   }
 
@@ -78,7 +78,7 @@ export class Accounts {
     const authorization = this.authorization(provider);
     if ((await this.deps.directory.accountKeyFor(person)) !== accountKey) throw new LinkExpired('this connection attempt expired; start again');
     const account = this.deps.account(accountKey);
-    const pending = await account.takePending(nonce);
+    const pending = await account.takeLinkPending(nonce);
     if (!pending || pending.provider !== provider) throw new LinkExpired('this connection attempt expired; start again');
     const grant = await authorization.exchange(code, pending.verifier, redirectUri);
     const linkId = this.deps.ids.random();

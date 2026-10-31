@@ -24,10 +24,10 @@ class MemoryAccount implements AccountRepository {
   async placePod(podId: string, linkId: string) {
     this.state!.pods.find((p) => p.podId === podId)!.linkId = linkId;
   }
-  async rememberPending(nonce: string, p: PendingLink) {
+  async rememberLinkPending(nonce: string, p: PendingLink) {
     this.pending.set(nonce, p);
   }
-  async takePending(nonce: string) {
+  async takeLinkPending(nonce: string) {
     const p = this.pending.get(nonce) ?? null;
     this.pending.delete(nonce);
     return p;
