@@ -6,6 +6,10 @@ export const SOLID_OIDC = 'https://solidproject.org/TR/solid-oidc';
 export const PUBLIC_CLIENT = 'http://www.w3.org/ns/solid/terms#PublicOidcClient';
 
 export const ACCESS_TOKEN_TTL_S = 3600;
+/** Asymmetric JWS algorithms accepted on DPoP proofs and on other issuers' tokens. */
+export const SIGNING_ALGORITHMS = ['ES256', 'ES384', 'ES512', 'PS256', 'PS384', 'PS512', 'RS256', 'RS384', 'RS512', 'EdDSA'];
+/** The `WWW-Authenticate` challenge for a request without usable credentials. */
+export const DPOP_CHALLENGE = `DPoP algs="${SIGNING_ALGORITHMS.join(' ')}"`;
 export const ID_TOKEN_TTL_S = 3600;
 export const CODE_TTL_S = 60;
 
@@ -35,7 +39,7 @@ export function discovery(issuer: string): Record<string, unknown> {
     subject_types_supported: ['public'],
     code_challenge_methods_supported: ['S256'],
     token_endpoint_auth_methods_supported: ['none'],
-    dpop_signing_alg_values_supported: ['ES256', 'PS256', 'RS256'],
+    dpop_signing_alg_values_supported: SIGNING_ALGORITHMS,
     id_token_signing_alg_values_supported: ['ES256'],
     claims_supported: ['iss', 'sub', 'aud', 'exp', 'iat', 'webid', 'azp', 'nonce'],
     authorization_response_iss_parameter_supported: true,

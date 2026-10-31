@@ -18,7 +18,7 @@ Conforms to Solid-OIDC; deviations are listed at the end.
   "grant_types_supported": ["authorization_code", "refresh_token"],
   "code_challenge_methods_supported": ["S256"],
   "token_endpoint_auth_methods_supported": ["none", "client_secret_basic"],
-  "dpop_signing_alg_values_supported": ["ES256", "PS256", "RS256"],
+  "dpop_signing_alg_values_supported": ["ES256", "ES384", "ES512", "PS256", "PS384", "PS512", "RS256", "RS384", "RS512", "EdDSA"],
   "id_token_signing_alg_values_supported": ["ES256"],
   "solid_oidc_supported": "https://solidproject.org/TR/solid-oidc"
 }

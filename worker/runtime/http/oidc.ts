@@ -2,7 +2,7 @@
 // Translation only: parse the request, call the provider, shape the response.
 
 import { OidcError, discovery } from '../../domain/identity/oidc.js';
-import { verifyDpopProof } from '../adapters/dpopProof.js';
+import { InvalidDpopProof, verifyDpopProof } from '../adapters/dpopProof.js';
 import { provider, tokenSigner } from '../composition.js';
 import type { Env } from '../env.js';
 import { consentPage } from './pages/oidcPages.js';
@@ -44,7 +44,7 @@ export async function oidcRoute(request: Request, env: Env, url: URL, person: st
       return Response.redirect(await op.decide(person, String(form.get('pending') ?? ''), form.get('approve') === 'yes'), 302);
     }
     if (path === '/.oidc/token' && request.method === 'POST') {
-      const { jkt } = await verifyDpopProof(request.headers.get('DPoP'), 'POST', url.toString(), Math.floor(Date.now() / 1000));
+      const jkt = await proofKey(request.headers.get('DPoP'), url);
       const tokens = await op.token(new URLSearchParams(await request.text()), jkt);
       return cors(Response.json(tokens, { headers: { 'Cache-Control': 'no-store' } }));
     }
@@ -80,5 +80,16 @@ async function registrationBody(request: Request): Promise<unknown> {
     return JSON.parse(new TextDecoder().decode(await readAll(request.body, REGISTRATION_BODY_LIMIT)));
   } catch {
     return null;
+  }
+}
+
+/** The thumbprint of the key behind the token request's DPoP proof. */
+async function proofKey(proof: string | null, url: URL): Promise<string> {
+  if (!proof) throw new OidcError('invalid_dpop_proof', 'a DPoP proof is required');
+  try {
+    return (await verifyDpopProof(proof, { method: 'POST', url: url.toString(), nowS: Math.floor(Date.now() / 1000) })).jkt;
+  } catch (e) {
+    if (e instanceof InvalidDpopProof) throw new OidcError('invalid_dpop_proof', e.message);
+    throw e;
   }
 }

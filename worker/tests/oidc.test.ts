@@ -97,6 +97,7 @@ describe('Solid-OIDC verification', () => {
     ['a proof signed by another key', async () => req(await token(), await proof({}, otherKeys))],
     ['the wrong method', async () => req(await token(), await proof({ htm: 'PUT' }))],
     ['the wrong URL', async () => req(await token(), await proof({ htu: 'https://mallory.example/notes/a.ttl' }))],
+    ['an htu that is not a URL', async () => req(await token(), await proof({ htu: 'not a url' }))],
     ['a stale proof', async () => req(await token(), await proof({ iat: NOW / 1000 - 600 }))],
     ['a proof without jti', async () => req(await token(), await proof({ jti: '' }))],
     ['an ath for another token', async () => req(await token(), await proof({ ath: 'AAAA' }))],

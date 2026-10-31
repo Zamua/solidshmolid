@@ -22,6 +22,7 @@ import { type Access, type Agent, Pod, type ReadResult } from '../../app/pods/po
 import { readAll } from '../../app/shared/streams.js';
 import type { Conditions, EtagList, RangeRequest } from '../../domain/pods/requests.js';
 import { InvalidPath, type PodPath, aclPathOf, canonicalPath, isAclPath, isContainer } from '../../domain/pods/paths.js';
+import { DPOP_CHALLENGE } from '../../domain/identity/oidc.js';
 import { METHODS, allowedMethods } from '../../domain/pods/methods.js';
 import { LDP, PIM } from '../../domain/shared/vocab.js';
 import { wacAllow } from '../../domain/pods/wac.js';
@@ -204,7 +205,7 @@ function errorResponse(e: unknown): Response {
   if (e instanceof MethodNotAllowed) headers.set('Allow', e.allow.join(', '));
   if (e instanceof RangeNotSatisfiable) headers.set('Content-Range', `bytes */${e.size}`);
   if (e instanceof StorageUnavailable && e.retryAfter !== null) headers.set('Retry-After', String(e.retryAfter));
-  if (e instanceof Unauthenticated) headers.set('WWW-Authenticate', 'DPoP algs="ES256 PS256 RS256"');
+  if (e instanceof Unauthenticated) headers.set('WWW-Authenticate', DPOP_CHALLENGE);
   return new Response(`${e.message}\n`, { status, headers });
 }
 

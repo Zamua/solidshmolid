@@ -4,6 +4,7 @@
 // for sign-in.
 
 import { isPodId } from '../domain/accounts/podIds.js';
+import { DPOP_CHALLENGE } from '../domain/identity/oidc.js';
 import { handleFromHost } from '../domain/pods/handles.js';
 import { profileDocument } from '../domain/pods/profile.js';
 import { InvalidCredentials, type VerifiedAgent } from './adapters/solidOidcVerifier.js';
@@ -144,7 +145,7 @@ function invalidToken(reason: string): Response {
     status: 401,
     headers: {
       'Content-Type': 'text/plain; charset=utf-8',
-      'WWW-Authenticate': `DPoP algs="ES256 PS256 RS256", error="invalid_token", error_description="${description}"`,
+      'WWW-Authenticate': `${DPOP_CHALLENGE}, error="invalid_token", error_description="${description}"`,
     },
   });
 }
