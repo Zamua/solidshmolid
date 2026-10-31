@@ -1,9 +1,12 @@
 // Solid-OIDC provider rules: what a valid authorization request is, which
 // redirects a client may use, and the claims our tokens carry.
 
+import { base64url } from '../shared/base64url.js';
+import { SOLID } from '../shared/vocab.js';
+
 export const SOLID_OIDC = 'https://solidproject.org/TR/solid-oidc';
 /** A client with no document or registration (Solid-OIDC "public client"). */
-export const PUBLIC_CLIENT = 'http://www.w3.org/ns/solid/terms#PublicOidcClient';
+export const PUBLIC_CLIENT = SOLID('PublicOidcClient');
 
 export const ACCESS_TOKEN_TTL_S = 3600;
 /** Asymmetric JWS algorithms accepted on DPoP proofs and on other issuers' tokens. */
@@ -204,10 +207,4 @@ export function idTokenClaims(c: TokenContext & { nonce: string | null }): Recor
     exp: c.now + ID_TOKEN_TTL_S,
     ...(c.nonce ? { nonce: c.nonce } : {}),
   };
-}
-
-export function base64url(bytes: Uint8Array): string {
-  let s = '';
-  for (const b of bytes) s += String.fromCharCode(b);
-  return btoa(s).replace(/\+/gu, '-').replace(/\//gu, '_').replace(/=+$/u, '');
 }

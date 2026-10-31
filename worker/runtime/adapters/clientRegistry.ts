@@ -5,6 +5,7 @@
 import type { ClientRegistry } from '../../app/identity/ports.js';
 import { type ClientInfo, OidcError, PUBLIC_CLIENT, type Registration, clientFromDocument, publicClient } from '../../domain/identity/oidc.js';
 import type { DirectoryObject } from '../objects/directoryObject.js';
+import { type Fetch, limitedText } from './http.js';
 
 const DOC_LIMIT = 64 * 1024;
 const TIMEOUT_MS = 5000;
@@ -13,7 +14,7 @@ const REGISTERED = 'reg_';
 export class HttpClientRegistry implements ClientRegistry {
   constructor(
     private readonly directory: DurableObjectStub<DirectoryObject>,
-    private readonly fetcher: (input: string, init?: RequestInit) => Promise<Response>,
+    private readonly fetcher: Fetch,
   ) {}
 
   async resolve(clientId: string): Promise<ClientInfo> {
@@ -46,30 +47,11 @@ export class HttpClientRegistry implements ClientRegistry {
       throw new OidcError('invalid_client', `client document unreachable: ${(e as Error).message}`);
     }
     if (!res.ok) throw new OidcError('invalid_client', `client document answered ${res.status}`);
-    const text = await limitedText(res);
+    const text = await limitedText(res, DOC_LIMIT, () => new OidcError('invalid_client', 'client document is too large'));
     try {
       return JSON.parse(text);
     } catch {
       throw new OidcError('invalid_client', 'client document is not JSON');
     }
   }
-}
-
-/** The body, refused once it passes DOC_LIMIT bytes, without reading more. */
-async function limitedText(res: Response): Promise<string> {
-  const reader = res.body?.getReader();
-  if (!reader) return '';
-  const chunks: Uint8Array[] = [];
-  let size = 0;
-  for (;;) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    size += value.byteLength;
-    if (size > DOC_LIMIT) {
-      await reader.cancel();
-      throw new OidcError('invalid_client', 'client document is too large');
-    }
-    chunks.push(value);
-  }
-  return new TextDecoder().decode(await new Blob(chunks).arrayBuffer());
 }

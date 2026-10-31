@@ -1,8 +1,9 @@
 // A DPoP proof (RFC 9449), as the token endpoint and the resource server both
 // receive it. Only a resource request carries an access token for `ath` to bind.
 
-import { EmbeddedJWK, type JWTPayload, base64url, calculateJwkThumbprint, jwtVerify } from 'jose';
+import { EmbeddedJWK, type JWTPayload, calculateJwkThumbprint, jwtVerify } from 'jose';
 import { SIGNING_ALGORITHMS } from '../../domain/identity/oidc.js';
+import { base64url } from '../../domain/shared/base64url.js';
 
 /** How far a proof's `iat` may sit from our clock. */
 export const PROOF_WINDOW_S = 300;
@@ -48,7 +49,7 @@ export async function verifyDpopProof(proof: string, context: ProofContext): Pro
 }
 
 async function tokenHash(token: string): Promise<string> {
-  return base64url.encode(new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(token))));
+  return base64url(new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(token))));
 }
 
 function withoutQuery(url: string): string | null {

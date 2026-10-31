@@ -3,6 +3,7 @@
 // secret, so this provider holds one.
 
 import { type Grant, GrantRefused, type StorageAuthorization } from '../../app/storage/ports.js';
+import { type Fetch, tokenCall } from './http.js';
 import { type PkcePair, pkce } from './pkce.js';
 
 const AUTHORIZE = 'https://accounts.google.com/o/oauth2/v2/auth';
@@ -13,12 +14,14 @@ export const DRIVE_FILE_SCOPE = 'https://www.googleapis.com/auth/drive.file';
 
 export class GoogleAuthError extends GrantRefused {}
 
+// invalid_grant on refresh means the person removed the app's access.
+const refused = (message: string) => new GoogleAuthError(`Google: ${message}`);
+
 export interface GoogleClient {
   id: string;
   secret: string;
 }
 
-type Fetch = (input: string, init?: RequestInit) => Promise<Response>;
 
 export function googleAuthorizeUrl(clientId: string, redirectUri: string, state: string, challenge: string): string {
   const q = new URLSearchParams({
@@ -37,14 +40,14 @@ export function googleAuthorizeUrl(clientId: string, redirectUri: string, state:
 }
 
 export async function exchangeGoogleCode(fetcher: Fetch, client: GoogleClient, redirectUri: string, code: string, verifier: string, now: number): Promise<Grant> {
-  const body = await tokenCall(fetcher, {
+  const body = await tokenCall(fetcher, TOKEN, {
     grant_type: 'authorization_code',
     code,
     client_id: client.id,
     client_secret: client.secret,
     redirect_uri: redirectUri,
     code_verifier: verifier,
-  });
+  }, refused);
   if (typeof body.refresh_token !== 'string') throw new GoogleAuthError('Google did not grant offline access');
   // Google lets people untick a scope on the consent screen.
   if (!String(body.scope ?? '').split(' ').includes(DRIVE_FILE_SCOPE)) {
@@ -59,7 +62,7 @@ export async function exchangeGoogleCode(fetcher: Fetch, client: GoogleClient, r
 }
 
 export async function refreshGoogleAccess(fetcher: Fetch, client: GoogleClient, refreshToken: string, now: number): Promise<{ accessToken: string; expiresAt: number }> {
-  const body = await tokenCall(fetcher, { grant_type: 'refresh_token', refresh_token: refreshToken, client_id: client.id, client_secret: client.secret });
+  const body = await tokenCall(fetcher, TOKEN, { grant_type: 'refresh_token', refresh_token: refreshToken, client_id: client.id, client_secret: client.secret }, refused);
   return { accessToken: String(body.access_token), expiresAt: now + Number(body.expires_in ?? 0) * 1000 };
 }
 
@@ -73,26 +76,6 @@ export async function revokeGoogleGrant(fetcher: Fetch, refreshToken: string): P
   if (res.ok) return;
   const body = (await res.json().catch(() => ({}))) as { error?: string };
   if (body.error !== 'invalid_token') throw new GoogleAuthError(`Google answered ${res.status} to the revoke`);
-}
-
-async function tokenCall(fetcher: Fetch, form: Record<string, string>): Promise<Record<string, unknown>> {
-  const res = await fetcher(TOKEN, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-    body: new URLSearchParams(form).toString(),
-  });
-  const text = await res.text();
-  let body: Record<string, unknown>;
-  try {
-    body = JSON.parse(text) as Record<string, unknown>;
-  } catch {
-    throw new GoogleAuthError(`Google's token endpoint answered ${res.status}`);
-  }
-  if (!res.ok || typeof body.access_token !== 'string') {
-    // invalid_grant on refresh means the person removed the app's access.
-    throw new GoogleAuthError(String(body.error_description ?? body.error ?? `HTTP ${res.status}`));
-  }
-  return body;
 }
 
 /** Google Drive behind the StorageAuthorization port. */

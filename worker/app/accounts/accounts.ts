@@ -5,13 +5,13 @@
 // belong to the same WebID and are listed in its profile.
 
 import { confirmationSentence, confirmsDeletion, providerDisplayName } from '../../domain/accounts/deletion.js';
+import { NotFound } from '../shared/errors.js';
 import type { StorageAuthorization } from '../storage/ports.js';
 import type { AccountRepository, AccountState, Directory, FileContent, FileEntry, Identities, Ids, Logins, PodRecord, Pods } from './ports.js';
 
 export class NotSignedUp extends Error {}
 export class LinkExpired extends Error {}
 export class NoStorageYet extends Error {}
-export class NotFound extends Error {}
 export class HoldsWebid extends Error {}
 export class NotConfirmed extends Error {}
 export class StorageInUse extends Error {

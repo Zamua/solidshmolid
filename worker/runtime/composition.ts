@@ -31,7 +31,7 @@ import { type Signer, signerFromJwk } from './adapters/tokenSigner.js';
 import { UnlinkedStore } from './adapters/unlinked.js';
 import type { Env } from './env.js';
 import type { Hosts } from './hosts.js';
-import type { Fetch } from './ownHosts.js';
+import type { Fetch } from './adapters/http.js';
 import type { ClerkChrome } from './http/clerkChrome.js';
 
 // Module scope, so keys, JWKS and WebID lookups are cached across requests in

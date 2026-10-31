@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { Accounts, HoldsWebid, LinkExpired, NoStorageYet, NotConfirmed, NotFound, NotSignedUp, StorageInUse } from '../app/accounts/accounts.js';
+import { Accounts, HoldsWebid, LinkExpired, NoStorageYet, NotConfirmed, NotSignedUp, StorageInUse } from '../app/accounts/accounts.js';
+import { NotFound } from '../app/shared/errors.js';
 import type { AccountRepository, AccountState, Directory, LinkSummary, PendingDeletion, PendingLink, Placement, PodRecord, Pods } from '../app/accounts/ports.js';
 import type { StorageAuthorization } from '../app/storage/ports.js';
 

@@ -11,6 +11,7 @@
 import { InsufficientStorage, StorageUnavailable } from '../../app/shared/errors.js';
 import { type ByteRange, type FileInfo, type FileLister, type FileStore, type ListedEntry, type Listing, RevisionConflict, type StoredFile, type WriteOptions } from '../../app/storage/ports.js';
 import { chunked } from './chunks.js';
+import { type Fetch, withAccessToken } from './http.js';
 import { type DriveNode, type DriveNodes, descendants, pathOf } from './driveNodes.js';
 
 const API = 'https://www.googleapis.com/drive/v3';
@@ -24,7 +25,7 @@ export const APP_FOLDER = { name: 'solidshmolid', key: 'solidshmolid', value: 'p
 const RETRIES = 3;
 
 export interface DriveDeps {
-  fetch: (input: string, init?: RequestInit) => Promise<Response>;
+  fetch: Fetch;
   /** A current access token; `refresh` asks for a new one after a 401. */
   accessToken: (refresh: boolean) => Promise<string>;
   nodes: DriveNodes;
@@ -381,11 +382,11 @@ export class DriveFileStore implements FileStore, FileLister {
     return res.json();
   }
 
-  /** One call: retried once with a fresh token after a 401, and a few times
-   * when Drive asks to slow down (it has not acted on those). */
+  /** One call, retried a few times when Drive asks to slow down (it has not
+   * acted on those). */
   private async call(url: string, request: CallRequest = {}): Promise<Response> {
-    const send = async (refresh: boolean) => {
-      const headers: Record<string, string> = { Authorization: `Bearer ${await this.deps.accessToken(refresh)}`, ...(request.headers ?? {}) };
+    const send = async (token: string) => {
+      const headers: Record<string, string> = { Authorization: `Bearer ${token}`, ...(request.headers ?? {}) };
       let body: BodyInit | undefined;
       if (request.json !== undefined) {
         headers['Content-Type'] = 'application/json; charset=UTF-8';
@@ -397,8 +398,7 @@ export class DriveFileStore implements FileStore, FileLister {
       return this.deps.fetch(url, { method: request.method ?? 'GET', headers, body });
     };
     for (let attempt = 0; ; attempt++) {
-      let res = await send(false);
-      if (res.status === 401) res = await send(true);
+      const res = await withAccessToken(this.deps.accessToken, send);
       if (attempt >= RETRIES || !(await isSlowDown(res))) return res;
       const wait = Number(res.headers.get('Retry-After') ?? '1');
       await this.sleep(Math.min(Number.isFinite(wait) ? wait : 1, 5) * 1000 * (attempt + 1));
