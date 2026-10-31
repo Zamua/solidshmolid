@@ -40,8 +40,6 @@ let signer: Signer | null = null;
 let verifier: SolidOidcVerifier | null = null;
 
 const fetcher = (input: string, init?: RequestInit) => fetch(input, init);
-const DROPBOX = 'dropbox';
-const GOOGLE_DRIVE = 'google-drive';
 const randomId = () => crypto.randomUUID().replaceAll('-', '');
 
 export function isDev(env: Env): boolean {
@@ -108,10 +106,9 @@ export function storageProviders(env: Env): string[] {
 export function storageAuthorizations(env: Env): Record<string, StorageAuthorization> {
   const out: Record<string, StorageAuthorization> = {};
   for (const name of storageProviders(env)) {
-    if (name === DEV_PROVIDER && isDev(env)) out[name] = devAuthorization;
-    else if (name === DROPBOX) out[name] = new DropboxAuthorization(requireAppKey(env), fetcher);
-    else if (name === GOOGLE_DRIVE) out[name] = new GoogleDriveAuthorization(requireGoogleClient(env), fetcher);
-    else throw new Error(`STORAGE names ${name}, which this deployment cannot connect`);
+    const provider = STORAGE_PROVIDERS[name];
+    if (!provider?.servedBy(env)) throw new Error(`STORAGE names ${name}, which this deployment cannot connect`);
+    out[name] = provider.authorization(env);
   }
   return out;
 }
@@ -119,27 +116,10 @@ export function storageAuthorizations(env: Env): Record<string, StorageAuthoriza
 /** How an account keeps the grants of each provider it may hold. */
 export function storageGrants(env: Env): Record<string, GrantKeeper> {
   const keepers: Record<string, GrantKeeper> = {};
-  if (env.DROPBOX_APP_KEY) {
-    const appKey = env.DROPBOX_APP_KEY;
-    keepers.dropbox = {
-      refresh: async (refreshToken) => {
-        const fresh = await refreshAccess(fetcher, appKey, refreshToken, Date.now());
-        return { token: fresh.accessToken, expiresAt: fresh.expiresAt };
-      },
-      revoke: (refreshToken) => revokeGrant(fetcher, appKey, refreshToken, Date.now()),
-    };
+  for (const [name, provider] of Object.entries(STORAGE_PROVIDERS)) {
+    const keeper = provider.servedBy(env) ? provider.grants(env) : null;
+    if (keeper) keepers[name] = keeper;
   }
-  if (env.GOOGLE_CLIENT_ID && env.GOOGLE_CLIENT_SECRET) {
-    const client = requireGoogleClient(env);
-    keepers[GOOGLE_DRIVE] = {
-      refresh: async (refreshToken) => {
-        const fresh = await refreshGoogleAccess(fetcher, client, refreshToken, Date.now());
-        return { token: fresh.accessToken, expiresAt: fresh.expiresAt };
-      },
-      revoke: (refreshToken) => revokeGoogleGrant(fetcher, refreshToken),
-    };
-  }
-  if (isDev(env)) keepers[DEV_PROVIDER] = devGrants;
   return keepers;
 }
 
@@ -197,19 +177,17 @@ export function podServices(env: Env, storage: DurableObjectStorage, base: strin
 }
 
 function placedStorage(env: Env, sql: SqlRunner, p: Placement): FileStore & FileLister {
-  if (p.provider === DEV_PROVIDER && isDev(env)) return new DevFileStore(sql);
-  if (p.provider === DROPBOX) return new DropboxFileStore({ fetch: fetcher, root: p.folder, accessToken: accountTokens(env, p) });
-  if (p.provider === GOOGLE_DRIVE) return new DriveFileStore({ fetch: fetcher, root: p.folder, accessToken: accountTokens(env, p), nodes: new SqlDriveNodes(sql) });
-  throw new StorageUnavailable(`this pod's storage (${p.provider}) is not reachable here`);
+  const provider = STORAGE_PROVIDERS[p.provider];
+  if (!provider?.servedBy(env)) throw new StorageUnavailable(`this pod's storage (${p.provider}) is not reachable here`);
+  return provider.folder(env, p, sql);
 }
 
 /** The storage around a placed pod's folder, for deleting that folder whole;
  * null where the pod's files live in the pod's own SQLite. */
 export function storageAround(env: Env, p: Placement): FileStore | null {
-  if (p.provider === DEV_PROVIDER) return null;
-  if (p.provider === DROPBOX) return new DropboxFileStore({ fetch: fetcher, root: '', accessToken: accountTokens(env, p) });
-  if (p.provider === GOOGLE_DRIVE) return new DriveFileStore({ fetch: fetcher, root: '', accessToken: accountTokens(env, p), nodes: new MemoryDriveNodes() });
-  throw new StorageUnavailable(`this pod's storage (${p.provider}) is not reachable here`);
+  const provider = STORAGE_PROVIDERS[p.provider];
+  if (!provider) throw new StorageUnavailable(`this pod's storage (${p.provider}) is not reachable here`);
+  return provider.around(env, p);
 }
 
 /** Access tokens from the pod's account, kept until shortly before expiry. */
@@ -221,6 +199,59 @@ function accountTokens(env: Env, p: Placement): (refresh: boolean) => Promise<st
     return current.token;
   };
 }
+
+/** Everything one storage provider brings; a new provider is one entry. */
+interface StorageProvider {
+  /** Whether this deployment may connect and serve it at all. */
+  servedBy(env: Env): boolean;
+  authorization(env: Env): StorageAuthorization;
+  /** Null when the deployment lacks the provider's keys. */
+  grants(env: Env): GrantKeeper | null;
+  /** A placed pod's folder. */
+  folder(env: Env, p: Placement, sql: SqlRunner): FileStore & FileLister;
+  /** The storage around a pod's folder; null when the files live in the pod's SQLite. */
+  around(env: Env, p: Placement): FileStore | null;
+}
+
+const STORAGE_PROVIDERS: Record<string, StorageProvider> = {
+  [DEV_PROVIDER]: {
+    servedBy: isDev,
+    authorization: () => devAuthorization,
+    grants: () => devGrants,
+    folder: (_env, _p, sql) => new DevFileStore(sql),
+    around: () => null,
+  },
+  dropbox: {
+    servedBy: () => true,
+    authorization: (env) => new DropboxAuthorization(requireAppKey(env), fetcher),
+    grants: (env) => {
+      const appKey = env.DROPBOX_APP_KEY;
+      if (!appKey) return null;
+      return {
+        refresh: async (refreshToken) => toAccessToken(await refreshAccess(fetcher, appKey, refreshToken, Date.now())),
+        revoke: (refreshToken) => revokeGrant(fetcher, appKey, refreshToken, Date.now()),
+      };
+    },
+    folder: (env, p) => new DropboxFileStore({ fetch: fetcher, root: p.folder, accessToken: accountTokens(env, p) }),
+    around: (env, p) => new DropboxFileStore({ fetch: fetcher, root: '', accessToken: accountTokens(env, p) }),
+  },
+  'google-drive': {
+    servedBy: () => true,
+    authorization: (env) => new GoogleDriveAuthorization(requireGoogleClient(env), fetcher),
+    grants: (env) => {
+      if (!env.GOOGLE_CLIENT_ID || !env.GOOGLE_CLIENT_SECRET) return null;
+      const client = requireGoogleClient(env);
+      return {
+        refresh: async (refreshToken) => toAccessToken(await refreshGoogleAccess(fetcher, client, refreshToken, Date.now())),
+        revoke: (refreshToken) => revokeGoogleGrant(fetcher, refreshToken),
+      };
+    },
+    folder: (env, p, sql) => new DriveFileStore({ fetch: fetcher, root: p.folder, accessToken: accountTokens(env, p), nodes: new SqlDriveNodes(sql) }),
+    around: (env, p) => new DriveFileStore({ fetch: fetcher, root: '', accessToken: accountTokens(env, p), nodes: new MemoryDriveNodes() }),
+  },
+};
+
+const toAccessToken = (fresh: { accessToken: string; expiresAt: number }): AccessToken => ({ token: fresh.accessToken, expiresAt: fresh.expiresAt });
 
 function requireGoogleClient(env: Env): GoogleClient {
   if (!env.GOOGLE_CLIENT_ID || !env.GOOGLE_CLIENT_SECRET) throw new Error('GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET are not configured');

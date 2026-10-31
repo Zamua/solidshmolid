@@ -12,7 +12,7 @@ Layers and bounded contexts, enforced by `worker/tests/layering.test.ts`:
 worker/domain/{shared,pods,identity,accounts}   pure rules, no I/O
 worker/app/{shared,pods,storage,identity,accounts}  services + their ports (ports.ts per context)
 worker/runtime/
-  composition.ts    the one place that picks adapters and builds services
+  composition.ts    the one place that picks adapters and builds services; one STORAGE_PROVIDERS entry per provider
   worker.ts         entry: routes by host
   hosts.ts          pod origins, WebIDs and the issuer, from the apex URL
   http/             translation only (solid.ts, oidc.ts, api.ts, home.ts, dev.ts, pages/)
