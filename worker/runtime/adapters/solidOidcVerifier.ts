@@ -9,6 +9,7 @@ import { type JWTPayload, type JWTVerifyGetKey, createLocalJWKSet, decodeJwt, er
 import { SIGNING_ALGORITHMS } from '../../domain/identity/oidc.js';
 import { parseRdf } from '../../domain/shared/rdf.js';
 import { SOLID } from '../../domain/shared/vocab.js';
+import { type Fetch, limitedText } from './http.js';
 import { InvalidDpopProof, PROOF_WINDOW_S, type VerifiedProof, verifyDpopProof } from './dpopProof.js';
 
 export class InvalidCredentials extends Error {}
@@ -30,7 +31,7 @@ export interface AuthRequest {
 }
 
 export interface VerifierDeps {
-  fetch: (input: string, init?: RequestInit) => Promise<Response>;
+  fetch: Fetch;
   /** Milliseconds since the epoch. */
   now: () => number;
 }
@@ -138,7 +139,7 @@ export class SolidOidcVerifier {
     if (hit && this.deps.now() - hit.at < CACHE_MS) return hit.value;
     const doc = webid.split('#')[0]!;
     const res = await this.get(doc, 'text/turtle');
-    const quads = await parseRdf(await limitedText(res), res.headers.get('Content-Type') ?? 'text/turtle', doc).catch(() => {
+    const quads = await parseRdf(await limitedText(res, FETCH_LIMIT, () => new InvalidCredentials(`${res.url} is larger than ${FETCH_LIMIT} bytes`)), res.headers.get('Content-Type') ?? 'text/turtle', doc).catch(() => {
       throw new InvalidCredentials(`${webid}: profile does not parse`);
     });
     const issuers = quads.filter((q) => q.subject.value === webid && q.predicate.value === SOLID('oidcIssuer')).map((q) => q.object.value);
@@ -149,7 +150,7 @@ export class SolidOidcVerifier {
   private async fetchJson(url: string): Promise<Record<string, unknown>> {
     const res = await this.get(url, 'application/json');
     try {
-      return JSON.parse(await limitedText(res)) as Record<string, unknown>;
+      return JSON.parse(await limitedText(res, FETCH_LIMIT, () => new InvalidCredentials(`${res.url} is larger than ${FETCH_LIMIT} bytes`))) as Record<string, unknown>;
     } catch {
       throw new InvalidCredentials(`${url} is not JSON`);
     }
@@ -173,24 +174,6 @@ function remember<T>(cache: Map<string, T>, key: string, value: T): void {
   cache.delete(key);
   if (cache.size >= CACHE_ENTRIES) cache.delete(cache.keys().next().value!);
   cache.set(key, value);
-}
-
-async function limitedText(res: Response): Promise<string> {
-  const reader = res.body?.getReader();
-  if (!reader) return '';
-  const chunks: Uint8Array[] = [];
-  let size = 0;
-  for (;;) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    size += value.byteLength;
-    if (size > FETCH_LIMIT) {
-      await reader.cancel();
-      throw new InvalidCredentials(`${res.url} is larger than ${FETCH_LIMIT} bytes`);
-    }
-    chunks.push(value);
-  }
-  return new TextDecoder().decode(await new Blob(chunks).arrayBuffer());
 }
 
 function sameIssuer(a: string, b: string): boolean {

@@ -4,9 +4,8 @@
 // in-process instead; every other URL goes out over the network.
 
 import { handleFromHost } from '../domain/pods/handles.js';
+import type { Fetch } from './adapters/http.js';
 import type { Env } from './env.js';
-
-export type Fetch = (input: string, init?: RequestInit) => Promise<Response>;
 
 /** `port` is the one the service answers on ('' for the default), so a
  * neighbour on the same host and another port stays outside. */

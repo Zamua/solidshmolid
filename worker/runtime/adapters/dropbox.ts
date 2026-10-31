@@ -9,6 +9,7 @@
 import { InsufficientStorage, StorageUnavailable } from '../../app/shared/errors.js';
 import { type ByteRange, type FileInfo, type FileLister, type FileStore, type ListedEntry, type Listing, RevisionConflict, type StoredFile, type WriteOptions } from '../../app/storage/ports.js';
 import { chunked } from './chunks.js';
+import { type Fetch, withAccessToken } from './http.js';
 
 const API = 'https://api.dropboxapi.com/2';
 const CONTENT = 'https://content.dropboxapi.com/2';
@@ -17,7 +18,7 @@ export const CHUNK = 8 * 1024 * 1024;
 const WRITE_RETRIES = 3;
 
 export interface DropboxDeps {
-  fetch: (input: string, init?: RequestInit) => Promise<Response>;
+  fetch: Fetch;
   /** A current access token; `refresh` asks for a new one after a 401. */
   accessToken: (refresh: boolean) => Promise<string>;
   sleep?: (ms: number) => Promise<void>;
@@ -190,10 +191,8 @@ export class DropboxFileStore implements FileStore, FileLister {
     }
   }
 
-  /** One API call, retried once with a fresh token after a 401. */
   private async call(url: string, request: CallRequest): Promise<Response> {
-    const send = async (refresh: boolean) => {
-      const token = await this.deps.accessToken(refresh);
+    return withAccessToken(this.deps.accessToken, async (token) => {
       const headers: Record<string, string> = { Authorization: `Bearer ${token}`, ...(request.headers ?? {}) };
       let body: BodyInit | undefined;
       if (request.json !== undefined) {
@@ -207,10 +206,7 @@ export class DropboxFileStore implements FileStore, FileLister {
         }
       }
       return this.deps.fetch(url, { method: 'POST', headers, body });
-    };
-    let res = await send(false);
-    if (res.status === 401) res = await send(true);
-    return res;
+    });
   }
 
   private async ensureOk(res: Response, what: string): Promise<void> {

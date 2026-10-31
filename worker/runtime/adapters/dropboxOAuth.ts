@@ -3,12 +3,16 @@
 // holds no app secret at all.
 
 import { type Grant, GrantRefused, type StorageAuthorization } from '../../app/storage/ports.js';
+import { type Fetch, tokenCall } from './http.js';
 import { type PkcePair, pkce } from './pkce.js';
 
 const AUTHORIZE = 'https://www.dropbox.com/oauth2/authorize';
 const TOKEN = 'https://api.dropboxapi.com/oauth2/token';
 
 export class DropboxAuthError extends GrantRefused {}
+
+// invalid_grant on refresh means the user revoked the app.
+const refused = (message: string) => new DropboxAuthError(`Dropbox: ${message}`);
 
 export function authorizeUrl(appKey: string, redirectUri: string, state: string, challenge: string): string {
   const q = new URLSearchParams({
@@ -23,7 +27,6 @@ export function authorizeUrl(appKey: string, redirectUri: string, state: string,
   return `${AUTHORIZE}?${q}`;
 }
 
-type Fetch = (input: string, init?: RequestInit) => Promise<Response>;
 
 export async function exchangeCode(
   fetcher: Fetch,
@@ -33,13 +36,13 @@ export async function exchangeCode(
   verifier: string,
   now: number,
 ): Promise<Grant> {
-  const body = await tokenCall(fetcher, {
+  const body = await tokenCall(fetcher, TOKEN, {
     grant_type: 'authorization_code',
     code,
     client_id: appKey,
     redirect_uri: redirectUri,
     code_verifier: verifier,
-  });
+  }, refused);
   if (typeof body.refresh_token !== 'string' || typeof body.account_id !== 'string') {
     throw new DropboxAuthError('Dropbox did not grant offline access');
   }
@@ -57,7 +60,7 @@ export async function refreshAccess(
   refreshToken: string,
   now: number,
 ): Promise<{ accessToken: string; expiresAt: number }> {
-  const body = await tokenCall(fetcher, { grant_type: 'refresh_token', refresh_token: refreshToken, client_id: appKey });
+  const body = await tokenCall(fetcher, TOKEN, { grant_type: 'refresh_token', refresh_token: refreshToken, client_id: appKey }, refused);
   return { accessToken: String(body.access_token), expiresAt: now + Number(body.expires_in ?? 0) * 1000 };
 }
 
@@ -66,26 +69,6 @@ export async function revokeGrant(fetcher: Fetch, appKey: string, refreshToken: 
   const { accessToken } = await refreshAccess(fetcher, appKey, refreshToken, now);
   const res = await fetcher('https://api.dropboxapi.com/2/auth/token/revoke', { method: 'POST', headers: { Authorization: `Bearer ${accessToken}` } });
   if (!res.ok) throw new DropboxAuthError(`Dropbox answered ${res.status} to the revoke`);
-}
-
-async function tokenCall(fetcher: Fetch, form: Record<string, string>): Promise<Record<string, unknown>> {
-  const res = await fetcher(TOKEN, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-    body: new URLSearchParams(form).toString(),
-  });
-  const text = await res.text();
-  let body: Record<string, unknown>;
-  try {
-    body = JSON.parse(text) as Record<string, unknown>;
-  } catch {
-    throw new DropboxAuthError(`Dropbox token endpoint answered ${res.status}`);
-  }
-  if (!res.ok || typeof body.access_token !== 'string') {
-    // invalid_grant on refresh means the user revoked the app.
-    throw new DropboxAuthError(String(body.error_description ?? body.error ?? `HTTP ${res.status}`));
-  }
-  return body;
 }
 
 /** Dropbox behind the StorageAuthorization port. */

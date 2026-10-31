@@ -8,9 +8,9 @@ import { FOAF, PIM, SOLID } from '../shared/vocab.js';
  * authenticate this WebID; null until the pod's owner has one. */
 export function profileDocument(storage: string, issuer: string | null): string {
   const lines = [
-    '@prefix foaf: <http://xmlns.com/foaf/0.1/>.',
-    '@prefix solid: <http://www.w3.org/ns/solid/terms#>.',
-    '@prefix pim: <http://www.w3.org/ns/pim/space#>.',
+    `@prefix foaf: <${FOAF('')}>.`,
+    `@prefix solid: <${SOLID('')}>.`,
+    `@prefix pim: <${PIM('')}>.`,
     '',
     '<> a foaf:PersonalProfileDocument;',
     '  foaf:maker <#me>;',
@@ -27,8 +27,8 @@ export function profileDocument(storage: string, issuer: string | null): string 
 /** An N3 Patch for `/profile/card` listing one more storage of `<#me>`, so
  * apps that read the profile find every pod the person has. */
 export function addStoragePatch(storage: string): string {
-  return `@prefix solid: <http://www.w3.org/ns/solid/terms#>.
-@prefix pim: <http://www.w3.org/ns/pim/space#>.
+  return `@prefix solid: <${SOLID('')}>.
+@prefix pim: <${PIM('')}>.
 _:add a solid:InsertDeletePatch;
   solid:inserts { <#me> pim:storage <${storage}>. }.
 `;
@@ -36,8 +36,8 @@ _:add a solid:InsertDeletePatch;
 
 /** The reverse of `addStoragePatch`. */
 export function removeStoragePatch(storage: string): string {
-  return `@prefix solid: <http://www.w3.org/ns/solid/terms#>.
-@prefix pim: <http://www.w3.org/ns/pim/space#>.
+  return `@prefix solid: <${SOLID('')}>.
+@prefix pim: <${PIM('')}>.
 _:remove a solid:InsertDeletePatch;
   solid:deletes { <#me> pim:storage <${storage}>. }.
 `;

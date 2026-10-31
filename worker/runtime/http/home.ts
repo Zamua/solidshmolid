@@ -1,6 +1,6 @@
 // The apex home page, for whoever is looking at it.
 
-import { NoStorageYet, NotFound } from '../../app/accounts/accounts.js';
+import { NoStorageYet } from '../../app/accounts/accounts.js';
 import type { AccountState, FileContent } from '../../app/accounts/ports.js';
 import { PodError } from '../../app/shared/errors.js';
 import { providerDisplayName } from '../../domain/accounts/deletion.js';
@@ -48,7 +48,7 @@ export async function homeRoute(request: Request, env: Env, url: URL, person: st
       if (browseAction === 'download') return download(await accounts(env, hosts).file(person, browsing, path), path);
       return filesPage(state, browsing, path, await accounts(env, hosts).files(person, browsing, path), hosts);
     } catch (e) {
-      if (e instanceof NotFound || e instanceof NoStorageYet || e instanceof PodError) {
+      if (e instanceof NoStorageYet || e instanceof PodError) {
         return problemPage('Not found', 'That file or folder is not there.', 404, { way: { href: `/pods/${browsing}/files`, label: 'Back to the pod' } });
       }
       throw e;

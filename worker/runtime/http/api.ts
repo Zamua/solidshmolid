@@ -4,7 +4,8 @@
 //
 // Pages post plain HTML forms here; those get a redirect, scripts get JSON.
 
-import { type DeletionStep, HoldsWebid, LinkExpired, NoStorageYet, NotConfirmed, NotFound, NotSignedUp, StorageInUse } from '../../app/accounts/accounts.js';
+import { type DeletionStep, HoldsWebid, LinkExpired, NoStorageYet, NotConfirmed, NotSignedUp, StorageInUse } from '../../app/accounts/accounts.js';
+import { NotFound } from '../../app/shared/errors.js';
 import type { AccountState } from '../../app/accounts/ports.js';
 import { GrantRefused } from '../../app/storage/ports.js';
 import { accounts, provider } from '../composition.js';
