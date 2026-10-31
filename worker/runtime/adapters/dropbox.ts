@@ -165,13 +165,9 @@ export class DropboxFileStore implements FileStore, FileLister {
         if (prefix && !full.toLowerCase().startsWith(prefix.toLowerCase())) continue;
         const path = full.slice(prefix.length);
         if (path === '') continue;
-        entries.push({
-          kind: e['.tag'] === 'folder' ? 'folder' : e['.tag'] === 'deleted' ? 'deleted' : 'file',
-          path: e['.tag'] === 'folder' ? `${path}/` : path,
-          rev: e.rev ?? null,
-          size: e.size ?? 0,
-          modified: e.server_modified ?? null,
-        });
+        if (e['.tag'] === 'folder') entries.push({ kind: 'folder', path: `${path}/` });
+        else if (e['.tag'] === 'deleted') entries.push({ kind: 'deleted', path });
+        else entries.push({ kind: 'file', path, rev: e.rev ?? '', size: e.size ?? 0, modified: e.server_modified ?? null });
       }
       if (!page.has_more) return { entries, cursor: page.cursor as string };
       page = await this.json(`${API}/files/list_folder/continue`, { cursor: page.cursor });

@@ -450,13 +450,11 @@ function nodeOf(f: DriveFile, parent: string): DriveNode {
 }
 
 function entryOf(node: DriveNode, path: string): ListedEntry {
-  return node.folder
-    ? { kind: 'folder', path, rev: null, size: 0, modified: null }
-    : { kind: 'file', path, rev: node.version, size: node.size, modified: node.modified };
+  return node.folder ? { kind: 'folder', path } : { kind: 'file', path, rev: node.version ?? '', size: node.size, modified: node.modified };
 }
 
 function deletedAt(path: string): ListedEntry {
-  return { kind: 'deleted', path: path.replace(/\/$/u, ''), rev: null, size: 0, modified: null };
+  return { kind: 'deleted', path: path.replace(/\/$/u, '') };
 }
 
 async function isSlowDown(res: Response): Promise<boolean> {

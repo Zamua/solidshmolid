@@ -43,13 +43,16 @@ export interface FileStore {
 export class RevisionConflict extends Error {}
 
 /** One entry of a storage listing. Folder paths end in '/'. */
-export interface ListedEntry {
-  kind: 'file' | 'folder' | 'deleted';
+export interface FileEntry {
+  kind: 'file';
   path: string;
-  rev: string | null;
+  rev: string;
   size: number;
   modified: string | null;
 }
+
+/** A folder's path ends in '/'; a deleted entry's never does. */
+export type ListedEntry = FileEntry | { kind: 'folder'; path: string } | { kind: 'deleted'; path: string };
 
 export interface Listing {
   entries: ListedEntry[];

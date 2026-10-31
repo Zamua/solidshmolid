@@ -80,13 +80,13 @@ export class SqlIndex implements PodIndex {
       parentOf(row.path),
       foldKey(row.path),
       row.kind,
-      row.contentType,
+      row.kind === 'document' ? row.contentType : null,
       row.file,
-      row.rev,
+      row.kind === 'document' ? row.rev : null,
       row.etag,
-      row.size,
+      row.kind === 'document' ? row.size : 0,
       row.modified,
-      row.hasMeta ? 1 : 0,
+      row.kind === 'document' && row.hasMeta ? 1 : 0,
     );
   }
 
@@ -114,15 +114,14 @@ export class SqlIndex implements PodIndex {
 }
 
 function toRow(r: Record<string, unknown>): ResourceRow {
+  const row = { path: String(r.path), file: String(r.file), etag: String(r.etag), modified: String(r.modified) };
+  if (r.kind === 'container') return { ...row, kind: 'container' };
   return {
-    path: String(r.path),
-    kind: r.kind === 'container' ? 'container' : 'document',
-    contentType: r.content_type === null ? null : String(r.content_type),
-    file: String(r.file),
-    rev: r.rev === null ? null : String(r.rev),
-    etag: String(r.etag),
+    ...row,
+    kind: 'document',
+    contentType: String(r.content_type ?? ''),
+    rev: String(r.rev ?? ''),
     size: Number(r.size),
-    modified: String(r.modified),
     hasMeta: Number(r.has_meta) === 1,
   };
 }

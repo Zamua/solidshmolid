@@ -53,7 +53,8 @@ import {
   Unprocessable,
   UnsupportedMediaType,
 } from '../shared/errors.js';
-import { type PodIndex, type ResourceRow } from './ports.js';
+import { type ContainerRow, type DocumentRow, type PodIndex, type ResourceRow } from './ports.js';
+import { newContainerRow, touch } from './rows.js';
 import { type ByteRange, type FileStore, type ListedEntry, RevisionConflict } from '../storage/ports.js';
 import { type ReconcileReport, applyChanges, rebuildIndex } from './reconcile.js';
 import { Serial } from '../shared/serial.js';
@@ -145,7 +146,7 @@ export class Pod {
       const { index, files } = this.deps;
       if (index.state()) throw new Conflict('pod already exists');
       await files.makeFolder('');
-      index.atomically(() => index.upsert(this.containerRow('/')));
+      index.atomically(() => index.upsert(newContainerRow('/', this.deps)));
       await this.storeRdf('/.acl', ACL_TYPE, podRootAcl(owner), null);
       if (profile !== null) {
         await this.storeRdf('/profile/card', TURTLE, profile, null);
@@ -199,13 +200,13 @@ export class Pod {
     for (const candidate of candidates) {
       if (!isContainer(candidate) && candidate !== path) continue;
       const row = this.deps.index.get(aclPathOf(candidate));
-      if (!row) continue;
+      if (row?.kind !== 'document') continue;
       return { auths: await this.loadAcl(row), inheritedFrom: candidate === path ? null : this.url(candidate) };
     }
     return { auths: [], inheritedFrom: null };
   }
 
-  private async loadAcl(row: ResourceRow): Promise<Authorization[]> {
+  private async loadAcl(row: DocumentRow): Promise<Authorization[]> {
     const hit = this.aclCache.get(row.path);
     if (hit && hit.etag === row.etag) return hit.auths;
     let auths: Authorization[] = [];
@@ -230,13 +231,11 @@ export class Pod {
     await this.require(container, agent, ['read']);
     if (!row) throw new NotFound(container);
     if (row.kind !== 'container') throw new BadRequest(`${container} is not a folder`);
-    return this.members(container).map((m) => ({
-      path: m.path,
-      kind: m.kind,
-      contentType: m.contentType,
-      size: m.size,
-      modified: m.modified,
-    }));
+    return this.members(container).map((m) =>
+      m.kind === 'document'
+        ? { path: m.path, kind: m.kind, contentType: m.contentType, size: m.size, modified: m.modified }
+        : { path: m.path, kind: m.kind, contentType: null, size: 0, modified: m.modified },
+    );
   }
 
   async read(path: PodPath, agent: Agent, options: ReadOptions): Promise<ReadResult> {
@@ -251,7 +250,7 @@ export class Pod {
     return row.kind === 'container' ? this.readContainer(row, options, access) : this.readDocument(row, options, access);
   }
 
-  private async readContainer(row: ResourceRow, options: ReadOptions, access: Access): Promise<ReadResult> {
+  private async readContainer(row: ContainerRow, options: ReadOptions, access: Access): Promise<ReadResult> {
     const type = negotiate(options.accept, [...RDF_TYPES]);
     if (!type) throw new NotAcceptable('containers are served as RDF');
     const members = this.members(row.path).map((m) => ({ url: this.url(m.path) }));
@@ -269,8 +268,8 @@ export class Pod {
     };
   }
 
-  private async readDocument(row: ResourceRow, options: ReadOptions, access: Access): Promise<ReadResult> {
-    const stored = row.contentType!;
+  private async readDocument(row: DocumentRow, options: ReadOptions, access: Access): Promise<ReadResult> {
+    const stored = row.contentType;
     const rdf = isRdfType(stored);
     const offered = rdf ? [stored, ...RDF_TYPES.filter((t) => t !== bareType(stored))] : [stored];
     const type = negotiate(options.accept, offered);
@@ -307,7 +306,7 @@ export class Pod {
     return this.deps.index.children(container).filter((r) => !isAclPath(r.path) && !isMetaPath(r.path));
   }
 
-  private async readText(row: ResourceRow): Promise<string | null> {
+  private async readText(row: DocumentRow): Promise<string | null> {
     const cached = this.deps.index.cachedText(row.path);
     if (cached !== null) return cached;
     const file = await this.deps.files.read(row.file);
@@ -317,7 +316,7 @@ export class Pod {
     return text;
   }
 
-  private async requireText(row: ResourceRow): Promise<string> {
+  private async requireText(row: DocumentRow): Promise<string> {
     const text = await this.readText(row);
     if (text === null) {
       this.forgetMissing(row);
@@ -331,7 +330,7 @@ export class Pod {
     const { index } = this.deps;
     index.atomically(() => {
       index.delete(row.path);
-      this.touchParent(row.path);
+      touch(this.deps.index, parentOf(row.path), this.deps);
     });
   }
 
@@ -381,6 +380,7 @@ export class Pod {
       if (!contentType || bareType(contentType) !== N3) throw new UnsupportedMediaType('PATCH takes text/n3');
       if (isContainer(path)) throw new MethodNotAllowed('containers cannot be patched', allowedMethods(path));
       const existing = this.deps.index.get(path);
+      if (existing?.kind === 'container') throw new Conflict(`${path} is a container`);
       // Any patch that can change something needs Append at least, so check
       // that before preconditions and before parsing an outsider's body.
       if (isAclPath(path)) await this.authorizeWrite(path, existing, agent);
@@ -438,13 +438,13 @@ export class Pod {
       const companions = row.kind === 'container' ? index.children(path) : [index.get(aclPathOf(path))].filter((r) => r !== null);
       if (isAclPath(path)) companions.length = 0;
       for (const c of companions) await files.remove(c.file);
-      if (row.hasMeta) await files.remove(metaFileOf(path));
+      if (row.kind === 'document' && row.hasMeta) await files.remove(metaFileOf(path));
       if (row.kind === 'container') await files.removeFolder(row.file);
       else await files.remove(row.file);
       index.atomically(() => {
         for (const c of companions) index.delete(c.path);
         index.delete(path);
-        this.touchParent(path);
+        touch(this.deps.index, parentOf(path), this.deps);
       });
     });
   }
@@ -512,8 +512,8 @@ export class Pod {
     await this.deps.files.makeFolder(basePathOf(path));
     this.deps.index.atomically(() => {
       for (const a of [...missing, path]) {
-        this.deps.index.upsert(this.containerRow(a));
-        this.touchParent(a);
+        this.deps.index.upsert(newContainerRow(a, this.deps));
+        touch(this.deps.index, parentOf(a), this.deps);
       }
     });
   }
@@ -530,7 +530,7 @@ export class Pod {
   }
 
   /** Validates and stores an RDF document. */
-  private async storeRdf(path: PodPath, contentType: string, text: string, existing: ResourceRow | null): Promise<void> {
+  private async storeRdf(path: PodPath, contentType: string, text: string, existing: DocumentRow | null): Promise<void> {
     try {
       const quads = await parseRdf(text, contentType, this.url(path));
       if (isAclPath(path)) authorizationsOf(quads);
@@ -545,7 +545,7 @@ export class Pod {
     path: PodPath,
     contentType: string,
     body: ReadableStream<Uint8Array> | Uint8Array,
-    existing: ResourceRow | null,
+    existing: DocumentRow | null,
     text: string | null,
   ): Promise<void> {
     const { index, files } = this.deps;
@@ -576,8 +576,8 @@ export class Pod {
 
     index.atomically(() => {
       for (const a of missing) {
-        index.upsert(this.containerRow(a));
-        this.touchParent(a);
+        index.upsert(newContainerRow(a, this.deps));
+        touch(this.deps.index, parentOf(a), this.deps);
       }
       index.upsert({
         path,
@@ -591,22 +591,8 @@ export class Pod {
         hasMeta: mapped.typeInMeta,
       });
       index.setCachedText(path, text !== null && text.length <= CACHE_LIMIT ? text : null);
-      if (!existing) this.touchParent(path);
+      if (!existing) touch(this.deps.index, parentOf(path), this.deps);
     });
-  }
-
-  private containerRow(path: PodPath): ResourceRow {
-    return {
-      path,
-      kind: 'container',
-      contentType: null,
-      file: basePathOf(path),
-      rev: null,
-      etag: this.deps.newId(),
-      size: 0,
-      modified: this.deps.now().toISOString(),
-      hasMeta: false,
-    };
   }
 
   private checkConditions(row: ResourceRow | null, conditions: Conditions): void {
@@ -618,14 +604,5 @@ export class Pod {
     const span = resolveRange(request, size);
     if (!span) throw new RangeNotSatisfiable(size);
     return span;
-  }
-
-  /** Membership of `path`'s parent changed: give it a new ETag. */
-  private touchParent(path: PodPath): void {
-    const parent = parentOf(path);
-    if (parent === null) return;
-    const row = this.deps.index.get(parent);
-    if (!row) return;
-    this.deps.index.upsert({ ...row, etag: this.deps.newId(), modified: this.deps.now().toISOString() });
   }
 }

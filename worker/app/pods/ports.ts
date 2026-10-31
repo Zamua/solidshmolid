@@ -2,22 +2,30 @@
 
 import type { PodPath } from '../../domain/pods/paths.js';
 
-export interface ResourceRow {
+interface Row {
   path: PodPath;
-  kind: 'container' | 'document';
-  /** Documents only. */
-  contentType: string | null;
   /** Stored file (documents) or folder (containers), relative to the pod folder. */
   file: string;
-  /** Documents only: the storage revision of `file`. */
-  rev: string | null;
   /** Opaque, unquoted; changes whenever the resource or its membership does. */
   etag: string;
-  size: number;
   modified: string;
+}
+
+export interface ContainerRow extends Row {
+  kind: 'container';
+}
+
+export interface DocumentRow extends Row {
+  kind: 'document';
+  contentType: string;
+  /** The storage revision of `file`. */
+  rev: string;
+  size: number;
   /** A metadata file exists for this resource. */
   hasMeta: boolean;
 }
+
+export type ResourceRow = ContainerRow | DocumentRow;
 
 export interface PodState {
   owner: string;
