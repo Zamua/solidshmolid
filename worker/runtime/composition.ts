@@ -142,7 +142,7 @@ export function accounts(env: Env, hosts: Hosts): Accounts {
 /** A pod's services, wired to the storage it currently lives in. */
 export interface PodServices {
   pod: Pod;
-  /** Present once the pod is placed in storage with a change feed. */
+  /** Present once the pod is placed in storage and reading its change feed. */
   sync: FolderSync | null;
   placement: SqlPlacement;
   /** The pod as served from `placement`, and that storage. */
@@ -162,13 +162,13 @@ export function podServices(env: Env, storage: DurableObjectStorage, base: strin
   };
 
   const placed = placement.current();
-  if (!placed) {
+  if (placed.state === 'unplaced') {
     // Named development pods live in the dev store from their first request.
     const pod = podOn(isDev(env) ? new DevFileStore(sql) : new UnlinkedStore());
     return { pod, sync: null, placement, podIn };
   }
-  const { pod, files } = podIn(placed);
-  return { pod, sync: new FolderSync(pod, placement, files, SYNC_INTERVAL_MS, () => Date.now()), placement, podIn };
+  const { pod, files } = podIn(placed.target);
+  return { pod, sync: placed.state === 'placed' ? new FolderSync(pod, placement, files, SYNC_INTERVAL_MS, () => Date.now()) : null, placement, podIn };
 }
 
 function placedStorage(env: Env, sql: SqlRunner, p: Placement): FileStore & FileLister {

@@ -1,15 +1,11 @@
 // Where a pod's files live, in the pod's own SQLite: which of its account's storage links,
-// which folder in it, and where its change feed was last read.
+// which folder in it, and where its change feed was last read. A row with no cursor is a
+// placement under way.
 
-import type { Placement } from '../../app/accounts/ports.js';
-import type { SyncCursor } from '../../app/storage/ports.js';
+import type { Placement, PlacementStore, PodPlacement } from '../../app/storage/ports.js';
 import type { SqlRunner } from './sql.js';
 
-export interface StoredPlacement extends Placement {
-  cursor: string | null;
-}
-
-export class SqlPlacement implements SyncCursor {
+export class SqlPlacement implements PlacementStore {
   constructor(private readonly sql: SqlRunner) {
     this.sql.exec(`
       CREATE TABLE IF NOT EXISTS placement(
@@ -23,36 +19,28 @@ export class SqlPlacement implements SyncCursor {
     `);
   }
 
-  current(): StoredPlacement | null {
+  current(): PodPlacement {
     const row = this.sql.exec('SELECT account_key, link_id, provider, folder, cursor FROM placement WHERE id = 1').toArray()[0];
-    if (!row) return null;
-    return {
-      accountKey: String(row.account_key),
-      linkId: String(row.link_id),
-      provider: String(row.provider),
-      folder: String(row.folder),
-      cursor: row.cursor === null ? null : String(row.cursor),
-    };
+    if (!row) return { state: 'unplaced' };
+    const target: Placement = { accountKey: String(row.account_key), linkId: String(row.link_id), provider: String(row.provider), folder: String(row.folder) };
+    return row.cursor === null ? { state: 'placing', target } : { state: 'placed', target, cursor: String(row.cursor) };
   }
 
-  /** Records a new placement; its cursor is set once the pod is in place. */
-  save(placement: Placement): void {
+  save(placement: PodPlacement): void {
+    if (placement.state === 'unplaced') {
+      this.sql.exec('DELETE FROM placement WHERE id = 1');
+      return;
+    }
+    const { target } = placement;
     this.sql.exec(
-      `INSERT INTO placement(id, account_key, link_id, provider, folder, cursor) VALUES (1, ?, ?, ?, ?, NULL)
+      `INSERT INTO placement(id, account_key, link_id, provider, folder, cursor) VALUES (1, ?, ?, ?, ?, ?)
        ON CONFLICT(id) DO UPDATE SET account_key = excluded.account_key, link_id = excluded.link_id,
-         provider = excluded.provider, folder = excluded.folder, cursor = NULL`,
-      placement.accountKey,
-      placement.linkId,
-      placement.provider,
-      placement.folder,
+         provider = excluded.provider, folder = excluded.folder, cursor = excluded.cursor`,
+      target.accountKey,
+      target.linkId,
+      target.provider,
+      target.folder,
+      placement.state === 'placed' ? placement.cursor : null,
     );
-  }
-
-  async cursor(): Promise<string | null> {
-    return this.current()?.cursor ?? null;
-  }
-
-  async setCursor(cursor: string): Promise<void> {
-    this.sql.exec('UPDATE placement SET cursor = ? WHERE id = 1', cursor);
   }
 }

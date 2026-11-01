@@ -13,7 +13,7 @@ import { BadRequest, Conflict } from '../../app/shared/errors.js';
 import { InvalidPath, canonicalPath } from '../../domain/pods/paths.js';
 import { PROFILE_PATH, addStoragePatch, removeStoragePatch } from '../../domain/pods/profile.js';
 import { NO_CONDITIONS } from '../../domain/pods/requests.js';
-import { alreadyPlaced, placePod } from '../../app/storage/placement.js';
+import { placePod } from '../../app/storage/placement.js';
 import type { PlacementOutcome } from '../../app/storage/ports.js';
 import { ProofLedger } from '../adapters/proofLedger.js';
 import { isBlank } from '../adapters/sql.js';
@@ -60,7 +60,7 @@ export class PodObject extends DurableObject<Env> {
   /** Development only: creates a named pod in the dev store if it does not exist yet. */
   async ensureProvisioned(base: string, owner: string, profile: string): Promise<void> {
     const { pod, placement } = this.open(base);
-    if (pod.isProvisioned() || placement.current()) return;
+    if (pod.isProvisioned() || placement.current().state !== 'unplaced') return;
     try {
       await pod.provision(owner, profile);
     } catch (e) {
@@ -68,15 +68,12 @@ export class PodObject extends DurableObject<Env> {
     }
   }
 
-  /** Serves the pod from its folder in its account's storage. Repeating a
-   * finished placement is a no-op; moving to other storage is not this call. */
+  /** Serves the pod from its folder in its account's storage (`nextPlacement`). */
   async place(base: string, placement: Placement, owner: string, profile: string | null): Promise<PlacementOutcome> {
     const services = this.open(base);
-    if (alreadyPlaced(services.placement.current(), placement)) return 'adopted';
-    services.placement.save(placement);
     try {
       const { pod, files } = services.podIn(placement);
-      return await placePod(pod, files, services.placement, { owner, profile });
+      return await placePod(pod, files, services.placement, placement, { owner, profile });
     } finally {
       // Built before the placement was saved, the services serve the old storage.
       this.services = null;
@@ -117,7 +114,7 @@ export class PodObject extends DurableObject<Env> {
    * deleted from storage first. Without, the folder stays a complete pod. */
   async retire(base: string, deleteFiles: boolean): Promise<void> {
     const placement = this.open(base).placement.current();
-    if (deleteFiles && placement) await storageAround(this.env, placement)?.removeFolder(placement.folder);
+    if (deleteFiles && placement.state !== 'unplaced') await storageAround(this.env, placement.target)?.removeFolder(placement.target.folder);
     await this.ctx.storage.deleteAll();
     this.services = null;
     this.proofs = null;

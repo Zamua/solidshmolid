@@ -177,13 +177,14 @@ describe('link access tokens', () => {
 });
 
 describe('a pod placement', () => {
-  it('starts without a cursor and keeps the one the placement sets', async () => {
+  it('reads back each state it stores', () => {
     const placement = new SqlPlacement(sqlRunner());
-    expect(placement.current()).toBeNull();
-    placement.save({ accountKey: 'k1', linkId: 'l1', provider: 'dropbox', folder: 'k3x9fqm7' });
-    expect(await placement.cursor()).toBeNull();
-    await placement.setCursor('c1');
-    expect(placement.current()).toEqual({ accountKey: 'k1', linkId: 'l1', provider: 'dropbox', folder: 'k3x9fqm7', cursor: 'c1' });
+    const target = { accountKey: 'k1', linkId: 'l1', provider: 'dropbox', folder: 'k3x9fqm7' };
+    expect(placement.current()).toEqual({ state: 'unplaced' });
+    for (const state of [{ state: 'placing', target }, { state: 'placed', target, cursor: 'c1' }, { state: 'unplaced' }] as const) {
+      placement.save(state);
+      expect(placement.current()).toEqual(state);
+    }
   });
 });
 
