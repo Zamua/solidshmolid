@@ -265,7 +265,8 @@ new pod (the WebID in full; the first pod also gets the public profile); a folde
 holds files is adopted: the index is rebuilt from a full listing (`app/pods/reconcile.ts`),
 keeping ETags and caches of unchanged files. Files the layout cannot map, or that collide with
 another file for the same resource, are reported and left alone; CSS's `.internal/` folder is
-ignored. The pod records its placement and the listing's cursor.
+ignored. The pod records its placement and the cursor of the listing taken before it wrote
+anything, so its own writes return from the change feed as changes it already holds.
 
 `POST /api/pods` adds a pod beside the first, owned by the same WebID, with no profile of its
 own; the WebID's profile gains a `pim:storage` for it, so apps find every pod.

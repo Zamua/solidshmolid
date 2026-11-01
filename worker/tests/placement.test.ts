@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { Pod } from '../app/pods/pod.js';
-import { Conflict } from '../app/shared/errors.js';
+import { Conflict, StorageUnavailable } from '../app/shared/errors.js';
 import { alreadyPlaced, placePod } from '../app/storage/placement.js';
 import { FolderSync } from '../app/storage/sync.js';
 import type { SyncCursor } from '../app/storage/ports.js';
@@ -38,6 +38,22 @@ describe('placing a pod in its folder', () => {
     expect((await pod.modes('/profile/card', { webid: null })).has('read')).toBe(true);
     expect((await pod.modes('/', { webid: null })).size).toBe(0);
     expect((await pod.modes('/', { webid: BOB })).size).toBe(0);
+  });
+
+  it('takes the cursor before writing, so no listing after provisioning can leave the pod half placed', async () => {
+    const { storage, pod, cursor } = setup();
+    let listings = 0;
+    const flaky = Object.assign(Object.create(storage) as DropboxFileStore, {
+      listAll: async () => {
+        if (listings++ > 0) throw new StorageUnavailable('Dropbox is down');
+        return storage.listAll();
+      },
+    });
+    expect(await placePod(pod, flaky, cursor, { owner: ALICE, profile: PROFILE })).toBe('created');
+    expect(cursor.value).toBeTruthy();
+    const root = (await pod.read('/', { webid: ALICE }, READ)).etag;
+    await new FolderSync(pod, cursor, storage, 0, () => 0).syncIfStale();
+    expect((await pod.read('/', { webid: ALICE }, READ)).etag).toBe(root);
   });
 
   it('creates a further pod without a profile', async () => {

@@ -26,15 +26,15 @@ export interface Starter {
   profile: string | null;
 }
 
+/** The cursor comes from the listing taken before the pod writes anything:
+ * the pod's own writes then come back as changes it already holds, and no
+ * storage call after provisioning can fail and leave it without a cursor. */
 export async function placePod(pod: Pod, storage: FileStore & FileLister, cursor: SyncCursor, starter: Starter): Promise<PlacementOutcome> {
   await storage.makeFolder('');
   const listing = await storage.listAll();
-  if (listing.entries.some((e) => e.kind === 'file')) {
-    await pod.adopt(starter.owner, listing.entries);
-    await cursor.setCursor(listing.cursor);
-    return 'adopted';
-  }
-  await pod.provision(starter.owner, starter.profile);
-  await cursor.setCursor((await storage.listAll()).cursor);
-  return 'created';
+  const adopting = listing.entries.some((e) => e.kind === 'file');
+  if (adopting) await pod.adopt(starter.owner, listing.entries);
+  else await pod.provision(starter.owner, starter.profile);
+  await cursor.setCursor(listing.cursor);
+  return adopting ? 'adopted' : 'created';
 }

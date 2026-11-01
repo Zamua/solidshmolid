@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import { InsufficientStorage, StorageUnavailable } from '../app/shared/errors.js';
 import { Pod } from '../app/pods/pod.js';
+import { placePod } from '../app/storage/placement.js';
 import { RevisionConflict } from '../app/storage/ports.js';
+import { FolderSync } from '../app/storage/sync.js';
 import { NO_CONDITIONS } from '../domain/pods/requests.js';
 import { type DriveNodes, MemoryDriveNodes, SqlDriveNodes } from '../runtime/adapters/driveNodes.js';
 import { DriveFileStore, quote, segmentsOf } from '../runtime/adapters/googleDrive.js';
@@ -207,6 +209,18 @@ describe('DriveFileStore', () => {
 });
 
 describe('a pod on Google Drive', () => {
+  it("folds a placed pod's own writes back in as nothing to change", async () => {
+    const { files } = store();
+    let id = 0;
+    const pod = new Pod({ index: sqliteIndex(), files, base: BASE, now: () => new Date(), newId: () => `i${++id}` });
+    let value: string | null = null;
+    const cursor = { cursor: async () => value, setCursor: async (c: string) => void (value = c) };
+    expect(await placePod(pod, files, cursor, { owner: ALICE, profile: PROFILE })).toBe('created');
+    const root = (await pod.read('/', { webid: ALICE }, { accept: null, range: null, head: false })).etag;
+    await new FolderSync(pod, cursor, files, 0, () => 0).syncIfStale();
+    expect((await pod.read('/', { webid: ALICE }, { accept: null, range: null, head: false })).etag).toBe(root);
+  });
+
   it('provisions and serves resources from the pod folder', async () => {
     const { fake, files } = store();
     let id = 0;
