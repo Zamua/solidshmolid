@@ -70,10 +70,25 @@ export interface FileLister {
 /** Placing a pod in a folder either starts a new pod or adopts the one there. */
 export type PlacementOutcome = 'created' | 'adopted';
 
-/** Where a pod last read its storage's change feed. */
-export interface SyncCursor {
-  cursor(): Promise<string | null>;
-  setCursor(cursor: string): Promise<void>;
+/** A pod's folder in one of its account's storage links. */
+export interface Placement {
+  accountKey: string;
+  linkId: string;
+  provider: string;
+  folder: string;
+}
+
+/** A pod's place in storage: not yet given one, being written into `target`,
+ * or in it with the change feed read up to `cursor`. */
+export type PodPlacement =
+  | { state: 'unplaced' }
+  | { state: 'placing'; target: Placement }
+  | { state: 'placed'; target: Placement; cursor: string };
+
+/** The pod's own record of its placement. */
+export interface PlacementStore {
+  current(): PodPlacement;
+  save(placement: PodPlacement): void;
 }
 
 export interface Grant {

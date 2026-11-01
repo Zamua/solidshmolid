@@ -1,6 +1,8 @@
 // The accounts context's ports. Interfaces only.
 
-import type { PlacementOutcome } from '../storage/ports.js';
+import type { Placement, PlacementOutcome } from '../storage/ports.js';
+
+export type { Placement };
 
 /** One of the person's pods: a folder inside one of their storage links. */
 export interface PodRecord {
@@ -73,13 +75,6 @@ export interface Directory {
   retirePodId(podId: string): Promise<void>;
   /** Forgets the person's account key. */
   forget(person: string): Promise<void>;
-}
-
-export interface Placement {
-  accountKey: string;
-  linkId: string;
-  provider: string;
-  folder: string;
 }
 
 /** One entry of a folder, for people browsing a pod. */

@@ -268,6 +268,12 @@ another file for the same resource, are reported and left alone; CSS's `.interna
 ignored. The pod records its placement and the cursor of the listing taken before it wrote
 anything, so its own writes return from the change feed as changes it already holds.
 
+A pod's placement is `unplaced`, `placing` (being written into its folder) or `placed` (with
+its change-feed cursor), and only `nextPlacement` (`app/storage/placement.ts`) moves it:
+placing lists the folder, then provisions or adopts; an interrupted placement starts over
+from the listing; placing a placed pod again in the same folder is a no-op, elsewhere a 409;
+a sync advances a placed pod's cursor. Only placed pods sync.
+
 `POST /api/pods` adds a pod beside the first, owned by the same WebID, with no profile of its
 own; the WebID's profile gains a `pim:storage` for it, so apps find every pod.
 
