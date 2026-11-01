@@ -208,3 +208,38 @@ export function idTokenClaims(c: TokenContext & { nonce: string | null }): Recor
     ...(c.nonce ? { nonce: c.nonce } : {}),
   };
 }
+
+/** An authorization code's life: redeemed once; presented again it is
+ * replayed, which revokes what it produced; revoking its app revokes it. */
+export type CodeState = 'issued' | 'redeemed' | 'replayed' | 'revoked';
+export type CodeEvent = 'present' | 'revoke';
+/** What the transition asks of the store: hand out tokens, revoke what the
+ * code already produced, or nothing. */
+export type CodeEffect = 'issue' | 'revoke-issued' | 'none';
+
+export function nextCode(state: CodeState, event: CodeEvent): { state: CodeState; effect: CodeEffect } {
+  if (event === 'present') {
+    switch (state) {
+      case 'issued':
+        return { state: 'redeemed', effect: 'issue' };
+      case 'redeemed':
+      case 'replayed':
+        return { state: 'replayed', effect: 'revoke-issued' };
+      case 'revoked':
+        return { state, effect: 'none' };
+    }
+  }
+  switch (state) {
+    case 'issued':
+    case 'redeemed':
+      return { state: 'revoked', effect: 'revoke-issued' };
+    case 'replayed':
+    case 'revoked':
+      return { state, effect: 'none' };
+  }
+}
+
+/** A refresh family may come from a code only while the code stays redeemed. */
+export function codeIssues(state: CodeState): boolean {
+  return state === 'redeemed';
+}

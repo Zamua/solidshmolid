@@ -12,6 +12,10 @@ import {
   pkceMatches,
   publicClient,
   redirectAllowed,
+  type CodeEvent,
+  type CodeState,
+  codeIssues,
+  nextCode,
 } from '../domain/identity/oidc.js';
 
 const CHALLENGE = 'E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM';
@@ -134,5 +138,28 @@ describe('dynamic registration', () => {
     expect(() => parseRegistration({ redirect_uris: Array(11).fill(uri) })).toThrow(OidcError);
     expect(() => parseRegistration({ redirect_uris: [`${uri}?${'a'.repeat(2048)}`] })).toThrow(OidcError);
     expect(() => parseRegistration({ redirect_uris: [] })).toThrow(OidcError);
+  });
+});
+
+describe('authorization code lifecycle', () => {
+  const run = (events: CodeEvent[]) => {
+    let state: CodeState = 'issued';
+    const effects = events.map((e) => {
+      const step = nextCode(state, e);
+      state = step.state;
+      return step.effect;
+    });
+    return { state, effects, issues: codeIssues(state) };
+  };
+
+  it('issues tokens once, and treats every later presentation as a replay', () => {
+    expect(run(['present'])).toEqual({ state: 'redeemed', effects: ['issue'], issues: true });
+    expect(run(['present', 'present', 'present'])).toEqual({ state: 'replayed', effects: ['issue', 'revoke-issued', 'revoke-issued'], issues: false });
+  });
+
+  it('gives nothing for a revoked code, before or after it was redeemed', () => {
+    expect(run(['revoke', 'present'])).toEqual({ state: 'revoked', effects: ['revoke-issued', 'none'], issues: false });
+    expect(run(['present', 'revoke', 'present'])).toEqual({ state: 'revoked', effects: ['issue', 'revoke-issued', 'none'], issues: false });
+    expect(run(['present', 'present', 'revoke'])).toMatchObject({ state: 'replayed', issues: false });
   });
 });

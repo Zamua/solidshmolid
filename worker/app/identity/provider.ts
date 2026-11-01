@@ -121,13 +121,11 @@ export class Provider {
     const account = await this.deps.accounts.byKey(key);
     if (!account) throw new OidcError('invalid_grant', 'unknown code');
     const codeHash = await this.deps.secrets.hash(secret);
-    const grant = await account.takeCode(codeHash);
-    if (!grant) throw new OidcError('invalid_grant', 'unknown code');
-    if (grant.reused) {
-      // A code presented twice was intercepted or replayed: nothing it produced is trustworthy.
-      await account.revokeFromCode(codeHash);
-      throw new OidcError('invalid_grant', 'code already used');
-    }
+    const presented = await account.presentCode(codeHash);
+    // A replayed code was intercepted: the store has revoked what it produced.
+    if (presented?.effect === 'revoke-issued') throw new OidcError('invalid_grant', 'code already used');
+    if (presented?.effect !== 'issue') throw new OidcError('invalid_grant', 'unknown code');
+    const { grant } = presented;
     if (grant.expires < this.deps.clock.now()) throw new OidcError('invalid_grant', 'code expired');
     if (form.get('client_id') !== grant.clientId || form.get('redirect_uri') !== grant.redirectUri) {
       throw new OidcError('invalid_grant', 'client_id or redirect_uri does not match the authorization');
@@ -192,7 +190,9 @@ export class Provider {
     if (scopes.includes('offline_access')) {
       const id = this.deps.secrets.random();
       const secret = this.deps.secrets.random();
-      await account.saveFamily({ id, clientId, webid, jkt, scopes, currentHash: await this.deps.secrets.hash(secret), fromCode, expires: now + REFRESH_TTL_S });
+      const family = { id, clientId, webid, jkt, scopes, currentHash: await this.deps.secrets.hash(secret), fromCode, expires: now + REFRESH_TTL_S };
+      // Replayed or revoked since it was presented: nothing goes out.
+      if (!(await account.saveFamily(family))) throw new OidcError('invalid_grant', 'code already used');
       out.refresh_token = `${key}.${id}.${secret}`;
     }
     return out;

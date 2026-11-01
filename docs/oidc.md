@@ -49,6 +49,10 @@ Requires a `DPoP` header on every call.
 - `grant_type=authorization_code`: `code`, `redirect_uri`, `client_id`, `code_verifier`.
 - `grant_type=refresh_token`: `refresh_token`, `client_id`; the DPoP key must equal the family's.
 
+A code redeems once (`nextCode` in `domain/identity/oidc.ts`). Presented again, it is refused
+and every refresh family it produced is revoked, including one still being issued when the
+replay lands. Revoking an app revokes its outstanding codes with its families.
+
 Response:
 
 ```json

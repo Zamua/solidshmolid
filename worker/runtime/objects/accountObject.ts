@@ -98,11 +98,11 @@ export class AccountObject extends DurableObject<Env> {
     return this.open().saveCode(hash, grant);
   }
 
-  async takeCode(hash: string) {
-    return this.open().takeCode(hash);
+  async presentCode(hash: string) {
+    return this.open().presentCode(hash);
   }
 
-  async saveFamily(f: RefreshFamily): Promise<void> {
+  async saveFamily(f: RefreshFamily): Promise<boolean> {
     return this.open().saveFamily(f);
   }
 
@@ -116,10 +116,6 @@ export class AccountObject extends DurableObject<Env> {
 
   async revokeFamily(id: string): Promise<void> {
     return this.open().revokeFamily(id);
-  }
-
-  async revokeFromCode(codeHash: string): Promise<void> {
-    return this.open().revokeFromCode(codeHash);
   }
 
   // ---- pods and storage ---------------------------------------------------

@@ -2,7 +2,7 @@
 // app approvals, pending consents, authorization codes and refresh families.
 
 import type { AccountStore, Approval, CodeGrant, RefreshFamily } from '../../app/identity/ports.js';
-import type { AuthorizeRequest, ClientInfo } from '../../domain/identity/oidc.js';
+import { type AuthorizeRequest, type ClientInfo, type CodeEffect, type CodeState, codeIssues, nextCode } from '../../domain/identity/oidc.js';
 import { type SqlRunner, addColumn } from './sql.js';
 
 const SCHEMA = `
@@ -23,6 +23,7 @@ export class SqlAccountStore implements AccountStore {
   ) {
     this.sql.exec(SCHEMA);
     addColumn(this.sql, 'approval', 'site TEXT');
+    addColumn(this.sql, 'code', 'state TEXT');
     const row = this.sql.exec('SELECT key FROM account WHERE id = 1').toArray()[0];
     if (row) {
       this.key = String(row.key);
@@ -56,9 +57,12 @@ export class SqlAccountStore implements AccountStore {
     );
   }
 
-  /** Revokes an app: its approval and every refresh family it holds. */
+  /** Revokes an app: its approval, its codes and every refresh family it holds. */
   async revokeApp(clientId: string): Promise<void> {
     this.sql.exec('DELETE FROM approval WHERE client_id = ?', clientId);
+    for (const row of this.sql.exec('SELECT hash, grant_json FROM code').toArray()) {
+      if ((JSON.parse(String(row.grant_json)) as CodeGrant).clientId === clientId) this.moveCode(String(row.hash), 'revoke');
+    }
     for (const row of this.sql.exec('SELECT id, json FROM family WHERE revoked = 0').toArray()) {
       if ((JSON.parse(String(row.json)) as RefreshFamily).clientId === clientId) {
         this.sql.exec('UPDATE family SET revoked = 1 WHERE id = ?', String(row.id));
@@ -95,14 +99,30 @@ export class SqlAccountStore implements AccountStore {
     this.sql.exec('INSERT INTO code(hash, grant_json) VALUES (?, ?)', hash, JSON.stringify(grant));
   }
 
-  async takeCode(hash: string): Promise<(CodeGrant & { reused: boolean }) | null> {
-    const row = this.sql.exec('SELECT grant_json, used FROM code WHERE hash = ?', hash).toArray()[0];
+  async presentCode(hash: string): Promise<{ grant: CodeGrant; effect: CodeEffect } | null> {
+    const row = this.sql.exec('SELECT grant_json FROM code WHERE hash = ?', hash).toArray()[0];
     if (!row) return null;
-    this.sql.exec('UPDATE code SET used = 1 WHERE hash = ?', hash);
-    return { ...(JSON.parse(String(row.grant_json)) as CodeGrant), reused: Number(row.used) === 1 };
+    return { grant: JSON.parse(String(row.grant_json)) as CodeGrant, effect: this.moveCode(hash, 'present') };
   }
 
-  async saveFamily(f: RefreshFamily): Promise<void> {
+  /** Applies `nextCode` to a stored code and runs its effect on the families. */
+  private moveCode(hash: string, event: 'present' | 'revoke'): CodeEffect {
+    const { state, effect } = nextCode(this.codeState(hash)!, event);
+    this.sql.exec('UPDATE code SET state = ? WHERE hash = ?', state, hash);
+    if (effect === 'revoke-issued') this.sql.exec('UPDATE family SET revoked = 1 WHERE from_code = ?', hash);
+    return effect;
+  }
+
+  private codeState(hash: string): CodeState | null {
+    const row = this.sql.exec('SELECT state, used FROM code WHERE hash = ?', hash).toArray()[0];
+    if (!row) return null;
+    // Codes stored before the state column carry only the used flag.
+    return (row.state as CodeState | null) ?? (Number(row.used) === 1 ? 'redeemed' : 'issued');
+  }
+
+  async saveFamily(f: RefreshFamily): Promise<boolean> {
+    const code = this.codeState(f.fromCode);
+    if (code === null || !codeIssues(code)) return false;
     this.sql.exec(
       'INSERT INTO family(id, json, current_hash, from_code, expires) VALUES (?, ?, ?, ?, ?)',
       f.id,
@@ -111,6 +131,7 @@ export class SqlAccountStore implements AccountStore {
       f.fromCode,
       f.expires,
     );
+    return true;
   }
 
   async family(id: string): Promise<RefreshFamily | null> {
@@ -131,7 +152,4 @@ export class SqlAccountStore implements AccountStore {
     this.sql.exec('UPDATE family SET revoked = 1 WHERE id = ?', id);
   }
 
-  async revokeFromCode(codeHash: string): Promise<void> {
-    this.sql.exec('UPDATE family SET revoked = 1 WHERE from_code = ?', codeHash);
-  }
 }

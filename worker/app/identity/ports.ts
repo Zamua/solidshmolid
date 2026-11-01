@@ -1,6 +1,6 @@
 // The provider's ports. Interfaces only.
 
-import type { AuthorizeRequest, ClientInfo, Registration } from '../../domain/identity/oidc.js';
+import type { AuthorizeRequest, ClientInfo, CodeEffect, Registration } from '../../domain/identity/oidc.js';
 
 /** What the provider needs to know about one person. */
 export interface AccountStore {
@@ -16,16 +16,16 @@ export interface AccountStore {
   savePending(id: string, request: AuthorizeRequest, client: ClientInfo, expires: number): Promise<void>;
   takePending(id: string, now: number): Promise<{ request: AuthorizeRequest; client: ClientInfo } | null>;
   saveCode(hash: string, grant: CodeGrant): Promise<void>;
-  /** Marks the code used and returns it; a second take returns it with `reused`. */
-  takeCode(hash: string): Promise<(CodeGrant & { reused: boolean }) | null>;
-  saveFamily(family: RefreshFamily): Promise<void>;
+  /** Presents a code (`nextCode`), revoking what it produced on a replay. */
+  presentCode(hash: string): Promise<{ grant: CodeGrant; effect: CodeEffect } | null>;
+  /** Stores the family unless its code stopped being redeemed meanwhile
+   * (replayed or revoked); false then. */
+  saveFamily(family: RefreshFamily): Promise<boolean>;
   family(id: string): Promise<RefreshFamily | null>;
   /** Replaces the family's current token, only if it is still `fromHash`;
    * false when another refresh got there first. */
   rotateFamily(id: string, fromHash: string, newHash: string, expires: number): Promise<boolean>;
   revokeFamily(id: string): Promise<void>;
-  /** Revokes every family that came from a given code. */
-  revokeFromCode(codeHash: string): Promise<void>;
 }
 
 export interface Approval {
