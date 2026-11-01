@@ -74,10 +74,13 @@ export class PodObject extends DurableObject<Env> {
     const services = this.open(base);
     if (alreadyPlaced(services.placement.current(), placement)) return 'adopted';
     services.placement.save(placement);
-    const { pod, files } = services.podIn(placement);
-    const outcome = await placePod(pod, files, services.placement, { owner, profile });
-    this.services = null;
-    return outcome;
+    try {
+      const { pod, files } = services.podIn(placement);
+      return await placePod(pod, files, services.placement, { owner, profile });
+    } finally {
+      // Built before the placement was saved, the services serve the old storage.
+      this.services = null;
+    }
   }
 
   /** Lists another of the owner's pods as a storage in this pod's profile. */
