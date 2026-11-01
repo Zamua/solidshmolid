@@ -1,5 +1,5 @@
 import { SignJWT, calculateJwkThumbprint, exportJWK, generateKeyPair } from 'jose';
-import { beforeAll, describe, expect, it } from 'vitest';
+import { beforeAll, describe, expect, it, vi } from 'vitest';
 import { Provider } from '../app/identity/provider.js';
 import { OidcError, PUBLIC_CLIENT, clientFromDocument, publicClient } from '../domain/identity/oidc.js';
 import { SqlAccountStore } from '../runtime/adapters/sqlAccountStore.js';
@@ -26,6 +26,7 @@ function world() {
   let clock = 1_800_000_000;
   let n = 0;
   const signedIn: string[] = [];
+  const hold = { until: Promise.resolve() };
   const accounts = new Map<string, SqlAccountStore>();
   const byKey = new Map<string, SqlAccountStore>();
   const accountFor = async (person: string) => {
@@ -44,13 +45,16 @@ function world() {
       resolve: async (id) =>
         id === CLIENT ? clientFromDocument(CLIENT, { client_id: CLIENT, client_name: 'Sketchpad', redirect_uris: [REDIRECT] }) : publicClient(),
       register: async () => `reg_${++n}`,
-      signedIn: async (id) => void signedIn.push(id),
+      signedIn: async (id) => {
+        signedIn.push(id);
+        await hold.until;
+      },
     },
     signer,
     clock: { now: () => clock },
     secrets: { random: () => `r${++n}x${Math.random().toString(36).slice(2)}`, hash: async (s) => `h:${s}` },
   });
-  return { provider, accountFor, signedIn, tick: (s: number) => (clock += s), now: () => clock };
+  return { provider, accountFor, signedIn, hold, tick: (s: number) => (clock += s), now: () => clock };
 }
 
 const authQuery = (over: Record<string, string> = {}) =>
@@ -200,6 +204,34 @@ describe('token', () => {
     ).rejects.toMatchObject({ code: 'invalid_grant' });
   });
 
+  it('revokes what a code produces even when the replay lands mid-redemption', async () => {
+    const w = world();
+    await signedInWithPod(w);
+    const c = await code(w);
+    let release = () => {};
+    w.hold.until = new Promise<void>((r) => (release = r));
+    const first = exchange(w, c, 'jkt').catch((e: unknown) => e);
+    await vi.waitFor(() => expect(w.signedIn).toHaveLength(1));
+    w.hold.until = Promise.resolve();
+    await expect(exchange(w, c, 'jkt')).rejects.toMatchObject({ code: 'invalid_grant' });
+    release();
+    const out = await first;
+    const token = (out as Record<string, unknown>).refresh_token;
+    if (token !== undefined) {
+      await expect(
+        w.provider.token(new URLSearchParams({ grant_type: 'refresh_token', refresh_token: String(token) }), 'jkt'),
+      ).rejects.toMatchObject({ code: 'invalid_grant' });
+    } else expect(out).toMatchObject({ code: 'invalid_grant' });
+  });
+
+  it('refuses a code issued before its app was revoked', async () => {
+    const w = world();
+    await signedInWithPod(w);
+    const c = await code(w);
+    await w.provider.revokeApp('clerk_sam', CLIENT);
+    await expect(exchange(w, c, 'jkt')).rejects.toMatchObject({ code: 'invalid_grant' });
+  });
+
   it('rotates refresh tokens and kills the family when an old one returns', async () => {
     const w = world();
     await signedInWithPod(w);
@@ -234,6 +266,17 @@ describe('token', () => {
       w.provider.token(new URLSearchParams({ grant_type: 'refresh_token', refresh_token: String(first.refresh_token) }), 'jkt'),
     ).rejects.toMatchObject({ code: 'invalid_grant' });
     expect((await w.provider.authorize(authQuery(), 'clerk_sam')).kind).toBe('consent');
+  });
+});
+
+describe('stored codes', () => {
+  it('keep their meaning when stored before the state column', async () => {
+    const sql = sqlRunner();
+    sql.exec('CREATE TABLE code(hash TEXT PRIMARY KEY, grant_json TEXT NOT NULL, used INTEGER NOT NULL DEFAULT 0)');
+    sql.exec(`INSERT INTO code VALUES ('used', '{}', 1), ('fresh', '{}', 0)`);
+    const store = new SqlAccountStore(sql, () => 'k', () => 2);
+    expect((await store.presentCode('used'))?.effect).toBe('revoke-issued');
+    expect((await store.presentCode('fresh'))?.effect).toBe('issue');
   });
 });
 
