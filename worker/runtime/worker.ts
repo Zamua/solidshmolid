@@ -22,6 +22,7 @@ import { signInRoute } from './http/signIn.js';
 import { httpsRedirect, withHsts } from './http/transport.js';
 import { oidcRoute } from './http/oidc.js';
 import { appIconRoute } from './http/assets/appIcons.js';
+import { fontRoute } from './http/assets/fonts.js';
 import { PAGE_SCRIPT_PATH } from './http/assets/pageScript.js';
 import { accountMenu } from './http/pages/home.js';
 import { problemPage } from './http/pages/problem.js';
@@ -66,8 +67,8 @@ function probe(word: string, status: number, env: Env): Response {
 
 /** The apex: who is signed in is settled once, before any route runs. */
 async function apex(request: Request, env: Env, url: URL, ctx?: ExecutionContext): Promise<Response> {
-  const icon = appIconRoute(request, url);
-  if (icon) return icon;
+  const asset = appIconRoute(request, url) ?? fontRoute(request, url);
+  if (asset) return asset;
   const session = await sessions(env, url.origin).check(request);
   if (session.redirect) return session.redirect;
   if (session.person && url.pathname !== PAGE_SCRIPT_PATH) ctx?.waitUntil(activeOnSite(env, url, session.person));

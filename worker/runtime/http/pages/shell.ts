@@ -3,6 +3,7 @@
 
 import { CLOUD } from '../assets/appIconData.js';
 import { FAVICON_PATH, MANIFEST_PATH, THEME_COLOR, TOUCH_ICON_PATH } from '../assets/appIcons.js';
+import { fontFaces } from '../assets/fonts.js';
 
 export function escapeHtml(s: string): string {
   return s.replace(/[&<>"']/gu, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]!);
@@ -200,6 +201,7 @@ export interface CspAllow {
   script?: string[];
   connect?: string[];
   img?: string[];
+  font?: string[];
   frame?: string[];
   worker?: string[];
 }
@@ -212,8 +214,8 @@ export function pageCsp(allow: CspAllow = {}): string {
     allow.connect?.length ? `connect-src ${list(["'self'"], allow.connect)}` : null,
     allow.worker?.length ? `worker-src ${list(["'self'"], allow.worker)}` : null,
     allow.frame?.length ? `frame-src ${list([], allow.frame)}` : null,
-    "style-src 'unsafe-inline' https://fonts.googleapis.com",
-    'font-src https://fonts.gstatic.com',
+    "style-src 'unsafe-inline'",
+    `font-src ${list(["'self'"], allow.font)}`,
     `img-src ${list(["'self'", 'data:'], allow.img)}`,
     "manifest-src 'self'",
     "form-action 'self' https: http://localhost:* http://127.0.0.1:*",
@@ -224,7 +226,7 @@ export function pageCsp(allow: CspAllow = {}): string {
 }
 
 /** `home` is where the wordmark leads: the account site's front page. On a
- * pod's host it is the account site's full address, and the icons come from
+ * pod's host it is the account site's full address, and the icons and fonts come from
  * there too. */
 export function page(title: string, body: string, status = 200, home = '/'): Response {
   const apex = URL.canParse(home) ? new URL(home).origin : '';
@@ -234,9 +236,7 @@ export function page(title: string, body: string, status = 200, home = '/'): Res
 <link rel="icon" href="${escapeHtml(apex)}${FAVICON_PATH}" type="image/svg+xml">
 <link rel="apple-touch-icon" href="${escapeHtml(apex)}${TOUCH_ICON_PATH}">
 ${apex ? '' : `<link rel="manifest" href="${MANIFEST_PATH}">\n`}<title>${escapeHtml(title)}</title>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:wght@400;700&family=Fredoka:wght@500;600&display=swap" rel="stylesheet">
-<style>${STYLE}</style></head><body>${SKY}
+<style>${fontFaces(apex)}${STYLE}</style></head><body>${SKY}
 <header class="masthead"><div class="masthead-inner"><a class="wordmark" href="${escapeHtml(home)}">${LOGO} solidshmolid</a></div></header>
 <div class="scroller"><main>
 ${body}
@@ -247,7 +247,7 @@ ${body}
     headers: {
       'Content-Type': 'text/html; charset=utf-8',
       'Cache-Control': 'no-store',
-      'Content-Security-Policy': pageCsp(apex ? { img: [apex] } : {}),
+      'Content-Security-Policy': pageCsp(apex ? { img: [apex], font: [apex] } : {}),
       'X-Frame-Options': 'DENY',
     },
   });
