@@ -35,7 +35,9 @@ worker/runtime/
 - No D1, no R2 for user data.
 - Usage counting (`app/shared/activity.ts`, SPEC "Usage counting") is off
   unless the deployment binds `ACTIVITY` and sets `ACTIVITY_SALT`; events hold
-  a keyed hash of the WebID pod id and nothing else about anyone.
+  a keyed hash of the WebID pod id and nothing else about anyone. A request
+  with `X-Activity-Skip: 1` writes none; scripted calls against a deployment
+  send it.
 
 ## Commands
 

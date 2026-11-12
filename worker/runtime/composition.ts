@@ -147,6 +147,13 @@ export function activity(env: Env): Activity {
   return env.ACTIVITY && env.ACTIVITY_SALT ? new AnalyticsActivity(env.ACTIVITY, env.ACTIVITY_SALT) : NO_ACTIVITY;
 }
 
+export const ACTIVITY_SKIP_HEADER = 'X-Activity-Skip';
+
+/** The environment a request is served with: scripted checks that ask not to be counted get no dataset. */
+export function uncountedIfAsked(env: Env, request: Request): Env {
+  return request.headers.get(ACTIVITY_SKIP_HEADER) === '1' ? { ...env, ACTIVITY: undefined } : env;
+}
+
 /** A pod's services, wired to the storage it currently lives in. */
 export interface PodServices {
   pod: Pod;

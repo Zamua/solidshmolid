@@ -9,7 +9,7 @@ import { handleFromHost } from '../domain/pods/handles.js';
 import { PROFILE_PATH, profileDocument, webidAt } from '../domain/pods/profile.js';
 import { InvalidCredentials, type VerifiedAgent } from './adapters/solidOidcVerifier.js';
 import { webidPod } from '../app/accounts/accounts.js';
-import { accounts, activity, clerkChrome, isDev, sessions, tokenVerifier } from './composition.js';
+import { accounts, activity, clerkChrome, isDev, sessions, tokenVerifier, uncountedIfAsked } from './composition.js';
 import { hostsFor } from './hosts.js';
 import { withOwnHosts } from './ownHosts.js';
 import type { Env } from './env.js';
@@ -34,7 +34,8 @@ export { DirectoryObject } from './objects/directoryObject.js';
 export { PodObject } from './objects/podObject.js';
 
 const worker = {
-  async fetch(request: Request, env: Env, ctx?: ExecutionContext): Promise<Response> {
+  async fetch(request: Request, bound: Env, ctx?: ExecutionContext): Promise<Response> {
+    const env = uncountedIfAsked(bound, request);
     const url = new URL(request.url);
     if (url.pathname === '/healthz') {
       return new Response('ok\n', { headers: { 'Content-Type': 'text/plain', 'Cache-Control': 'no-store' } });

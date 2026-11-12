@@ -388,6 +388,10 @@ for every other action (`-` stands for no actor), `blobs` = app, action, detail,
 No event carries a path, a pod address, a WebID, a client id or content. A
 write that fails is dropped; it never fails or delays the request.
 
+A request carrying `X-Activity-Skip: 1` writes no event. The header is not a
+secret: it only hides the caller's own activity. Smoke and other scripted
+checks send it (`scripts/smoke.sh` does) so that they are not counted as use.
+
 ## Milestones
 
 - **M1 core** (done): Worker + Pod DO + domain, `MemoryFileStore`/`DevFileStore`, all
