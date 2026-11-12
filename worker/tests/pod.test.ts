@@ -269,7 +269,7 @@ describe('PATCH', () => {
     const { pod } = await newPod();
     await pod.put('/b.txt', alice, body('x'), 'text/plain', NO_CONDITIONS);
     const insert = `${PRE}_:p a solid:InsertDeletePatch; solid:inserts { <#x> ex:n 1 }.`;
-    await expect(pod.patch('/p.ttl', alice, insert, 'application/sparql-update', NO_CONDITIONS)).rejects.toThrow(UnsupportedMediaType);
+    await expect(pod.patch('/p.ttl', alice, insert, 'application/sparql-query', NO_CONDITIONS)).rejects.toThrow(UnsupportedMediaType);
     await expect(pod.patch('/b.txt', alice, insert, N3, NO_CONDITIONS)).rejects.toThrow(UnsupportedMediaType);
     await expect(pod.patch('/p.ttl', alice, `${PRE}<#x> ex:n 1.`, N3, NO_CONDITIONS)).rejects.toThrow(Unprocessable);
     const del = `${PRE}_:p a solid:InsertDeletePatch; solid:deletes { <#x> ex:n 9 }.`;

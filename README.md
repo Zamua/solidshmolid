@@ -10,15 +10,15 @@ The public instance runs at `solidshmolid.com`.
 ## What works, and what does not
 
 Works: reading and writing documents and containers (`GET`, `HEAD`, `PUT`,
-`POST`, `DELETE`), N3 Patch, Turtle, JSON-LD and N-Triples, Web Access
+`POST`, `DELETE`), N3 Patch, SPARQL Update with ground triples, Turtle, JSON-LD and N-Triples, Web Access
 Control, Solid-OIDC with DPoP (as a resource server, and as an identity
 provider for its own WebIDs), several pods per person, Dropbox and Google
 Drive.
 
 Not there:
 
-- SPARQL Update. `PATCH` takes `text/n3` only, so a client that updates
-  documents with `application/sparql-update` gets 415.
+- SPARQL Update beyond `INSERT DATA` and `DELETE DATA` (what client
+  libraries send to save a document): no variables, `WHERE` or graphs.
 - Solid Notifications, the storage description, description resources and an
   LDN inbox.
 - `acl:agentGroup` and `acl:origin` in access rules, and ACP.
