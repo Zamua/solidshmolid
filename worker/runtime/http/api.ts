@@ -5,13 +5,14 @@
 // Pages post plain HTML forms here; those get a redirect, scripts get JSON.
 
 import { type DeletionStep, HoldsWebid, LinkExpired, NoStorageYet, NotConfirmed, NotSignedUp, StorageInUse } from '../../app/accounts/accounts.js';
-import { InsufficientStorage, NotFound, StorageUnavailable } from '../../app/shared/errors.js';
+import { InsufficientStorage, NotFound, PayloadTooLarge, StorageUnavailable } from '../../app/shared/errors.js';
 import { parseLinkState } from '../../domain/accounts/keys.js';
 import type { AccountState } from '../../app/accounts/ports.js';
 import { GrantRefused } from '../../app/storage/ports.js';
 import { accounts, provider } from '../composition.js';
 import type { Env } from '../env.js';
 import { hostsFor } from '../hosts.js';
+import { withSmallBody } from './bodies.js';
 import { confirmDeletionPage, refusalPage } from './pages/home.js';
 import { problemPage, sentenceOf } from './pages/problem.js';
 import { signedOut } from './signIn.js';
@@ -103,6 +104,7 @@ function refusal(e: unknown): { status: number; code: string; title: string; mes
   if (e instanceof NotConfirmed) return { status: 400, code: 'not_confirmed', title: 'Nothing was deleted', message: e.message };
   if (e instanceof StorageInUse) return { status: 409, code: 'storage_in_use', title: 'Still in use', message: e.message, extra: { pods: e.podIds } };
   if (e instanceof InsufficientStorage) return { status: 507, code: 'storage_full', title: 'Your storage is full', message: e.message };
+  if (e instanceof PayloadTooLarge) return { status: 413, code: 'too_large', title: 'Too much to read', message: e.message };
   if (e instanceof StorageUnavailable) return { status: 503, code: 'storage_unavailable', title: 'Your storage did not answer', message: e.message };
   return null;
 }
@@ -124,7 +126,8 @@ async function wantsFilesGone(request: Request): Promise<boolean> {
 }
 
 /** Form or JSON fields, as strings. */
-async function fields(request: Request): Promise<Record<string, string | undefined>> {
+async function fields(unread: Request): Promise<Record<string, string | undefined>> {
+  const request = await withSmallBody(unread);
   if ((request.headers.get('Content-Type') ?? '').includes('application/json')) {
     const body = (await request.json().catch(() => ({}))) as Record<string, unknown>;
     return Object.fromEntries(Object.entries(body).map(([k, v]) => [k, typeof v === 'string' || typeof v === 'boolean' ? String(v) : undefined]));

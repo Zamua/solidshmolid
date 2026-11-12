@@ -6,10 +6,10 @@
 // with 429 `too_many_write_operations`, so writes retry briefly here; the pod's
 // own write queue keeps contention from our side to one request at a time.
 
-import { InsufficientStorage, StorageUnavailable } from '../../app/shared/errors.js';
+import { BadRequest, InsufficientStorage, StorageUnavailable } from '../../app/shared/errors.js';
 import { type ByteRange, type FileInfo, type FileLister, type FileStore, type ListedEntry, type Listing, RevisionConflict, type StoredFile, type WriteOptions } from '../../app/storage/ports.js';
 import { chunked } from './chunks.js';
-import { type Fetch, withAccessToken } from './http.js';
+import { type Fetch, retryAfter, withAccessToken } from './http.js';
 
 const API = 'https://api.dropboxapi.com/2';
 const CONTENT = 'https://content.dropboxapi.com/2';
@@ -143,6 +143,8 @@ export class DropboxFileStore implements FileStore, FileLister {
       const error = await errorSummary(res);
       if (error.includes('conflict')) throw new RevisionConflict(error);
       if (error.includes('insufficient_space')) throw new InsufficientStorage('the Dropbox account is full');
+      // Names Dropbox will never store: retrying cannot help, so not a 503.
+      if (error.includes('disallowed_name') || error.includes('malformed_path')) throw new BadRequest('Dropbox does not store a file with this name');
       throw new StorageUnavailable(`Dropbox: ${error}`);
     }
     await this.ensureOk(res, 'upload');
@@ -217,8 +219,7 @@ export class DropboxFileStore implements FileStore, FileLister {
       throw new StorageUnavailable('the Dropbox link was revoked or expired; reconnect Dropbox');
     }
     if (res.status === 429 || res.status >= 500) {
-      const retry = Number(res.headers.get('Retry-After'));
-      throw new StorageUnavailable(`Dropbox ${what}: ${detail}`, Number.isFinite(retry) ? retry : null);
+      throw new StorageUnavailable(`Dropbox ${what}: ${detail}`, retryAfter(res));
     }
     throw new StorageUnavailable(`Dropbox ${what} failed (${res.status}): ${detail}`);
   }

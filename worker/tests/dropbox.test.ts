@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { InsufficientStorage, StorageUnavailable } from '../app/shared/errors.js';
+import { BadRequest, InsufficientStorage, StorageUnavailable } from '../app/shared/errors.js';
 import { Pod } from '../app/pods/pod.js';
 import { NO_CONDITIONS } from '../domain/pods/requests.js';
 import { RevisionConflict } from '../app/storage/ports.js';
@@ -88,6 +88,22 @@ describe('DropboxFileStore', () => {
     expect(fake.files()['/c.txt']).toBe('x');
     fake.freeSpace = 0;
     await expect(files.write('d.txt', bytes('x'))).rejects.toThrow(InsufficientStorage);
+  });
+
+  it('passes on the wait a failing Dropbox names, and none when it names none', async () => {
+    const failing = (headers: Record<string, string>) =>
+      new DropboxFileStore({ fetch: async () => new Response('{"error_summary":"internal"}', { status: 500, headers }), accessToken: async () => 't', sleep: async () => {}, chunkSize: 8 });
+    const refusal = (files: DropboxFileStore) => files.write('a.txt', bytes('1')).then(() => null, (e: unknown) => e as StorageUnavailable);
+    expect((await refusal(failing({})))?.retryAfter).toBeNull();
+    expect((await refusal(failing({ 'Retry-After': '0' })))?.retryAfter).toBeNull();
+    expect((await refusal(failing({ 'Retry-After': '7' })))?.retryAfter).toBe(7);
+  });
+
+  it('refuses a name Dropbox will never store as a bad request, not as storage to retry', async () => {
+    for (const reason of ['path/disallowed_name/.', 'path/malformed_path/..']) {
+      const files = new DropboxFileStore({ fetch: async () => new Response(JSON.stringify({ error_summary: reason }), { status: 409 }), accessToken: async () => 't', sleep: async () => {}, chunkSize: 8 });
+      await expect(files.write('desktop.ini', bytes('1'))).rejects.toThrow(BadRequest);
+    }
   });
 
   it('reports a revoked link as unavailable storage', async () => {

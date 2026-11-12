@@ -6,11 +6,9 @@ import { InvalidDpopProof, verifyDpopProof } from '../adapters/dpopProof.js';
 import { provider, tokenSigner } from '../composition.js';
 import type { Env } from '../env.js';
 import { consentPage } from './pages/oidcPages.js';
-import { readAll } from '../../app/shared/streams.js';
+import { PayloadTooLarge } from '../../app/shared/errors.js';
+import { withSmallBody } from './bodies.js';
 import { problemPage } from './pages/problem.js';
-
-/** A registration is a few URLs and a name; bigger bodies are refused unread. */
-const REGISTRATION_BODY_LIMIT = 16 * 1024;
 
 /** Handles provider paths; null when the path is not the provider's. */
 export async function oidcRoute(request: Request, env: Env, url: URL, person: string | null): Promise<Response | null> {
@@ -40,12 +38,13 @@ export async function oidcRoute(request: Request, env: Env, url: URL, person: st
       // posting here; only our own consent page may.
       if (request.headers.get('Origin') !== url.origin) return problemPage('Not allowed', 'Apps can be approved from this site only.', 403);
       if (!person) return problemPage('Signed out', 'Sign in again, then try again from the app.', 401, { way: { href: '/sign-in', label: 'Sign in' } });
-      const form = await request.formData();
+      const form = await (await withSmallBody(request)).formData();
       return Response.redirect(await op.decide(person, String(form.get('pending') ?? ''), form.get('approve') === 'yes'), 302);
     }
     if (path === '/.oidc/token' && request.method === 'POST') {
+      const body = await (await withSmallBody(request)).text();
       const jkt = await proofKey(request.headers.get('DPoP'), url);
-      const tokens = await op.token(new URLSearchParams(await request.text()), jkt);
+      const tokens = await op.token(new URLSearchParams(body), jkt);
       return cors(Response.json(tokens, { headers: { 'Cache-Control': 'no-store' } }));
     }
     if (path === '/.oidc/reg' && request.method === 'POST') {
@@ -54,6 +53,7 @@ export async function oidcRoute(request: Request, env: Env, url: URL, person: st
     if (path === '/.oidc/session/end') return Response.redirect(`${url.origin}/sign-out`, 302);
     return new Response('not found\n', { status: 404 });
   } catch (e) {
+    if (e instanceof PayloadTooLarge) return tooLarge(path, e.message);
     if (!(e instanceof OidcError)) throw e;
     // Before the client is trusted, an error is shown to the person, never
     // sent to a redirect the client named.
@@ -65,6 +65,11 @@ export async function oidcRoute(request: Request, env: Env, url: URL, person: st
   }
 }
 
+function tooLarge(path: string, message: string): Response {
+  if (path.startsWith('/.oidc/auth')) return problemPage('Too much to read', 'That request was bigger than this page accepts.', 413);
+  return cors(Response.json({ error: 'invalid_request', error_description: message }, { status: 413, headers: { 'Cache-Control': 'no-store' } }));
+}
+
 function cors(response: Response): Response {
   const out = new Response(response.body, response);
   out.headers.set('Access-Control-Allow-Origin', '*');
@@ -73,11 +78,11 @@ function cors(response: Response): Response {
   return out;
 }
 
-/** The registration JSON, or null when it is missing, too big or not JSON. */
+/** The registration JSON, or null when it is missing or not JSON. */
 async function registrationBody(request: Request): Promise<unknown> {
-  if (!request.body) return null;
+  const text = await (await withSmallBody(request)).text();
   try {
-    return JSON.parse(new TextDecoder().decode(await readAll(request.body, REGISTRATION_BODY_LIMIT)));
+    return JSON.parse(text);
   } catch {
     return null;
   }
