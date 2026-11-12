@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { Pod } from '../app/pods/pod.js';
 import { Conflict, StorageUnavailable } from '../app/shared/errors.js';
 import { type PlacementEvent, type PlacementState, nextPlacement, placePod } from '../app/storage/placement.js';
-import { FolderSync } from '../app/storage/sync.js';
+import { FolderSync, neverSynced } from '../app/storage/sync.js';
 import type { Placement, PlacementStore, PodPlacement } from '../app/storage/ports.js';
 import { NO_CONDITIONS } from '../domain/pods/requests.js';
 import { DropboxFileStore } from '../runtime/adapters/dropbox.js';
@@ -127,6 +127,17 @@ describe('placing a pod in its folder', () => {
     now += 30_000;
     expect(await sync.syncIfStale()).toBeGreaterThan(0);
     expect(await textOf((await pod.read('/notes/a.txt', { webid: ALICE }, READ)).body)).toBe('edited again');
+  });
+
+  it('keeps the interval across a sync that is built again', async () => {
+    const { folder, storage, pod, cursor } = setup();
+    await placePod(pod, storage, cursor, TARGET, { owner: ALICE, profile: PROFILE });
+    const clock = neverSynced();
+    const rebuilt = () => new FolderSync(pod, cursor, storage, 30_000, () => 5_000, clock);
+    folder.editOutOfBand('/k3x9fqm7/notes/a.txt', 'one');
+    expect(await rebuilt().syncIfStale()).toBeGreaterThan(0);
+    folder.editOutOfBand('/k3x9fqm7/notes/a.txt', 'two');
+    expect(await rebuilt().syncIfStale()).toBe(0);
   });
 });
 

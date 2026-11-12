@@ -47,3 +47,8 @@ export interface Env {
   /** Secret: at least 32 random bytes keying the hash of who an event is about. */
   ACTIVITY_SALT?: string;
 }
+
+/** Whether this is the local dev config, which trusts what a deployment never does. */
+export function isDev(env: Env): boolean {
+  return env.DEV_MODE === '1';
+}

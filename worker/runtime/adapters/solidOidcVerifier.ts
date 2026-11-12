@@ -31,7 +31,6 @@ export interface AuthRequest {
 }
 
 export interface VerifierDeps {
-  fetch: Fetch;
   /** Milliseconds since the epoch. */
   now: () => number;
 }
@@ -55,7 +54,7 @@ export class SolidOidcVerifier {
   constructor(private readonly deps: VerifierDeps) {}
 
   /** The verified agent, or null for a request without credentials. */
-  async verify(request: AuthRequest): Promise<VerifiedAgent | null> {
+  async verify(request: AuthRequest, fetch: Fetch): Promise<VerifiedAgent | null> {
     if (!request.authorization) return null;
     const m = /^DPoP\s+([\w-]+\.[\w-]+\.[\w-]+)$/iu.exec(request.authorization.trim());
     if (!m) throw new InvalidCredentials('expected a DPoP-bound access token');
@@ -72,7 +71,7 @@ export class SolidOidcVerifier {
       throw new InvalidCredentials('malformed access token');
     }
 
-    const payload = await this.verifyToken(token, issuer, now);
+    const payload = await this.verifyToken(token, issuer, now, fetch);
     const audiences = Array.isArray(payload.aud) ? payload.aud : [payload.aud];
     if (!audiences.includes('solid')) throw new InvalidCredentials('token audience lacks "solid"');
     const webid = payload.webid;
@@ -83,16 +82,16 @@ export class SolidOidcVerifier {
     const proof = await this.verifyProof(request, token, now);
     if (proof.jkt !== jkt) throw new InvalidCredentials('DPoP key does not match the token');
 
-    if (!(await this.issuersOf(webid)).some((i) => sameIssuer(i, issuer))) {
+    if (!(await this.issuersOf(webid, fetch)).some((i) => sameIssuer(i, issuer))) {
       throw new InvalidCredentials(`${webid} does not name ${issuer} as its issuer`);
     }
     const clientId = typeof payload.client_id === 'string' ? payload.client_id : typeof payload.azp === 'string' ? payload.azp : null;
     return { webid, issuer, clientId, jti: proof.jti, jtiExpires: proof.iat + PROOF_WINDOW_S };
   }
 
-  private async verifyToken(token: string, issuer: string, now: Date): Promise<JWTPayload> {
+  private async verifyToken(token: string, issuer: string, now: Date, fetch: Fetch): Promise<JWTPayload> {
     const attempt = async (fresh: boolean) =>
-      (await jwtVerify(token, await this.keysOf(issuer, fresh), { issuer, algorithms: SIGNING_ALGORITHMS, currentDate: now, clockTolerance: 30, requiredClaims: ['exp'] }))
+      (await jwtVerify(token, await this.keysOf(issuer, fresh, fetch), { issuer, algorithms: SIGNING_ALGORITHMS, currentDate: now, clockTolerance: 30, requiredClaims: ['exp'] }))
         .payload;
     try {
       return await attempt(false);
@@ -119,14 +118,14 @@ export class SolidOidcVerifier {
     }
   }
 
-  private async keysOf(issuer: string, fresh: boolean): Promise<JWTVerifyGetKey> {
+  private async keysOf(issuer: string, fresh: boolean, fetch: Fetch): Promise<JWTVerifyGetKey> {
     const hit = this.keys.get(issuer);
     if (hit && !fresh && this.deps.now() - hit.at < CACHE_MS) return hit.value;
-    const config = await this.fetchJson(`${issuer.replace(/\/$/u, '')}/.well-known/openid-configuration`);
+    const config = await this.fetchJson(`${issuer.replace(/\/$/u, '')}/.well-known/openid-configuration`, fetch);
     if (!sameIssuer(String(config.issuer), issuer) || typeof config.jwks_uri !== 'string') {
       throw new InvalidCredentials(`${issuer} has no usable OpenID configuration`);
     }
-    const jwks = await this.fetchJson(config.jwks_uri);
+    const jwks = await this.fetchJson(config.jwks_uri, fetch);
     if (!Array.isArray(jwks.keys) || jwks.keys.length > JWKS_KEYS) throw new InvalidCredentials(`${issuer} publishes an unusable key set`);
     const set = createLocalJWKSet(jwks as never);
     remember(this.keys, issuer, { at: this.deps.now(), value: set });
@@ -134,11 +133,11 @@ export class SolidOidcVerifier {
   }
 
   /** The issuers a WebID document trusts (`solid:oidcIssuer`). */
-  private async issuersOf(webid: string): Promise<string[]> {
+  private async issuersOf(webid: string, fetch: Fetch): Promise<string[]> {
     const hit = this.webids.get(webid);
     if (hit && this.deps.now() - hit.at < CACHE_MS) return hit.value;
     const doc = webid.split('#')[0]!;
-    const res = await this.get(doc, 'text/turtle');
+    const res = await this.get(doc, 'text/turtle', fetch);
     const quads = await parseRdf(await limitedText(res, FETCH_LIMIT, () => new InvalidCredentials(`${res.url} is larger than ${FETCH_LIMIT} bytes`)), res.headers.get('Content-Type') ?? 'text/turtle', doc).catch(() => {
       throw new InvalidCredentials(`${webid}: profile does not parse`);
     });
@@ -147,8 +146,8 @@ export class SolidOidcVerifier {
     return issuers;
   }
 
-  private async fetchJson(url: string): Promise<Record<string, unknown>> {
-    const res = await this.get(url, 'application/json');
+  private async fetchJson(url: string, fetch: Fetch): Promise<Record<string, unknown>> {
+    const res = await this.get(url, 'application/json', fetch);
     try {
       return JSON.parse(await limitedText(res, FETCH_LIMIT, () => new InvalidCredentials(`${res.url} is larger than ${FETCH_LIMIT} bytes`))) as Record<string, unknown>;
     } catch {
@@ -156,11 +155,11 @@ export class SolidOidcVerifier {
     }
   }
 
-  private async get(url: string, accept: string): Promise<Response> {
+  private async get(url: string, accept: string, fetch: Fetch): Promise<Response> {
     if (!/^https?:\/\//u.test(url)) throw new InvalidCredentials(`${url} is not an http(s) URL`);
     let res: Response;
     try {
-      res = await this.deps.fetch(url, { headers: { Accept: accept }, signal: AbortSignal.timeout(FETCH_TIMEOUT_MS), redirect: 'follow' });
+      res = await fetch(url, { headers: { Accept: accept }, signal: AbortSignal.timeout(FETCH_TIMEOUT_MS), redirect: 'follow' });
     } catch (e) {
       throw new InvalidCredentials(`${url}: ${(e as Error).message}`);
     }

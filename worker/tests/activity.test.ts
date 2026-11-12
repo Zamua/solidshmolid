@@ -3,7 +3,7 @@ import { NO_ACTIVITY } from '../app/shared/activity.js';
 import { AnalyticsActivity } from '../runtime/adapters/activity.js';
 import { activity, uncountedIfAsked } from '../runtime/composition.js';
 import type { Env } from '../runtime/env.js';
-import { hostsFor } from '../runtime/hosts.js';
+import { hostsFor, ownPort } from '../runtime/hosts.js';
 
 type Point = { indexes: string[]; blobs: string[]; doubles: number[] };
 
@@ -84,6 +84,17 @@ describe('activity data points', () => {
 
 describe('whose WebID a token names', () => {
   const hosts = hostsFor({ POD_HOST_TEMPLATE: '{handle}.pods.example', APEX_HOST: 'id.example' } as Env, new URL('https://id.example/'));
+
+  it('are https at the default port in a deployment, whatever a request came in on', () => {
+    const env = { POD_HOST_TEMPLATE: '{handle}.pods.example', APEX_HOST: 'id.example' } as Env;
+    for (const asked of ['http://id.example/', 'https://id.example:8443/', 'http://k3x9fqm7.pods.example:8080/x']) {
+      const h = hostsFor(env, new URL(asked));
+      expect([h.issuer, h.podOrigin('k3x9fqm7')]).toEqual(['https://id.example/', 'https://k3x9fqm7.pods.example']);
+      expect(ownPort(env, new URL(asked))).toBe('');
+    }
+    const dev = hostsFor({ ...env, APEX_HOST: 'localhost', POD_HOST_TEMPLATE: '{handle}.localhost', DEV_MODE: '1' } as Env, new URL('http://localhost:8787/'));
+    expect([dev.issuer, dev.podOrigin('alice')]).toEqual(['http://localhost:8787/', 'http://alice.localhost:8787']);
+  });
 
   it('is a pod here only for exactly the WebID that pod serves', () => {
     expect(hosts.podOfWebid('https://k3x9fqm7.pods.example/profile/card#me')).toBe('k3x9fqm7');

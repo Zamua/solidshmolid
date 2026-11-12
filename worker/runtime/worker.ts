@@ -10,7 +10,7 @@ import { PROFILE_PATH, profileDocument, webidAt } from '../domain/pods/profile.j
 import { InvalidCredentials, type VerifiedAgent } from './adapters/solidOidcVerifier.js';
 import { webidPod } from '../app/accounts/accounts.js';
 import { accounts, activity, clerkChrome, isDev, sessions, tokenVerifier, uncountedIfAsked } from './composition.js';
-import { hostsFor } from './hosts.js';
+import { hostsFor, ownPort } from './hosts.js';
 import { withOwnHosts } from './ownHosts.js';
 import { unready } from './readiness.js';
 import type { Env } from './env.js';
@@ -117,7 +117,7 @@ async function activeOnSite(env: Env, url: URL, person: string): Promise<void> {
 }
 
 async function pod(request: Request, env: Env, url: URL, handle: string, ctx?: ExecutionContext): Promise<Response> {
-  const base = url.origin;
+  const base = hostsFor(env, url).podOrigin(handle);
   // Outside dev only pod ids name pods; anything else is turned away before
   // it can bring a Durable Object into being.
   if (!isDev(env) && !isPodId(handle)) {
@@ -141,12 +141,11 @@ async function pod(request: Request, env: Env, url: URL, handle: string, ctx?: E
   if (request.method !== 'OPTIONS') {
     let agent: VerifiedAgent | null;
     try {
-      agent = await tokenVerifier(withOwnHosts(env, url.port, (r) => worker.fetch(r, env), (input, init) => fetch(input, init))).verify({
-        method: request.method,
-        url: request.url,
-        authorization: request.headers.get('Authorization'),
-        dpop: request.headers.get('DPoP'),
-      });
+      agent = await tokenVerifier().verify(
+        { method: request.method, url: request.url, authorization: request.headers.get('Authorization'), dpop: request.headers.get('DPoP') },
+        // Its lookups of the service's own hosts are served here, in-process.
+        withOwnHosts(env, ownPort(env, url), (r) => worker.fetch(r, env), (input, init) => fetch(input, init)),
+      );
     } catch (e) {
       if (!(e instanceof InvalidCredentials)) throw e;
       return withCors(invalidToken(e.message), request, request.headers.get('Origin'));

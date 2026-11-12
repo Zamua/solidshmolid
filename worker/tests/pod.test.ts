@@ -12,7 +12,8 @@ import {
   Unprocessable,
   UnsupportedMediaType,
 } from '../app/shared/errors.js';
-import { type Agent, type ReadOptions } from '../app/pods/pod.js';
+import { type Agent, Pod, type ReadOptions } from '../app/pods/pod.js';
+import { Serial } from '../app/shared/serial.js';
 import { NO_CONDITIONS } from '../domain/pods/requests.js';
 import { ALICE, BASE, BOB, type MemoryFileStore, newPod, streamOf, textOf } from './support/fakes.js';
 
@@ -468,5 +469,27 @@ describe('outsiders', () => {
     await expect(pod.put('/private/a.txt', anon, body('x'), 'text/plain', exists)).rejects.toThrow(Unauthenticated);
     await expect(pod.put('/private/none.txt', anon, body('x'), 'text/plain', exists)).rejects.toThrow(Unauthenticated);
     await expect(pod.remove('/private/a.txt', anon, { ifMatch: ['nope'], ifNoneMatch: null })).rejects.toThrow(Unauthenticated);
+  });
+});
+
+describe('two views of one pod', () => {
+  // A pod's object builds a second `Pod` while it is placed in storage; both must wait their turn.
+  it('write one at a time through the queue they share', async () => {
+    const { index, files } = await newPod();
+    const writes = new Serial();
+    let open = 0;
+    let most = 0;
+    const write = files.write.bind(files);
+    files.write = async (...args) => {
+      most = Math.max(most, ++open);
+      await new Promise((done) => setTimeout(done, 1));
+      open--;
+      return write(...args);
+    };
+    let id = 0;
+    const view = () => new Pod({ index, files, base: BASE, now: () => new Date(), newId: () => `v${++id}`, writes });
+    const put = (pod: Pod, path: string) => pod.put(path, { webid: ALICE }, { stream: streamOf('x') }, 'text/plain', NO_CONDITIONS);
+    await Promise.all([put(view(), '/a.txt'), put(view(), '/b.txt'), put(view(), '/c.txt')]);
+    expect(most).toBe(1);
   });
 });

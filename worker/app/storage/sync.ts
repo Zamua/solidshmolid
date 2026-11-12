@@ -5,22 +5,29 @@ import type { Pod } from '../pods/pod.js';
 import { nextPlacement, stored } from './placement.js';
 import type { FileLister, PlacementStore } from './ports.js';
 
-export class FolderSync {
-  private last = Number.NEGATIVE_INFINITY;
+/** When a pod's storage was last asked for changes. */
+export interface SyncClock {
+  last: number;
+}
 
+export const neverSynced = (): SyncClock => ({ last: Number.NEGATIVE_INFINITY });
+
+export class FolderSync {
   constructor(
     private readonly pod: Pod,
     private readonly placement: PlacementStore,
     private readonly lister: FileLister,
     private readonly intervalMs: number,
     private readonly nowMs: () => number,
+    /** Shared by every sync of one pod, so a rebuilt sync keeps the interval. */
+    private readonly clock: SyncClock = neverSynced(),
   ) {}
 
   /** Returns the number of changes applied; throws when the provider fails,
    * and the caller decides whether that blocks the request. */
   async syncIfStale(): Promise<number> {
-    if (this.nowMs() - this.last < this.intervalMs) return 0;
-    this.last = this.nowMs();
+    if (this.nowMs() - this.clock.last < this.intervalMs) return 0;
+    this.clock.last = this.nowMs();
     const current = this.placement.current();
     if (current.state !== 'placed') return 0;
     const listing = await this.lister.changes(current.cursor);

@@ -1,10 +1,11 @@
-// The service's URLs, on the scheme and port the apex was reached on, so the
-// dev server (http, :8787) and deployments derive them the same way.
+// The service's URLs. A deployment has one set, from its configuration: https
+// at the default port, whatever the request came in on. The dev server (http,
+// :8787) has no fixed address, so there they follow the request.
 
 import { isPodId } from '../domain/accounts/podIds.js';
 import { handleFromHost } from '../domain/pods/handles.js';
 import { webidAt } from '../domain/pods/profile.js';
-import type { Env } from './env.js';
+import { type Env, isDev } from './env.js';
 
 export interface Hosts {
   /** The identity provider, with a trailing slash. */
@@ -16,12 +17,13 @@ export interface Hosts {
   podOfWebid(webid: string): string | null;
 }
 
-export function hostsFor(env: Env, apex: URL): Hosts {
-  const port = apex.port ? `:${apex.port}` : '';
-  const podOrigin = (handle: string) => `${apex.protocol}//${env.POD_HOST_TEMPLATE.replace('{handle}', handle)}${port}`;
+export function hostsFor(env: Env, request: URL): Hosts {
+  const scheme = isDev(env) ? request.protocol : 'https:';
+  const port = ownPort(env, request) && `:${ownPort(env, request)}`;
+  const podOrigin = (handle: string) => `${scheme}//${env.POD_HOST_TEMPLATE.replace('{handle}', handle)}${port}`;
   const webidOf = (handle: string) => webidAt(podOrigin(handle));
   return {
-    issuer: `${apex.protocol}//${env.APEX_HOST}${port}/`,
+    issuer: `${scheme}//${env.APEX_HOST}${port}/`,
     podOrigin,
     webidOf,
     podOfWebid: (webid) => {
@@ -30,4 +32,9 @@ export function hostsFor(env: Env, apex: URL): Hosts {
       return handle !== null && isPodId(handle) && webidOf(handle) === webid ? handle : null;
     },
   };
+}
+
+/** The port the service answers on, '' for the default. */
+export function ownPort(env: Env, request: URL): string {
+  return isDev(env) ? request.port : '';
 }

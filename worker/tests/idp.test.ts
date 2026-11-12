@@ -11,7 +11,10 @@ describe.skipIf(!CSS_BIN)('a CSS-issued token', () => {
   let css: RunningCss;
   let session: SolidSession;
   const url = 'https://alice.solidshmolid.example/notes/a.ttl';
-  const verifier = () => new SolidOidcVerifier({ fetch: (u, i) => fetch(u, i), now: () => Date.now() });
+  const verifier = () => {
+    const v = new SolidOidcVerifier({ now: () => Date.now() });
+    return { verify: (request: Parameters<SolidOidcVerifier['verify']>[0]) => v.verify(request, (u, i) => fetch(u, i)) };
+  };
 
   beforeAll(async () => {
     css = await startCss(['-c', '@css:config/default.json'], '.account/');

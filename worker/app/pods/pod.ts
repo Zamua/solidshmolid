@@ -120,16 +120,19 @@ export interface PodDeps {
   base: string;
   now: () => Date;
   newId: () => string;
+  /** The pod's write queue, given when several `Pod`s serve one index. */
+  writes?: Serial;
 }
 
 const ALL_MODES = new Set<Mode>(MODES);
 const ACL_TYPE = TURTLE;
 
 export class Pod {
-  private readonly writes = new Serial();
+  private readonly writes: Serial;
   private readonly acls: AclResolver;
 
   constructor(private readonly deps: PodDeps) {
+    this.writes = deps.writes ?? new Serial();
     this.acls = new AclResolver(deps.index, (path) => this.url(path), (row) => this.readText(row));
   }
 
