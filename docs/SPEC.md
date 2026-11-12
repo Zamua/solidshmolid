@@ -51,6 +51,14 @@ wildcard level only, and Worker routes allow a wildcard only at the start of
 a host, so `*-test.pods.example/*` is the more specific route and wins over
 `*.pods.example/*`. Pod ids never contain `-`, so the two never overlap.
 
+A deployment answers on one address per host: https at the default port. The
+base of every URL it mints (issuer, WebID, pod root) is the origin of the
+request, so a request arriving over plain http or on another port the edge
+listens on is not served: it is redirected to the https address (301 for GET
+and HEAD, 308 otherwise, which keeps the method and body). Every response
+carries `Strict-Transport-Security`. Local dev, on http and a port of its
+own, does neither.
+
 Pods serve whatever HTML their folders hold, so a pod host must never be
 able to set cookies the apex reads: a page on a sibling subdomain could plant
 its owner's session in a visitor's browser (cookie tossing) and have them act
