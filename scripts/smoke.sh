@@ -58,6 +58,7 @@ expect() {
 }
 
 request 'healthz' 200 "$APEX_URL/healthz"
+request 'ready' 200 "$APEX_URL/readyz" && expect 'names its release' "$HEADERS" 'X-Release: '
 request 'welcome page' 200 "$APEX_URL/" && expect 'welcome says what it is' "$BODY" 'A home for your data'
 if [ "${APEX_URL#https://}" != "$APEX_URL" ]; then
   # A deployment answers only on https at the default port.

@@ -34,6 +34,9 @@ export interface Env {
   CLERK_PUBLISHABLE_KEY?: string;
   /** Secret. */
   CLERK_SECRET_KEY?: string;
+  /** The release tag this deployment was built from, set by the deploy;
+   * `/healthz` and `/readyz` report it. */
+  RELEASE?: string;
   /** Where usage events go; without it, or without the salt, none are written. */
   ACTIVITY?: AnalyticsEngineDataset;
   /** Secret: at least 32 random bytes keying the hash of who an event is about. */

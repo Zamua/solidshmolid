@@ -12,6 +12,7 @@ import { webidPod } from '../app/accounts/accounts.js';
 import { accounts, activity, clerkChrome, isDev, sessions, tokenVerifier, uncountedIfAsked } from './composition.js';
 import { hostsFor } from './hosts.js';
 import { withOwnHosts } from './ownHosts.js';
+import { unready } from './readiness.js';
 import type { Env } from './env.js';
 import { devRoute } from './http/dev.js';
 import { apiRoute } from './http/api.js';
@@ -38,8 +39,12 @@ const worker = {
   async fetch(request: Request, bound: Env, ctx?: ExecutionContext): Promise<Response> {
     const env = uncountedIfAsked(bound, request);
     const url = new URL(request.url);
-    if (url.pathname === '/healthz') {
-      return new Response('ok\n', { headers: { 'Content-Type': 'text/plain', 'Cache-Control': 'no-store' } });
+    // Liveness, then readiness: both name the release, neither says more.
+    if (url.pathname === '/healthz') return probe('ok', 200, env);
+    if (url.pathname === '/readyz') {
+      const problems = await unready(env);
+      if (problems.length > 0) console.error(`not ready: ${problems.join(', ')}`);
+      return problems.length > 0 ? probe('not ready', 503, env) : probe('ready', 200, env);
     }
     const handle = handleFromHost(url.hostname, env.POD_HOST_TEMPLATE);
     if (handle === null && url.hostname !== env.APEX_HOST) return new Response('not found\n', { status: 404 });
@@ -54,6 +59,10 @@ function route(request: Request, env: Env, url: URL, handle: string | null, ctx?
 }
 
 export default worker;
+
+function probe(word: string, status: number, env: Env): Response {
+  return new Response(`${word}\n`, { status, headers: { 'Content-Type': 'text/plain', 'Cache-Control': 'no-store', 'X-Release': env.RELEASE ?? 'unknown' } });
+}
 
 /** The apex: who is signed in is settled once, before any route runs. */
 async function apex(request: Request, env: Env, url: URL, ctx?: ExecutionContext): Promise<Response> {
