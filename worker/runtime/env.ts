@@ -42,6 +42,9 @@ export interface Env {
   /** The release tag this deployment was built from, set by the deploy;
    * `/healthz` and `/readyz` report it. */
   RELEASE?: string;
+  /** Secret: the key the operator's routes ask for (recovery, the directory
+   * export). Without it those routes do not exist. */
+  OPERATOR_KEY?: string;
   /** Where usage events go; without it, or without the salt, none are written. */
   ACTIVITY?: AnalyticsEngineDataset;
   /** Secret: at least 32 random bytes keying the hash of who an event is about. */

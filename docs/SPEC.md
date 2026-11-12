@@ -514,6 +514,33 @@ A request carrying `X-Activity-Skip: 1` writes no event. The header is not a
 secret: it only hides the caller's own activity. Smoke and other scripted
 checks send it (`scripts/smoke.sh` does) so that they are not counted as use.
 
+## Recovery
+
+What the server holds itself (each pod's index, each account's record and
+sealed storage tokens, the directory of people and pod ids) lives in Durable
+Object SQLite, which keeps 30 days of point-in-time history. Pod files are not
+part of it: they are in the person's own storage, with that provider's own
+version history.
+
+A deployment that sets the `OPERATOR_KEY` secret gets three routes on the
+account site, each a `POST` with `Authorization: Bearer <key>` and a JSON body
+of at most 1 KiB:
+
+| route | body | answer |
+| --- | --- | --- |
+| `/operator/bookmark` | `{object, id?, at}` (`at` in milliseconds, within the last 30 days) | `{bookmark}`: the object's state at that time |
+| `/operator/restore` | `{object, id?, bookmark}` | `{undo}`: a bookmark of the state it replaced; the object restarts on the restored state |
+| `/operator/export` | `{}` | the directory's people and pod ids (no tokens, no clients) |
+
+`object` is `"directory"`, or `"pod"` or `"account"` with its `id`. Without
+the secret, with a wrong key, or for any other method, the routes answer the
+same 404 as an unknown path. They are not on pod hosts: there `/operator/...`
+is an ordinary resource name. No signed-in person, pod owner or client token
+can reach recovery; the key is the only way in.
+
+A restored pod index can be behind the folder; the next sync (or a rescan)
+brings it level, as after any change made outside the server.
+
 ## Conformance
 
 What the server does not do, against the Solid Protocol, WAC, Solid-OIDC and

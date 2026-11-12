@@ -21,6 +21,7 @@ import { homeRoute } from './http/home.js';
 import { signInRoute } from './http/signIn.js';
 import { httpsRedirect, untransformed, withHsts } from './http/transport.js';
 import { oidcRoute } from './http/oidc.js';
+import { operatorRoute } from './http/operator.js';
 import { appIconRoute } from './http/assets/appIcons.js';
 import { fontRoute } from './http/assets/fonts.js';
 import { PAGE_SCRIPT_PATH } from './http/assets/pageScript.js';
@@ -72,6 +73,9 @@ function probe(word: string, status: number, env: Env): Response {
 async function apex(request: Request, env: Env, url: URL, ctx?: ExecutionContext): Promise<Response> {
   const asset = appIconRoute(request, url) ?? fontRoute(request, url);
   if (asset) return asset;
+  // Before any session is looked at: the operator's routes take a key, never a cookie.
+  const operator = await operatorRoute(request, env, url);
+  if (operator) return operator;
   const session = await sessions(env, url.origin).check(request);
   if (session.redirect) return session.redirect;
   if (session.person && url.pathname !== PAGE_SCRIPT_PATH) ctx?.waitUntil(activeOnSite(env, url, session.person));

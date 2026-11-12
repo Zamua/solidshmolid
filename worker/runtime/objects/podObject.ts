@@ -6,6 +6,7 @@
 // resolving the handle and the agent; the internal headers below are set by
 // the Worker and stripped from every inbound request before forwarding.
 
+import { bookmarkAt, restoreTo } from '../adapters/restore.js';
 import { DurableObject } from 'cloudflare:workers';
 import type { Placement } from '../../app/accounts/ports.js';
 import type { FileContent, FileEntry } from '../../app/accounts/ports.js';
@@ -149,6 +150,17 @@ export class PodObject extends DurableObject<Env> {
       this.servicesFor = base;
     }
     return this.services;
+  }
+
+  /** Operator only (see http/operator.ts): the bookmark for a past moment. */
+  async bookmark(at: number): Promise<string> {
+    return bookmarkAt(this.ctx.storage, at, Date.now());
+  }
+
+  /** Operator only: returns this object to a bookmark, discarding what was
+   * written since, and answers with the bookmark that undoes it. */
+  async restore(bookmark: string): Promise<string> {
+    return restoreTo(this.ctx.storage, bookmark, () => this.ctx.abort('restoring to a bookmark'));
   }
 }
 

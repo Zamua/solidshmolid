@@ -3,6 +3,7 @@
 // state and their pods and storage links, and alone holds the storage grants,
 // handing the person's pods short-lived access tokens over RPC.
 
+import { bookmarkAt, restoreTo } from '../adapters/restore.js';
 import { DurableObject } from 'cloudflare:workers';
 import { webidPod } from '../../app/accounts/accounts.js';
 import type { AccountState, LinkSummary, PendingDeletion, PendingLink, PodRecord } from '../../app/accounts/ports.js';
@@ -192,5 +193,16 @@ export class AccountObject extends DurableObject<Env> {
 
   async accessToken(linkId: string, refresh: boolean): Promise<AccessToken> {
     return this.tokens.accessToken(linkId, refresh);
+  }
+
+  /** Operator only (see http/operator.ts): the bookmark for a past moment. */
+  async bookmark(at: number): Promise<string> {
+    return bookmarkAt(this.ctx.storage, at, Date.now());
+  }
+
+  /** Operator only: returns this object to a bookmark, discarding what was
+   * written since, and answers with the bookmark that undoes it. */
+  async restore(bookmark: string): Promise<string> {
+    return restoreTo(this.ctx.storage, bookmark, () => this.ctx.abort('restoring to a bookmark'));
   }
 }
