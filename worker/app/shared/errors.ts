@@ -21,6 +21,8 @@ export class UnsupportedMediaType extends PodError {}
 export class NotAcceptable extends PodError {}
 export class Unprocessable extends PodError {}
 export class PayloadTooLarge extends PodError {}
+/** The request's body stopped arriving. */
+export class RequestTimeout extends PodError {}
 
 export class MethodNotAllowed extends PodError {
   constructor(

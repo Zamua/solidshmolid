@@ -9,7 +9,7 @@
 // before writing; the pod's write queue makes that exact for its own writes.
 
 import { InsufficientStorage, StorageUnavailable } from '../../app/shared/errors.js';
-import { type ByteRange, CursorLost, type FileInfo, type FileLister, type FileStore, type ListedEntry, type Listing, RevisionConflict, type StoredFile, type WriteOptions } from '../../app/storage/ports.js';
+import { type ByteRange, CursorLost, type FileInfo, type FileLister, type FileStore, type ListedEntry, type Listing, RevisionConflict, type StoredFile, type Upload, type WriteOptions } from '../../app/storage/ports.js';
 import { chunked } from './chunks.js';
 import { type Fetch, retryAfter, withAccessToken } from './http.js';
 import { randomHex } from './system.js';
@@ -81,6 +81,31 @@ export class DriveFileStore implements FileStore, FileLister {
   }
 
   async write(file: string, body: ReadableStream<Uint8Array> | Uint8Array, options: WriteOptions = {}): Promise<FileInfo> {
+    const { target } = await this.targetOf(file, options);
+    const saved = body instanceof Uint8Array ? await this.upload(target, body) : await (await this.sendStream(target, body))();
+    return this.saved(file, saved, target);
+  }
+
+  /** Drive makes a resumable upload the file with its last piece, so `send`
+   * holds that piece back and `finish` sends it, once the file is seen to be
+   * as `begin` found it. */
+  async begin(file: string, options: WriteOptions = {}): Promise<Upload> {
+    const { target, current } = await this.targetOf(file, options);
+    let finish: () => Promise<DriveFile> = () => this.upload(target, new Uint8Array());
+    return {
+      send: async (body) => {
+        finish = await this.sendStream(target, body);
+      },
+      finish: async () => {
+        const now = await this.lookup(target.parent, target.name);
+        if ((now?.id ?? null) !== target.id || (now && current && revOf(now) !== revOf(current))) throw new RevisionConflict(`${file} changed`);
+        return this.saved(file, await finish(), target);
+      },
+    };
+  }
+
+  /** Where a write to `file` goes, once its precondition holds. */
+  private async targetOf(file: string, options: WriteOptions): Promise<{ target: UploadTarget; current: DriveFile | null }> {
     const segments = segmentsOf(file);
     const name = segments.pop()!;
     const parent = await this.folderAt(segments, true);
@@ -91,9 +116,11 @@ export class DriveFileStore implements FileStore, FileLister {
     if (typeof options.ifRev === 'string' && (!current || (options.ifRev !== revOf(current) && options.ifRev !== current.version))) {
       throw new RevisionConflict(`${file} changed`);
     }
-    const target = { id: current?.id ?? null, parent: parent!, name };
-    const saved = body instanceof Uint8Array ? await this.upload(target, body) : await this.uploadStream(target, body);
-    this.remember(saved, parent!);
+    return { target: { id: current?.id ?? null, parent: parent!, name }, current };
+  }
+
+  private saved(file: string, saved: DriveFile, target: UploadTarget): FileInfo {
+    this.remember(saved, target.parent);
     return { file, rev: revOf(saved), size: Number(saved.size ?? 0), modified: saved.modifiedTime ?? new Date().toISOString() };
   }
 
@@ -354,13 +381,14 @@ export class DriveFileStore implements FileStore, FileLister {
   }
 
   /** Streams in fixed pieces through a resumable session, so a large body is
-   * never held whole. */
-  private async uploadStream(target: UploadTarget, stream: ReadableStream<Uint8Array>): Promise<DriveFile> {
+   * never held whole, and answers with the call that sends the last piece:
+   * the one that makes the upload the file. */
+  private async sendStream(target: UploadTarget, stream: ReadableStream<Uint8Array>): Promise<() => Promise<DriveFile>> {
     const pieces = chunked(stream, this.chunkSize);
     const first = await pieces.next();
     let piece = first.done ? new Uint8Array() : first.value;
     let next = await pieces.next();
-    if (next.done) return this.upload(target, piece);
+    if (next.done) return () => this.upload(target, piece);
 
     const start = target.id
       ? await this.call(`${UPLOAD}/files/${target.id}?uploadType=resumable&fields=${FIELDS}`, { method: 'PATCH', json: {} })
@@ -369,20 +397,20 @@ export class DriveFileStore implements FileStore, FileLister {
     const session = start.headers.get('Location');
     if (!session) throw new StorageUnavailable('Google Drive did not open an upload session');
     let offset = 0;
-    for (;;) {
-      const last = next.done === true;
-      const end = offset + piece.byteLength;
-      const res = await this.call(session, {
+    const put = (last: boolean) =>
+      this.call(session, {
         method: 'PUT',
         body: piece,
-        headers: { 'Content-Range': `bytes ${offset}-${end - 1}/${last ? end : '*'}` },
+        headers: { 'Content-Range': `bytes ${offset}-${offset + piece.byteLength - 1}/${last ? offset + piece.byteLength : '*'}` },
       });
-      if (last) return this.uploadResult(res);
+    while (!next.done) {
+      const res = await put(false);
       if (res.status !== 308) await ensureOk(res, 'upload');
-      offset = end;
-      piece = next.value as Uint8Array;
+      offset += piece.byteLength;
+      piece = next.value;
       next = await pieces.next();
     }
+    return async () => this.uploadResult(await put(true));
   }
 
   private async uploadResult(res: Response): Promise<DriveFile> {

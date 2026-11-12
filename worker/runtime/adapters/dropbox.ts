@@ -7,7 +7,7 @@
 // own write queue keeps contention from our side to one request at a time.
 
 import { BadRequest, InsufficientStorage, StorageUnavailable } from '../../app/shared/errors.js';
-import { type ByteRange, CursorLost, type FileInfo, type FileLister, type FileStore, type ListedEntry, type Listing, RevisionConflict, type StoredFile, type WriteOptions } from '../../app/storage/ports.js';
+import { type ByteRange, CursorLost, type FileInfo, type FileLister, type FileStore, type ListedEntry, type Listing, RevisionConflict, type StoredFile, type Upload, type WriteOptions } from '../../app/storage/ports.js';
 import { chunked } from './chunks.js';
 import { type Fetch, retryAfter, withAccessToken } from './http.js';
 
@@ -70,11 +70,24 @@ export class DropboxFileStore implements FileStore, FileLister {
   }
 
   async write(file: string, body: ReadableStream<Uint8Array> | Uint8Array, options: WriteOptions = {}): Promise<FileInfo> {
-    const mode =
-      options.ifRev === undefined ? 'overwrite' : options.ifRev === null ? 'add' : { '.tag': 'update', update: options.ifRev };
-    const commit = { path: this.at(file), mode, autorename: false, mute: true, strict_conflict: true };
-    const meta = body instanceof Uint8Array ? await this.upload(commit, body) : await this.uploadStream(commit, body);
-    return { file, rev: meta.rev, size: meta.size, modified: meta.server_modified };
+    if (body instanceof Uint8Array) return infoOf(file, await this.upload(this.commit(file, options), body));
+    const upload = await this.begin(file, options);
+    await upload.send(body);
+    return upload.finish();
+  }
+
+  /** Dropbox holds the bytes of an upload session apart from any file, and
+   * checks the revision itself when the session is committed, so nothing is
+   * asked of it here. */
+  async begin(file: string, options: WriteOptions = {}): Promise<Upload> {
+    const commit = this.commit(file, options);
+    let finish: () => Promise<Metadata> = () => this.upload(commit, new Uint8Array());
+    return {
+      send: async (body) => {
+        finish = await this.sendStream(commit, body);
+      },
+      finish: async () => infoOf(file, await finish()),
+    };
   }
 
   async remove(file: string): Promise<void> {
@@ -124,13 +137,20 @@ export class DropboxFileStore implements FileStore, FileLister {
     return this.uploadResult(res);
   }
 
-  /** Streams in CHUNK-sized pieces, so a large body is never held whole. */
-  private async uploadStream(commit: object, stream: ReadableStream<Uint8Array>): Promise<Metadata> {
+  private commit(file: string, options: WriteOptions): object {
+    const mode =
+      options.ifRev === undefined ? 'overwrite' : options.ifRev === null ? 'add' : { '.tag': 'update', update: options.ifRev };
+    return { path: this.at(file), mode, autorename: false, mute: true, strict_conflict: true };
+  }
+
+  /** Streams in CHUNK-sized pieces, so a large body is never held whole, and
+   * answers with the call that makes what was sent the file. */
+  private async sendStream(commit: object, stream: ReadableStream<Uint8Array>): Promise<() => Promise<Metadata>> {
     const chunks = chunked(stream, this.chunkSize);
     const first = await chunks.next();
     const head = first.done ? new Uint8Array() : first.value;
     let next = await chunks.next();
-    if (next.done) return this.upload(commit, head);
+    if (next.done) return () => this.upload(commit, head);
 
     const start = await this.writeCall(`${CONTENT}/files/upload_session/start`, { arg: { close: false }, body: head });
     await this.ensureOk(start, 'upload_session/start');
@@ -146,11 +166,13 @@ export class DropboxFileStore implements FileStore, FileLister {
       offset += chunk.byteLength;
       next = await chunks.next();
     }
-    const finish = await this.writeCall(`${CONTENT}/files/upload_session/finish`, {
-      arg: { cursor: { session_id: sessionId, offset }, commit },
-      body: new Uint8Array(),
-    });
-    return this.uploadResult(finish);
+    return async () =>
+      this.uploadResult(
+        await this.writeCall(`${CONTENT}/files/upload_session/finish`, {
+          arg: { cursor: { session_id: sessionId, offset }, commit },
+          body: new Uint8Array(),
+        }),
+      );
   }
 
   private async uploadResult(res: Response): Promise<Metadata> {
@@ -268,4 +290,8 @@ async function errorSummary(res: Response): Promise<string> {
   } catch {
     return text.slice(0, 200);
   }
+}
+
+function infoOf(file: string, meta: Metadata): FileInfo {
+  return { file, rev: meta.rev, size: meta.size, modified: meta.server_modified };
 }

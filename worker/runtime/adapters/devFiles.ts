@@ -3,7 +3,8 @@
 // do, so the deployed configs never select it. Nothing else can edit it, so
 // its change feed is always empty.
 
-import { type ByteRange, type FileInfo, type FileLister, type FileStore, type Listing, RevisionConflict, type StoredFile, type WriteOptions } from '../../app/storage/ports.js';
+import { type ByteRange, type FileInfo, type FileLister, type FileStore, type Listing, RevisionConflict, type StoredFile, type Upload, type WriteOptions } from '../../app/storage/ports.js';
+import { heldUpload } from '../../app/storage/upload.js';
 import type { SqlRunner } from './sql.js';
 import { randomHex } from './system.js';
 
@@ -47,6 +48,10 @@ export class DevFileStore implements FileStore, FileLister {
       modified,
     );
     return { file, rev, size: bytes.byteLength, modified };
+  }
+
+  async begin(file: string, options?: WriteOptions): Promise<Upload> {
+    return heldUpload(this, file, options, DEV_FILE_LIMIT);
   }
 
   async remove(file: string): Promise<void> {

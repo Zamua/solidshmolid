@@ -37,7 +37,7 @@ export class PodObject extends DurableObject<Env> {
   private readonly inFlight = new Set<string>();
   // Kept here, not on the services: those are rebuilt, and a second queue or
   // clock would let writes interleave and syncs repeat.
-  private readonly state: PodState = { writes: new Serial(), synced: neverSynced() };
+  private readonly state: PodState = { writes: new Serial(), arriving: new Set(), synced: neverSynced() };
 
   async fetch(request: Request): Promise<Response> {
     const base = request.headers.get(BASE_HEADER);

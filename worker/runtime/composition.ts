@@ -2,6 +2,7 @@
 // application services from the environment. Everything else receives what it
 // needs from here.
 
+import { deadlined } from './adapters/http.js';
 import { Accounts } from '../app/accounts/accounts.js';
 import type { Logins, Placement } from '../app/accounts/ports.js';
 import { Provider } from '../app/identity/provider.js';
@@ -42,6 +43,10 @@ let signer: Signer | null = null;
 let verifier: SolidOidcVerifier | null = null;
 
 const fetcher = (input: string, init?: RequestInit) => fetch(input, init);
+/** How long a storage provider has to begin an answer. A hung call would
+ * otherwise hold the pod's write queue, and everything behind it. */
+const STORAGE_ANSWER_MS = 60_000;
+const storageFetcher = deadlined(fetcher, STORAGE_ANSWER_MS, () => new StorageUnavailable('the storage did not answer in time'));
 
 export { isDev };
 
@@ -170,6 +175,8 @@ const CACHE_FRESH_MS = 5 * 60_000;
  * writes through one queue, and every sync reads one clock. */
 export interface PodState {
   writes: Serial;
+  /** The resources whose bodies are on their way to storage. */
+  arriving: Set<string>;
   synced: SyncClock;
 }
 
@@ -177,7 +184,7 @@ export function podServices(env: Env, storage: DurableObjectStorage, base: strin
   const sql = storage.sql as SqlRunner;
   const index = new SqlIndex(sql, (fn) => storage.transactionSync(fn));
   const placement = new SqlPlacement(sql);
-  const podOn = (files: FileStore, fresh?: () => boolean) => new Pod({ index, files, base, now: () => new Date(), newId: randomHex, writes: state.writes, fresh });
+  const podOn = (files: FileStore, fresh?: () => boolean) => new Pod({ index, files, base, now: () => new Date(), newId: randomHex, writes: state.writes, arriving: state.arriving, fresh });
   const podIn = (p: Placement) => {
     const files = placedStorage(env, sql, p);
     return { pod: podOn(files, () => Date.now() - state.synced.ok < CACHE_FRESH_MS), files };
@@ -240,31 +247,31 @@ const STORAGE_PROVIDERS: Record<string, StorageProvider> = {
   },
   dropbox: {
     servedBy: () => true,
-    authorization: (env) => new DropboxAuthorization(requireAppKey(env), fetcher),
+    authorization: (env) => new DropboxAuthorization(requireAppKey(env), storageFetcher),
     grants: (env) => {
       const appKey = env.DROPBOX_APP_KEY;
       if (!appKey) return null;
       return {
-        refresh: async (refreshToken) => toAccessToken(await refreshAccess(fetcher, appKey, refreshToken, Date.now())),
-        revoke: (refreshToken) => revokeGrant(fetcher, appKey, refreshToken, Date.now()),
+        refresh: async (refreshToken) => toAccessToken(await refreshAccess(storageFetcher, appKey, refreshToken, Date.now())),
+        revoke: (refreshToken) => revokeGrant(storageFetcher, appKey, refreshToken, Date.now()),
       };
     },
-    folder: (env, p) => new DropboxFileStore({ fetch: fetcher, root: p.folder, accessToken: accountTokens(env, p) }),
-    around: (env, p) => new DropboxFileStore({ fetch: fetcher, root: '', accessToken: accountTokens(env, p) }),
+    folder: (env, p) => new DropboxFileStore({ fetch: storageFetcher, root: p.folder, accessToken: accountTokens(env, p) }),
+    around: (env, p) => new DropboxFileStore({ fetch: storageFetcher, root: '', accessToken: accountTokens(env, p) }),
   },
   'google-drive': {
     servedBy: () => true,
-    authorization: (env) => new GoogleDriveAuthorization(requireGoogleClient(env), fetcher),
+    authorization: (env) => new GoogleDriveAuthorization(requireGoogleClient(env), storageFetcher),
     grants: (env) => {
       if (!env.GOOGLE_CLIENT_ID || !env.GOOGLE_CLIENT_SECRET) return null;
       const client = requireGoogleClient(env);
       return {
-        refresh: async (refreshToken) => toAccessToken(await refreshGoogleAccess(fetcher, client, refreshToken, Date.now())),
-        revoke: (refreshToken) => revokeGoogleGrant(fetcher, refreshToken),
+        refresh: async (refreshToken) => toAccessToken(await refreshGoogleAccess(storageFetcher, client, refreshToken, Date.now())),
+        revoke: (refreshToken) => revokeGoogleGrant(storageFetcher, refreshToken),
       };
     },
-    folder: (env, p, sql) => new DriveFileStore({ fetch: fetcher, root: p.folder, accessToken: accountTokens(env, p), nodes: new SqlDriveNodes(sql) }),
-    around: (env, p) => new DriveFileStore({ fetch: fetcher, root: '', accessToken: accountTokens(env, p), nodes: new MemoryDriveNodes() }),
+    folder: (env, p, sql) => new DriveFileStore({ fetch: storageFetcher, root: p.folder, accessToken: accountTokens(env, p), nodes: new SqlDriveNodes(sql) }),
+    around: (env, p) => new DriveFileStore({ fetch: storageFetcher, root: '', accessToken: accountTokens(env, p), nodes: new MemoryDriveNodes() }),
   },
 };
 

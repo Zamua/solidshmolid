@@ -10,6 +10,7 @@ export class UnlinkedStore implements FileStore {
   }
   read = async () => this.fail();
   write = async () => this.fail();
+  begin = async () => this.fail();
   remove = async () => this.fail();
   makeFolder = async () => this.fail();
   removeFolder = async () => this.fail();
