@@ -18,6 +18,7 @@ import { apiRoute } from './http/api.js';
 import { withClerk } from './http/clerkChrome.js';
 import { homeRoute } from './http/home.js';
 import { signInRoute } from './http/signIn.js';
+import { httpsRedirect, withHsts } from './http/transport.js';
 import { oidcRoute } from './http/oidc.js';
 import { appIconRoute } from './http/assets/appIcons.js';
 import { PAGE_SCRIPT_PATH } from './http/assets/pageScript.js';
@@ -41,11 +42,16 @@ const worker = {
       return new Response('ok\n', { headers: { 'Content-Type': 'text/plain', 'Cache-Control': 'no-store' } });
     }
     const handle = handleFromHost(url.hostname, env.POD_HOST_TEMPLATE);
-    if (handle !== null) return pod(request, env, url, handle, ctx);
-    if (url.hostname === env.APEX_HOST) return apex(request, env, url, ctx);
-    return new Response('not found\n', { status: 404 });
+    if (handle === null && url.hostname !== env.APEX_HOST) return new Response('not found\n', { status: 404 });
+    // Development runs on plain http and a port of its own.
+    if (isDev(env)) return route(request, env, url, handle, ctx);
+    return httpsRedirect(request, url) ?? withHsts(await route(request, env, url, handle, ctx));
   },
 } satisfies ExportedHandler<Env>;
+
+function route(request: Request, env: Env, url: URL, handle: string | null, ctx?: ExecutionContext): Promise<Response> {
+  return handle !== null ? pod(request, env, url, handle, ctx) : apex(request, env, url, ctx);
+}
 
 export default worker;
 

@@ -59,6 +59,13 @@ expect() {
 
 request 'healthz' 200 "$APEX_URL/healthz"
 request 'welcome page' 200 "$APEX_URL/" && expect 'welcome says what it is' "$BODY" 'A home for your data'
+if [ "${APEX_URL#https://}" != "$APEX_URL" ]; then
+  # A deployment answers only on https at the default port.
+  expect 'welcome sets HSTS' "$HEADERS" 'Strict-Transport-Security: max-age='
+  host=${APEX_URL#https://}
+  request 'plain http moves to https' 301 "http://$host/sign-in?x=1" && expect 'http keeps path and query' "$HEADERS" "Location: $APEX_URL/sign-in?x=1"
+  request 'another port moves to https' 301 "https://$host:8443/sign-in" && expect 'port is dropped' "$HEADERS" "Location: $APEX_URL/sign-in"
+fi
 request 'sign-in page' 200 "$APEX_URL/sign-in"
 request 'privacy page' 200 "$APEX_URL/privacy"
 request 'provider discovery' 200 "$APEX_URL/.well-known/openid-configuration" && expect 'names its issuer' "$BODY" "\"issuer\":\"$APEX_URL/\""
