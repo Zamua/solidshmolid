@@ -61,6 +61,15 @@ export class DevFileStore implements FileStore, FileLister {
     this.sql.exec("DELETE FROM dev_file WHERE file LIKE ? ESCAPE '\\'", `${folder.replace(/[\\%_]/gu, (c) => `\\${c}`)}%`);
   }
 
+  async namesIn(folder: string): Promise<string[]> {
+    const below = (column: string, table: string) =>
+      this.sql
+        .exec(`SELECT ${column} AS path FROM ${table} WHERE substr(${column}, 1, ?) = ?`, folder.length, folder)
+        .toArray()
+        .map((r) => String(r.path).slice(folder.length).split('/')[0]!);
+    return [...new Set([...below('file', 'dev_file'), ...below('folder', 'dev_folder')])].filter((name) => name !== '');
+  }
+
   async listAll(): Promise<Listing> {
     const folders = this.sql.exec("SELECT folder FROM dev_folder WHERE folder != ''").toArray();
     const files = this.sql.exec('SELECT file, rev, length(body) AS size, modified FROM dev_file').toArray();

@@ -66,6 +66,10 @@ export class DirFileStore implements FileStore {
     await mkdir(join(this.root, folder), { recursive: true });
   }
 
+  async namesIn(folder: string): Promise<string[]> {
+    return readdir(join(this.root, folder)).catch(() => []);
+  }
+
   async removeFolder(folder: string): Promise<void> {
     await rm(join(this.root, folder), { recursive: true, force: true });
   }

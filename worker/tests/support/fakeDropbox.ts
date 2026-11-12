@@ -69,6 +69,12 @@ export class FakeDropbox {
       case 'files/create_folder_v2':
         return this.mkdir(params.path);
       case 'files/list_folder':
+        if (params.recursive === false) {
+          const folder = String(params.path).toLowerCase();
+          if (folder !== '' && !this.nodes.get(folder)?.folder) return json({ error_summary: 'path/not_found/' }, 409);
+          const direct = [...this.nodes.entries()].filter(([key]) => key.startsWith(`${folder}/`) && !key.slice(folder.length + 1).includes('/'));
+          return json({ entries: direct.map(([, n]) => entry(n)), cursor: String(this.log.length), has_more: false });
+        }
         return json({ entries: [...this.nodes.values()].map(entry), cursor: String(this.log.length), has_more: false });
       case 'files/list_folder/continue': {
         const changed = this.log.slice(Number(params.cursor));
@@ -160,9 +166,11 @@ export class FakeDropbox {
 
 function entry(n: Node) {
   return n.folder
-    ? { '.tag': 'folder', path_display: n.display }
-    : { '.tag': 'file', path_display: n.display, rev: n.rev, size: n.bytes.byteLength, server_modified: '2026-10-22T12:00:00Z' };
+    ? { '.tag': 'folder', name: nameOf(n.display), path_display: n.display }
+    : { '.tag': 'file', name: nameOf(n.display), path_display: n.display, rev: n.rev, size: n.bytes.byteLength, server_modified: '2026-10-22T12:00:00Z' };
 }
+
+const nameOf = (display: string) => display.slice(display.lastIndexOf('/') + 1);
 
 function json(value: unknown, status = 200, headers: Record<string, string> = {}): Response {
   return new Response(JSON.stringify(value), { status, headers: { 'Content-Type': 'application/json', ...headers } });

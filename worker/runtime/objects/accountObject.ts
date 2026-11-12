@@ -4,6 +4,7 @@
 // handing the person's pods short-lived access tokens over RPC.
 
 import { DurableObject } from 'cloudflare:workers';
+import { webidPod } from '../../app/accounts/accounts.js';
 import type { AccountState, LinkSummary, PendingDeletion, PendingLink, PodRecord } from '../../app/accounts/ports.js';
 import type { CodeGrant, RefreshFamily } from '../../app/identity/ports.js';
 import type { AuthorizeRequest, ClientInfo } from '../../domain/identity/oidc.js';
@@ -49,6 +50,10 @@ export class AccountObject extends DurableObject<Env> {
           return key;
         },
         () => Math.floor(Date.now() / 1000),
+        async () => {
+          const state = await this.pods.load();
+          return state !== null && webidPod(state).linkId !== null;
+        },
       );
     }
     return this.store;
@@ -65,6 +70,10 @@ export class AccountObject extends DurableObject<Env> {
 
   async webid(): Promise<string | null> {
     return this.open().webid();
+  }
+
+  async hasPod(): Promise<boolean> {
+    return this.open().hasPod();
   }
 
   async bindWebid(webid: string): Promise<void> {

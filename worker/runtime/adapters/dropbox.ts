@@ -94,6 +94,19 @@ export class DropboxFileStore implements FileStore, FileLister {
     await this.deletePath(path);
   }
 
+  async namesIn(folder: string): Promise<string[]> {
+    const names: string[] = [];
+    let res = await this.call(`${API}/files/list_folder`, { json: { path: this.at(folder), recursive: false, include_deleted: false } });
+    for (;;) {
+      if (res.status === 409 && (await errorSummary(res.clone())).includes('not_found')) return [];
+      await this.ensureOk(res, 'list_folder');
+      const page = (await res.json()) as { entries: { name: string }[]; cursor: string; has_more: boolean };
+      names.push(...page.entries.map((e) => e.name));
+      if (!page.has_more) return names;
+      res = await this.call(`${API}/files/list_folder/continue`, { json: { cursor: page.cursor } });
+    }
+  }
+
   async listAll(): Promise<Listing> {
     return this.listPages(`${API}/files/list_folder`, { path: this.at(''), recursive: true, include_deleted: false });
   }

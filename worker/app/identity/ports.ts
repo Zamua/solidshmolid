@@ -6,6 +6,8 @@ import type { AuthorizeRequest, ClientInfo, CodeEffect, Registration } from '../
 export interface AccountStore {
   /** The WebID this person signs in as, or null before they have a pod. */
   webid(): Promise<string | null>;
+  /** Whether that WebID's pod is in storage, so its profile can be read. */
+  hasPod(): Promise<boolean>;
   hasApproval(clientId: string, webid: string): Promise<boolean>;
   approve(client: { clientId: string; name: string | null; site: string | null }, webid: string): Promise<void>;
   /** Apps the person approved, newest first. */

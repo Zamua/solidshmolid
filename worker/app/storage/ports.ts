@@ -37,6 +37,9 @@ export interface FileStore {
   /** Creating an existing folder succeeds. */
   makeFolder(folder: string): Promise<void>;
   removeFolder(folder: string): Promise<void>;
+  /** The names of what a folder holds directly, files and folders alike;
+   * none for a folder that is not there. */
+  namesIn(folder: string): Promise<string[]>;
 }
 
 /** A write's revision precondition failed. */
