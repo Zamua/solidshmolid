@@ -14,7 +14,7 @@ import {
 } from '../app/shared/errors.js';
 import { type Agent, type ReadOptions } from '../app/pods/pod.js';
 import { NO_CONDITIONS } from '../domain/pods/requests.js';
-import { ALICE, BASE, BOB, newPod, streamOf, textOf } from './support/fakes.js';
+import { ALICE, BASE, BOB, type MemoryFileStore, newPod, streamOf, textOf } from './support/fakes.js';
 
 const alice: Agent = { webid: ALICE };
 const bob: Agent = { webid: BOB };
@@ -302,6 +302,94 @@ describe('access control', () => {
     index.upsert({ ...row, etag: 'edited' });
     index.setCachedText('/shared/.acl', null);
     await expect(pod.read('/shared/doc.txt', bob, GET)).rejects.toThrow(Forbidden);
+  });
+
+  it('requires Append on the container to POST into it', async () => {
+    const { pod } = await newPod();
+    await pod.put('/shared/', alice, body(''), null, NO_CONDITIONS);
+    await pod.put('/shared/.acl', alice, body(shareWithBob('acl:Read')), TTL, NO_CONDITIONS);
+    await expect(pod.post('/shared/', bob, body('x'), 'text/plain', 'msg', false)).rejects.toThrow(Forbidden);
+    await expect(pod.post('/shared/', bob, body(''), null, 'sub', true)).rejects.toThrow(Forbidden);
+    expect(await pod.listing('/shared/', alice)).toEqual([]);
+  });
+
+  it('lets Append insert triples by PATCH but not delete them', async () => {
+    const { pod } = await newPod();
+    await pod.put('/drop/d.ttl', alice, body('<#a> <http://example.org/n> 1.'), TTL, NO_CONDITIONS);
+    await pod.put('/drop/.acl', alice, body(shareWithBob('acl:Append')), TTL, NO_CONDITIONS);
+    const deletes = `${PRE}_:p a solid:InsertDeletePatch; solid:deletes { <#a> ex:n 1 }.`;
+    await expect(pod.patch('/drop/d.ttl', bob, deletes, N3, NO_CONDITIONS)).rejects.toThrow(Forbidden);
+    await pod.patch('/drop/d.ttl', bob, `${PRE}_:p a solid:InsertDeletePatch; solid:inserts { <#b> ex:n 2 }.`, N3, NO_CONDITIONS);
+    const out = (await read(pod, '/drop/d.ttl', alice, { ...GET, accept: 'application/n-triples' })).text;
+    expect(out).toContain('"1"^^');
+    expect(out).toContain('"2"^^');
+  });
+
+  it('requires Write on the container as well as the document to DELETE', async () => {
+    const { pod, index } = await newPod();
+    await pod.put('/shared/doc.txt', alice, body('hi'), 'text/plain', NO_CONDITIONS);
+    await pod.put('/shared/.acl', alice, body(shareWithBob('acl:Read')), TTL, NO_CONDITIONS);
+    const writeForBob = `@prefix acl: <http://www.w3.org/ns/auth/acl#>.
+<#owner> a acl:Authorization; acl:agent <${ALICE}>; acl:accessTo <doc.txt>; acl:mode acl:Read, acl:Write, acl:Control.
+<#bob> a acl:Authorization; acl:agent <${BOB}>; acl:accessTo <doc.txt>; acl:mode acl:Read, acl:Write.`;
+    await pod.put('/shared/doc.txt.acl', alice, body(writeForBob), TTL, NO_CONDITIONS);
+    await pod.put('/shared/doc.txt', bob, body('from bob'), 'text/plain', NO_CONDITIONS);
+    await expect(pod.remove('/shared/doc.txt', bob, NO_CONDITIONS)).rejects.toThrow(Forbidden);
+    expect(index.get('/shared/doc.txt')).not.toBeNull();
+  });
+
+  it('refuses requests for metadata files, whoever asks', async () => {
+    const { pod, files } = await newPod();
+    await pod.put('/blob', alice, body('?'), 'application/x-unheard-of', NO_CONDITIONS);
+    const meta = files.text('blob.meta');
+    await expect(pod.put('/blob.meta', alice, body('x'), 'text/plain', NO_CONDITIONS)).rejects.toThrow(MethodNotAllowed);
+    await expect(pod.put('/new.meta', alice, body('x'), 'text/plain', NO_CONDITIONS)).rejects.toThrow(MethodNotAllowed);
+    await expect(pod.remove('/blob.meta', alice, NO_CONDITIONS)).rejects.toThrow(MethodNotAllowed);
+    // Not found even for someone who may read nothing here: the path is never a resource.
+    await expect(pod.read('/blob.meta', anon, GET)).rejects.toThrow(NotFound);
+    await expect(pod.read('/blob.meta', alice, GET)).rejects.toThrow(NotFound);
+    expect(files.text('blob.meta')).toBe(meta);
+  });
+
+  it('requires Read to list a container', async () => {
+    const { pod } = await newPod();
+    await pod.put('/shared/doc.txt', alice, body('hi'), 'text/plain', NO_CONDITIONS);
+    await pod.put('/shared/.acl', alice, body(shareWithBob('acl:Append')), TTL, NO_CONDITIONS);
+    await expect(pod.listing('/shared/', bob)).rejects.toThrow(Forbidden);
+    await expect(pod.listing('/shared/', anon)).rejects.toThrow(Unauthenticated);
+    expect((await pod.listing('/shared/', alice)).map((e) => e.path)).toEqual(['/shared/doc.txt']);
+  });
+});
+
+describe('concurrent writes', () => {
+  /** Makes every storage write wait a turn, as a call to a remote provider does. */
+  function slowWrites(files: MemoryFileStore) {
+    const write = files.write.bind(files);
+    files.write = async (...args) => {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      return write(...args);
+    };
+  }
+
+  it('lets exactly one of two simultaneous creations of one path through', async () => {
+    const { pod, files } = await newPod();
+    slowWrites(files);
+    const create = (s: string) => pod.put('/race.txt', alice, body(s), 'text/plain', { ifMatch: null, ifNoneMatch: '*' });
+    const results = await Promise.allSettled([create('a'), create('b')]);
+    expect(results.map((r) => r.status)).toEqual(['fulfilled', 'rejected']);
+    expect((results[1] as PromiseRejectedResult).reason).toBeInstanceOf(PreconditionFailed);
+    expect((await read(pod, '/race.txt')).text).toBe('a');
+  });
+
+  it('keeps both of two simultaneous patches to one document', async () => {
+    const { pod, files } = await newPod();
+    await pod.put('/p.ttl', alice, body('<#a> <http://example.org/n> 0.'), TTL, NO_CONDITIONS);
+    slowWrites(files);
+    const insert = (n: number) => pod.patch('/p.ttl', alice, `${PRE}_:p a solid:InsertDeletePatch; solid:inserts { <#a> ex:n ${n} }.`, N3, NO_CONDITIONS);
+    await Promise.all([insert(1), insert(2)]);
+    const out = (await read(pod, '/p.ttl', alice, { ...GET, accept: 'application/n-triples' })).text;
+    expect(out).toContain('"1"^^');
+    expect(out).toContain('"2"^^');
   });
 });
 
