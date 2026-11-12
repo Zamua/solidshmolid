@@ -64,9 +64,11 @@ export function podsPage(state: AccountState, apps: Approval[], hosts: Hosts, of
       const link = state.links.find((l) => l.linkId === p.linkId);
       const backend = link ? backendLine(link.provider) : '<span class="small" style="display:block">Waiting for storage</span>';
       const text = `<span class="grow"><b>${podLabel(i)}</b>${backend}${i === 0 ? '<span class="small" style="display:block">Holds your WebID</span>' : ''}</span>`;
+      // A pod waiting with storage connected is one whose placement failed.
+      const retry = state.links.length > 0 ? '<form method="post" action="/api/pods/place"><button class="chip-btn">Try again</button></form>' : '';
       return p.linkId
         ? `<a class="row list-row row-link" href="/pods/${escapeHtml(p.podId)}/files">${podCloud(String(i + 1), true)}${text}<span class="chevron">${icon('caretRight', 20)}</span></a>`
-        : `<div class="row list-row">${podCloud(String(i + 1), true)}${text}</div>`;
+        : `<div class="row list-row">${podCloud(String(i + 1), true)}${text}${retry}</div>`;
     })
     .join('');
   const appRows = apps

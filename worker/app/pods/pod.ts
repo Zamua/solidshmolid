@@ -144,19 +144,21 @@ export class Pod {
   // ---- provisioning ----------------------------------------------------
 
   /** Creates the root container and its ACL, and with `profile` the owner's
-   * profile document (a WebID's pod; further pods have none). */
-  provision(owner: string, profile: string | null): Promise<void> {
+   * profile document (a WebID's pod; further pods have none). `left` is what
+   * an interrupted attempt already wrote to the folder: those documents are
+   * kept and only the missing ones written. */
+  provision(owner: string, profile: string | null, left: ListedEntry[] = []): Promise<void> {
     return this.writes.run(async () => {
       const { index, files } = this.deps;
-      if (index.state()) throw new Conflict('pod already exists');
+      const resumed = left.some((e) => e.kind === 'file');
+      if (index.state() && !resumed) throw new Conflict('pod already exists');
       await files.makeFolder('');
-      index.atomically(() => index.upsert(newContainerRow('/', this.deps)));
-      await this.storeRdf('/.acl', ACL_TYPE, podRootAcl(owner), null);
-      if (profile !== null) {
-        await this.storeRdf(PROFILE_PATH, TURTLE, profile, null);
-        await this.storeRdf(aclPathOf(PROFILE_PATH), ACL_TYPE, profileAcl(owner), null);
-      }
-      index.setState({ owner, created: this.deps.now().toISOString() });
+      if (resumed) await rebuildIndex(this.deps, left);
+      if (!index.get('/')) index.atomically(() => index.upsert(newContainerRow('/', this.deps)));
+      const starter: [PodPath, string, string][] = [['/.acl', ACL_TYPE, podRootAcl(owner)]];
+      if (profile !== null) starter.push([PROFILE_PATH, TURTLE, profile], [aclPathOf(PROFILE_PATH), ACL_TYPE, profileAcl(owner)]);
+      for (const [path, type, text] of starter) if (!index.get(path)) await this.storeRdf(path, type, text, null);
+      if (!index.state()) index.setState({ owner, created: this.deps.now().toISOString() });
     });
   }
 

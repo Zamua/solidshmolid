@@ -60,6 +60,40 @@ describe('placing a pod in its folder', () => {
     expect((await pod.read('/', { webid: ALICE }, READ)).etag).toBe(root);
   });
 
+  it.each([2, 3])('finishes a first placement that stopped at write %i, so the WebID profile is public', async (failing) => {
+    const { folder, storage, cursor } = setup();
+    let writes = 0;
+    const flaky = Object.assign(Object.create(storage) as DropboxFileStore, {
+      write: async (...args: Parameters<DropboxFileStore['write']>) => {
+        if (++writes === failing) throw new StorageUnavailable('Dropbox 503');
+        return storage.write(...args);
+      },
+    });
+    const index = sqliteIndex();
+    let id = 0;
+    const deps = { index, base: BASE, now: () => new Date(), newId: () => `r${++id}` };
+    await expect(placePod(new Pod({ ...deps, files: flaky }), flaky, cursor, TARGET, { owner: ALICE, profile: PROFILE })).rejects.toThrow(StorageUnavailable);
+    expect(cursor.value.state).toBe('placing');
+    const acl = folder.files()['/k3x9fqm7/.acl'];
+
+    const again = new Pod({ ...deps, files: storage });
+    expect(await placePod(again, storage, cursor, TARGET, { owner: ALICE, profile: PROFILE })).toBe('created');
+    expect(Object.keys(folder.files()).sort()).toEqual(['/k3x9fqm7/.acl', '/k3x9fqm7/profile/card$.ttl', '/k3x9fqm7/profile/card.acl']);
+    expect(folder.files()['/k3x9fqm7/.acl']).toEqual(acl);
+    expect((await again.modes('/profile/card', { webid: null })).has('read')).toBe(true);
+    expect((await again.modes('/', { webid: ALICE })).has('control')).toBe(true);
+    expect((await again.modes('/', { webid: null })).size).toBe(0);
+  });
+
+  it('finishes it from a fresh index too, as after connecting again', async () => {
+    const { folder, storage, cursor } = setup();
+    folder.editOutOfBand('/k3x9fqm7/.acl', 'left by the first attempt');
+    const { pod } = setup(folder);
+    expect(await placePod(pod, storage, cursor, { ...TARGET, linkId: 'l2' }, { owner: ALICE, profile: PROFILE })).toBe('created');
+    expect(Object.keys(folder.files()).sort()).toEqual(['/k3x9fqm7/.acl', '/k3x9fqm7/profile/card$.ttl', '/k3x9fqm7/profile/card.acl']);
+    expect(pod.isProvisioned()).toBe(true);
+  });
+
   it('creates a further pod without a profile', async () => {
     const { folder, storage, pod, cursor } = setup();
     expect(await placePod(pod, storage, cursor, TARGET, { owner: ALICE, profile: null })).toBe('created');
@@ -114,7 +148,17 @@ describe('the placement lifecycle', () => {
       state: { state: 'placed', target: TARGET, cursor: 'c0' },
       steps: ['list', 'provision', 'done'],
     });
-    expect(run({ state: 'unplaced' }, [place, { kind: 'listed', listing: listing(['.acl']) }, { kind: 'ready' }]).steps).toEqual(['list', 'adopt', 'done']);
+    expect(run({ state: 'unplaced' }, [place, { kind: 'listed', listing: listing(['.acl', 'notes/a.txt']) }, { kind: 'ready' }]).steps).toEqual(['list', 'adopt', 'done']);
+  });
+
+  it('finishes, not adopts, a folder holding only what a new pod starts with', () => {
+    const place = { kind: 'place', target: TARGET } as const;
+    for (const left of [['.acl'], ['.acl', 'profile/card$.ttl'], ['.acl', 'profile/card$.ttl', 'profile/card.acl']]) {
+      const { state, steps } = run({ state: 'unplaced' }, [place, { kind: 'listed', listing: listing(left) }]);
+      expect(steps, left.join()).toEqual(['list', 'provision']);
+      expect(state).toMatchObject({ state: 'writing', outcome: 'created' });
+    }
+    expect(run({ state: 'unplaced' }, [place, { kind: 'listed', listing: listing(['profile/card$.ttl', 'profile/photo.jpg']) }]).steps).toEqual(['list', 'adopt']);
   });
 
   it('starts over from an interrupted placement, and stores writing as placing', () => {

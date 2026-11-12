@@ -98,6 +98,21 @@ export class Accounts {
     return pending.newPod ? this.newPodIn(state, { linkId, provider }) : state;
   }
 
+  /** Places the pods a failed placement left waiting, in the storage
+   * connected last, and lists each in the WebID's profile. With nothing
+   * waiting it changes nothing. */
+  async retryPlacement(person: string): Promise<AccountState> {
+    const state = await this.signedUp(person);
+    const waiting = state.pods.filter((p) => p.linkId === null);
+    if (waiting.length === 0) return state;
+    const link = state.links.at(-1);
+    if (!link) throw new NoStorageYet('connect storage first');
+    await this.placeWaiting(state.key, link.linkId, link.provider);
+    const webid = webidPod(state).podId;
+    for (const pod of waiting) if (pod.podId !== webid) await this.deps.pods.declareStorage(webid, state.webid, pod.podId);
+    return (await this.deps.account(state.key).load())!;
+  }
+
   /** Adds a pod beside the first one, owned by the same WebID, in the
    * storage `linkId` names; the first pod's storage by default. */
   async addPod(person: string, linkId: string | null = null): Promise<AccountState> {

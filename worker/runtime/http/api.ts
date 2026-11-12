@@ -5,7 +5,7 @@
 // Pages post plain HTML forms here; those get a redirect, scripts get JSON.
 
 import { type DeletionStep, HoldsWebid, LinkExpired, NoStorageYet, NotConfirmed, NotSignedUp, StorageInUse } from '../../app/accounts/accounts.js';
-import { NotFound } from '../../app/shared/errors.js';
+import { InsufficientStorage, NotFound, StorageUnavailable } from '../../app/shared/errors.js';
 import { parseLinkState } from '../../domain/accounts/keys.js';
 import type { AccountState } from '../../app/accounts/ports.js';
 import { GrantRefused } from '../../app/storage/ports.js';
@@ -28,6 +28,7 @@ export async function apiRoute(request: Request, env: Env, url: URL, person: str
   const routes: Route[] = [
     { method: 'GET', path: /^\/api\/me$/u, run: (p) => me(env, url, p) },
     { method: 'POST', path: /^\/api\/signup$/u, run: async (p) => done(html, '/', view(await service().signup(p), env, url), 201) },
+    { method: 'POST', path: /^\/api\/pods\/place$/u, run: async (p) => done(html, '/', view(await service().retryPlacement(p), env, url), 200) },
     { method: 'POST', path: /^\/api\/pods$/u, run: async (p) => done(html, '/', view(await service().addPod(p, (await fields(request)).link ?? null), env, url), 201) },
     {
       method: 'POST',
@@ -101,6 +102,8 @@ function refusal(e: unknown): { status: number; code: string; title: string; mes
   if (e instanceof HoldsWebid) return { status: 409, code: 'holds_webid', title: 'Not deleted', message: e.message };
   if (e instanceof NotConfirmed) return { status: 400, code: 'not_confirmed', title: 'Nothing was deleted', message: e.message };
   if (e instanceof StorageInUse) return { status: 409, code: 'storage_in_use', title: 'Still in use', message: e.message, extra: { pods: e.podIds } };
+  if (e instanceof InsufficientStorage) return { status: 507, code: 'storage_full', title: 'Your storage is full', message: e.message };
+  if (e instanceof StorageUnavailable) return { status: 503, code: 'storage_unavailable', title: 'Your storage did not answer', message: e.message };
   return null;
 }
 
@@ -159,6 +162,12 @@ async function finish(env: Env, url: URL, person: string, provider: string): Pro
     await accounts(env, hostsFor(env, url)).completeLink(person, provider, state.accountKey, state.nonce, code, callbackUrl(url, provider));
   } catch (e) {
     if (e instanceof LinkExpired || e instanceof GrantRefused) return notConnected(e.message);
+    // The link is stored by now; only setting the pod up in it failed.
+    if (e instanceof InsufficientStorage || e instanceof StorageUnavailable) {
+      return problemPage('Your pod is not set up yet', `Your storage is connected, but the pod could not be set up in it: ${sentenceOf(e.message)} Go back to your pods and try again.`, 503, {
+        way: { href: '/', label: 'Back to your pods' },
+      });
+    }
     throw e;
   }
   return redirect('/');

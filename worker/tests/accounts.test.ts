@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { Accounts, HoldsWebid, LinkExpired, NoStorageYet, NotConfirmed, NotSignedUp, StorageInUse } from '../app/accounts/accounts.js';
 import type { ActivityEvent } from '../app/shared/activity.js';
-import { NotFound } from '../app/shared/errors.js';
+import { NotFound, StorageUnavailable } from '../app/shared/errors.js';
 import type { AccountRepository, AccountState, Directory, LinkSummary, PendingDeletion, PendingLink, Placement, PodRecord, Pods } from '../app/accounts/ports.js';
 import type { StorageAuthorization } from '../app/storage/ports.js';
 
@@ -125,7 +125,7 @@ function world() {
     webidOf: (podId) => `https://${podId}.pods.example/profile/card#me`,
     activity: { record: async (event) => void events.push(event) },
   });
-  return { events, service, accounts, directory, placed, declared, dropped, retired, removedLogins, bound };
+  return { events, service, accounts, directory, pods, placed, declared, dropped, retired, removedLogins, bound };
 }
 
 const stateOf = (url: string) => new URL(url).searchParams.get('state')!.split('.') as [string, string];
@@ -206,6 +206,44 @@ describe('connecting storage', () => {
     expect(placed.map((p) => p.placement.provider)).toEqual(['dropbox', 'other', 'dropbox']);
     expect(declared).toHaveLength(2);
     await expect(service.addPod('user_dana', 'not-a-link')).rejects.toThrow(NotFound);
+  });
+
+  it('places a pod a failed placement left waiting, on asking again, and lists a further pod in the profile', async () => {
+    const w = world();
+    await w.service.signup('user_dana');
+    const place = w.pods.place;
+    let failing = true;
+    w.pods.place = async (...args) => {
+      if (failing) throw new StorageUnavailable('Dropbox 503');
+      return place(...args);
+    };
+    const [key, nonce] = stateOf(await w.service.beginLink('user_dana', 'dropbox', 'https://x/cb'));
+    await expect(w.service.completeLink('user_dana', 'dropbox', key, nonce, 'code', 'https://x/cb')).rejects.toThrow(StorageUnavailable);
+    const stuck = (await w.service.mine('user_dana'))!;
+    expect(stuck.links).toHaveLength(1);
+    expect(stuck.pods.map((p) => p.linkId)).toEqual([null]);
+    await expect(w.service.retryPlacement('user_dana')).rejects.toThrow(StorageUnavailable);
+
+    failing = false;
+    const placed = await w.service.retryPlacement('user_dana');
+    expect(placed.pods.map((p) => p.linkId)).toEqual([stuck.links[0]!.linkId]);
+    expect(w.placed).toHaveLength(1);
+    expect(w.declared).toHaveLength(0);
+    expect(await w.service.retryPlacement('user_dana')).toEqual(placed);
+    expect(w.placed).toHaveLength(1);
+
+    failing = true;
+    await expect(w.service.addPod('user_dana')).rejects.toThrow(StorageUnavailable);
+    failing = false;
+    const two = await w.service.retryPlacement('user_dana');
+    expect(two.pods.map((p) => p.linkId)).toEqual([stuck.links[0]!.linkId, stuck.links[0]!.linkId]);
+    expect(w.declared.map((d) => d.storagePodId)).toEqual([two.pods[1]!.podId]);
+  });
+
+  it('has nothing to retry without storage connected', async () => {
+    const w = world();
+    await w.service.signup('user_dana');
+    await expect(w.service.retryPlacement('user_dana')).rejects.toThrow(NoStorageYet);
   });
 
   it('does not place a pod twice when a second link is connected', async () => {

@@ -282,6 +282,13 @@ placing lists the folder, then provisions or adopts; an interrupted placement st
 from the listing; placing a placed pod again in the same folder is a no-op, elsewhere a 409;
 a sync advances a placed pod's cursor. Only placed pods sync.
 
+A folder holding nothing but documents a new pod starts with (`/.acl`, the profile, the
+profile's ACL) is a first placement that stopped part way, not a pod to adopt: provisioning
+resumes, keeps what is there and writes what is missing, so the WebID profile always ends
+up present and public. When placement fails after the storage was linked, the callback says
+so, the pod stays waiting, and the pods page offers "Try again" (`POST /api/pods/place`),
+which places every waiting pod in the storage linked last.
+
 `POST /api/pods` adds a pod beside the first, owned by the same WebID, with no profile of its
 own; the WebID's profile gains a `pim:storage` for it, so apps find every pod.
 

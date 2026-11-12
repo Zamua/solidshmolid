@@ -3,9 +3,16 @@
 // the person used before (or one another Solid server wrote) comes back as it
 // was. Either way the folder is the truth afterwards.
 //
+// A folder holding nothing but files a new pod starts with is a first
+// placement that stopped part way: it is finished, not adopted, or the pod
+// would come up without its profile or the profile's ACL.
+//
 // The lifecycle is `nextPlacement`; `placePod` and FolderSync only run the
 // steps it returns and store the states it moves to.
 
+import { resourceOfFile } from '../../domain/pods/layout.js';
+import { aclPathOf } from '../../domain/pods/paths.js';
+import { PROFILE_PATH } from '../../domain/pods/profile.js';
 import type { Pod } from '../pods/pod.js';
 import { Conflict } from '../shared/errors.js';
 import type { FileLister, FileStore, ListedEntry, Listing, Placement, PlacementOutcome, PlacementStore, PodPlacement } from './ports.js';
@@ -32,7 +39,8 @@ export type PlacementEvent =
 export type PlacementStep =
   | { kind: 'list' }
   | { kind: 'adopt'; entries: ListedEntry[] }
-  | { kind: 'provision' }
+  /** `left` is what an earlier, interrupted attempt already wrote. */
+  | { kind: 'provision'; left: ListedEntry[] }
   | { kind: 'done'; outcome: PlacementOutcome }
   | { kind: 'none' };
 
@@ -47,10 +55,11 @@ export function nextPlacement(current: PlacementState, event: PlacementEvent): {
     case 'writing':
       if (event.kind === 'place') return { state: { state: 'placing', target: event.target }, step: { kind: 'list' } };
       if (current.state === 'placing' && event.kind === 'listed') {
-        const adopt = event.listing.entries.some((e) => e.kind === 'file');
+        const { entries } = event.listing;
+        const adopt = entries.some((e) => e.kind === 'file' && !isStarterFile(e.path));
         return {
           state: { state: 'writing', target: current.target, cursor: event.listing.cursor, outcome: adopt ? 'adopted' : 'created' },
-          step: adopt ? { kind: 'adopt', entries: event.listing.entries } : { kind: 'provision' },
+          step: adopt ? { kind: 'adopt', entries } : { kind: 'provision', left: entries },
         };
       }
       if (current.state === 'writing' && event.kind === 'ready') {
@@ -70,6 +79,17 @@ export function nextPlacement(current: PlacementState, event: PlacementEvent): {
       return current satisfies never;
   }
   throw new Error(`placement: no ${event.kind} while ${current.state}`);
+}
+
+const STARTER_PATHS: ReadonlySet<string> = new Set(['/.acl', PROFILE_PATH, aclPathOf(PROFILE_PATH)]);
+
+/** Whether `file` is one of the documents a new pod is provisioned with. */
+function isStarterFile(file: string): boolean {
+  try {
+    return STARTER_PATHS.has(resourceOfFile(file).path);
+  } catch {
+    return false;
+  }
 }
 
 /** What the pod stores of a state. */
@@ -95,7 +115,7 @@ export async function placePod(pod: Pod, storage: FileStore & FileLister, store:
         event = { kind: 'ready' };
         break;
       case 'provision':
-        await pod.provision(starter.owner, starter.profile);
+        await pod.provision(starter.owner, starter.profile, step.left);
         event = { kind: 'ready' };
         break;
       case 'none':
