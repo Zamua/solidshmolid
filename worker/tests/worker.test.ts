@@ -78,6 +78,43 @@ describe('a deployment (no DEV_MODE)', () => {
   });
 });
 
+describe('probes', () => {
+  const signingKey = async () => {
+    const { privateKey } = (await crypto.subtle.generateKey({ name: 'ECDSA', namedCurve: 'P-256' }, true, ['sign', 'verify'])) as CryptoKeyPair;
+    return JSON.stringify({ ...(await crypto.subtle.exportKey('jwk', privateKey)), kid: 'k1', alg: 'ES256' });
+  };
+  const keys = async () => ({
+    TOKEN_KEY: btoa('k'.repeat(32)),
+    OIDC_SIGNING_JWK: await signingKey(),
+    CLERK_PUBLISHABLE_KEY: 'pk_test_x',
+    CLERK_SECRET_KEY: 'sk_test_x',
+    DROPBOX_APP_KEY: 'app',
+  });
+
+  it('report the release, on any host', async () => {
+    const { get } = world({ RELEASE: 'v1.2.3' });
+    const health = await get('https://anything.example/healthz');
+    expect([health.status, await health.text(), health.headers.get('X-Release')]).toEqual([200, 'ok\n', 'v1.2.3']);
+  });
+
+  it('are ready with every key in place', async () => {
+    const { get } = world(await keys());
+    const ready = await get('https://account.example/readyz');
+    expect([ready.status, await ready.text()]).toEqual([200, 'ready\n']);
+  });
+
+  it.each(['TOKEN_KEY', 'OIDC_SIGNING_JWK', 'CLERK_SECRET_KEY', 'DROPBOX_APP_KEY'] as const)('are not ready without %s, and do not say which', async (missing) => {
+    const { get } = world({ ...(await keys()), [missing]: undefined });
+    const ready = await get('https://account.example/readyz');
+    expect([ready.status, await ready.text()]).toEqual([503, 'not ready\n']);
+  });
+
+  it('are not ready with a sealing key of the wrong length', async () => {
+    const { get } = world({ ...(await keys()), TOKEN_KEY: btoa('short') });
+    expect((await get('https://account.example/readyz')).status).toBe(503);
+  });
+});
+
 describe('the dev config (DEV_MODE)', () => {
   it('trusts X-Dev-WebID, creates named pods on first request and stays on http', async () => {
     const { get, reached, provisioned } = world({ DEV_MODE: '1', APEX_HOST: 'localhost', POD_HOST_TEMPLATE: '{handle}.localhost', STORAGE: 'dev' });

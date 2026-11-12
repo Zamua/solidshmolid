@@ -75,8 +75,11 @@ Keep the salt stable: changing it makes everyone look new.
 ## Deploy
 
 ```
-npx wrangler deploy --config wrangler.deploy.jsonc
+npx wrangler deploy --config wrangler.deploy.jsonc --var RELEASE:$(git describe --tags)
 APEX_URL=https://account.example NO_POD_URL=https://zzzzzzzz.pods.example ./scripts/smoke.sh
 ```
 
-Run the smoke test before and after each deploy and compare.
+Run the smoke test before and after each deploy and compare. `/healthz`
+and `/readyz` carry the release in `X-Release`, so what is serving can be
+read from the service; `/readyz` answers 503 while a key is missing or
+malformed (the Worker's log names it).

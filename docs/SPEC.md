@@ -171,7 +171,11 @@ case folding is refused with 409, so the layout stays one-to-one.
 - CORS on every response: echo `Origin`, allow credentials, expose
   `Accept-Patch, Accept-Post, Accept-Put, Allow, Content-Range, ETag, Link,
   Location, WAC-Allow`. `OPTIONS` answers preflights with 204.
-- `GET /healthz` on any host returns `ok\n`, `Cache-Control: no-store`.
+- `GET /healthz` on any host returns `ok\n`, `Cache-Control: no-store`, and
+  `X-Release` (the deployment's `RELEASE` variable, `unknown` when unset).
+- `GET /readyz` returns `ready\n`, or 503 `not ready\n` when a key is missing
+  or malformed or a provider in `STORAGE` cannot be connected. The answer does
+  not say what is wrong; the Worker's log does, by name.
 
 ## Access control (WAC)
 
