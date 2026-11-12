@@ -14,7 +14,7 @@ import { type SqlRunner, isBlank } from '../adapters/sql.js';
 import { SqlAccountPods } from '../adapters/sqlAccountPods.js';
 import { SqlAccountStore } from '../adapters/sqlAccountStore.js';
 import { storageGrants } from '../composition.js';
-import type { Env } from '../env.js';
+import { type Env, isDev } from '../env.js';
 
 export class AccountObject extends DurableObject<Env> {
   private store: SqlAccountStore | null = null;
@@ -52,7 +52,9 @@ export class AccountObject extends DurableObject<Env> {
         () => Math.floor(Date.now() / 1000),
         async () => {
           const state = await this.pods.load();
-          return state !== null && webidPod(state).linkId !== null;
+          // A dev sign-in binds a named pod, which lives in the dev store and has no account behind it.
+          if (state === null) return isDev(this.env);
+          return webidPod(state).linkId !== null;
         },
       );
     }
