@@ -27,6 +27,16 @@ describe('directory', () => {
     expect(isPodId(first) && isPodId(second)).toBe(true);
   });
 
+  it('never hands out a retired pod id again', () => {
+    const draws = [new Uint8Array(32).fill(7), new Uint8Array(32).fill(7), new Uint8Array(32).fill(9)];
+    const d = new SqlDirectory(sqlRunner(), () => 0, () => 'k', () => draws.shift()!);
+    const first = d.allocatePodId('h1');
+    d.retirePodId(first);
+    const second = d.allocatePodId('h2');
+    expect(first).toBe('99999999');
+    expect(second).toBe('bbbbbbbb');
+  });
+
   it('stores registered clients under their own id', () => {
     const { d } = directory();
     const id = d.registerClient({ redirect_uris: ['https://a.example/cb'], client_name: 'A' });

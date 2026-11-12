@@ -120,6 +120,21 @@ describe('authorize', () => {
     expect(again).toMatchObject({ kind: 'consent', redirectUri: 'https://evil.example/cb' });
   });
 
+  it('takes one answer to a consent, and none after it expires', async () => {
+    const w = world();
+    await signedInWithPod(w);
+    const ask = async () => ((await w.provider.authorize(authQuery({ prompt: 'consent' }), 'clerk_sam')) as { pendingId: string }).pendingId;
+    const answered = await ask();
+    await w.provider.decide('clerk_sam', answered, true);
+    await expect(w.provider.decide('clerk_sam', answered, true)).rejects.toMatchObject({ code: 'invalid_request' });
+    const kept = await ask();
+    w.tick(10 * 60);
+    const late = await ask();
+    w.tick(1);
+    await expect(w.provider.decide('clerk_sam', kept, true)).rejects.toMatchObject({ code: 'invalid_request' });
+    expect(new URL(await w.provider.decide('clerk_sam', late, true)).searchParams.get('code')).toBeTruthy();
+  });
+
   it('returns access_denied when the person declines', async () => {
     const w = world();
     await signedInWithPod(w);
@@ -242,6 +257,27 @@ describe('token', () => {
     await expect(refresh(second.refresh_token, 'other-key')).rejects.toMatchObject({ code: 'invalid_dpop_proof' });
     await expect(refresh(first.refresh_token)).rejects.toMatchObject({ code: 'invalid_grant' });
     await expect(refresh(second.refresh_token)).rejects.toMatchObject({ code: 'invalid_grant' });
+  });
+
+  it('refuses a refresh token once its lifetime has passed', async () => {
+    const w = world();
+    await signedInWithPod(w);
+    const first = await exchange(w, await code(w), 'jkt');
+    const refresh = (t: unknown) => w.provider.token(new URLSearchParams({ grant_type: 'refresh_token', refresh_token: String(t) }), 'jkt');
+    w.tick(30 * 24 * 3600);
+    const second = await refresh(first.refresh_token);
+    w.tick(30 * 24 * 3600 + 1);
+    await expect(refresh(second.refresh_token)).rejects.toMatchObject({ code: 'invalid_grant' });
+  });
+
+  it('refuses a refresh that names another client', async () => {
+    const w = world();
+    await signedInWithPod(w);
+    const first = await exchange(w, await code(w), 'jkt');
+    const refresh = (client: string) =>
+      w.provider.token(new URLSearchParams({ grant_type: 'refresh_token', refresh_token: String(first.refresh_token), client_id: client }), 'jkt');
+    await expect(refresh('https://evil.example/id')).rejects.toMatchObject({ code: 'invalid_grant' });
+    expect((await refresh(CLIENT)).access_token).toBeTruthy();
   });
 
   it('lets only one of two simultaneous refreshes with the same token through', async () => {

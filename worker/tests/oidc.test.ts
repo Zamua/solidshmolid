@@ -13,6 +13,7 @@ let clientKeys: Keys;
 let otherKeys: Keys;
 let jwks: { keys: object[] };
 let profile: string;
+let discoveryIssuer: string;
 let fetches: string[];
 
 beforeAll(async () => {
@@ -23,6 +24,7 @@ beforeAll(async () => {
 
 function reset() {
   fetches = [];
+  discoveryIssuer = ISS;
   profile = `<${WEBID}> <http://www.w3.org/ns/solid/terms#oidcIssuer> <${ISS}>.`;
 }
 
@@ -33,7 +35,7 @@ async function publish(keys: Keys, kid: string) {
 const fakeFetch = async (url: string) => {
   fetches.push(url);
   const json = (v: unknown) => new Response(JSON.stringify(v), { headers: { 'Content-Type': 'application/json' } });
-  if (url === 'https://idp.example/.well-known/openid-configuration') return json({ issuer: ISS, jwks_uri: 'https://idp.example/jwks' });
+  if (url === 'https://idp.example/.well-known/openid-configuration') return json({ issuer: discoveryIssuer, jwks_uri: 'https://idp.example/jwks' });
   if (url === 'https://idp.example/jwks') return json(jwks);
   if (url === 'https://alice.example/profile/card') return new Response(profile, { headers: { 'Content-Type': 'text/turtle' } });
   return new Response('nope', { status: 404 });
@@ -56,9 +58,9 @@ async function token(over: Record<string, unknown> = {}, signer = issuerKeys, ki
   return new SignJWT(claims).setProtectedHeader({ alg: 'ES256', kid }).sign(signer.privateKey);
 }
 
-async function proof(over: Record<string, unknown> = {}, key = clientKeys) {
+async function proof(over: Record<string, unknown> = {}, key = clientKeys, typ = 'dpop+jwt') {
   return new SignJWT({ htm: 'GET', htu: URL_, jti: 'j1', iat: NOW / 1000, ...over })
-    .setProtectedHeader({ alg: 'ES256', typ: 'dpop+jwt', jwk: await exportJWK(key.publicKey) })
+    .setProtectedHeader({ alg: 'ES256', typ, jwk: await exportJWK(key.publicKey) })
     .sign(key.privateKey);
 }
 
@@ -110,6 +112,45 @@ describe('Solid-OIDC verification', () => {
     reset();
     await publish(issuerKeys, 'k1');
     await expect(verifier().verify(await make())).rejects.toThrow(InvalidCredentials);
+  });
+
+  type Make = () => Promise<{ method: string; url: string; authorization: string; dpop: string }>;
+  const rejectsSaying: [string, RegExp, Make][] = [
+    ['a token that never expires', /access token: .*"exp"/, async () => req(await token({ exp: undefined }), await proof())],
+    [
+      'a token signed with a shared secret',
+      /access token: .*"alg".*not allowed/,
+      async () => {
+        const claims = { iss: ISS, aud: 'solid', iat: NOW / 1000, exp: NOW / 1000 + 300, webid: WEBID, cnf: { jkt: 'x' } };
+        const forged = await new SignJWT(claims).setProtectedHeader({ alg: 'HS256', kid: 'k1' }).sign(new Uint8Array(32).fill(1));
+        return req(forged, await proof());
+      },
+    ],
+    [
+      'an issuer whose discovery document names another issuer',
+      /no usable OpenID configuration/,
+      async () => {
+        discoveryIssuer = 'https://other.example/';
+        return req(await token(), await proof());
+      },
+    ],
+    [
+      'a profile where only another subject names the issuer',
+      /does not name/,
+      async () => {
+        profile = `<https://alice.example/profile/card#bob> <http://www.w3.org/ns/solid/terms#oidcIssuer> <${ISS}>.`;
+        return req(await token(), await proof());
+      },
+    ],
+    ['a proof dated in the future', /DPoP proof: proof is stale/, async () => req(await token(), await proof({ iat: NOW / 1000 + 600 }))],
+    ['a proof typed as a plain JWT', /DPoP proof: .*"typ"/, async () => req(await token(), await proof({}, clientKeys, 'jwt'))],
+  ];
+  it.each(rejectsSaying)('rejects %s', async (_label, message, make) => {
+    reset();
+    await publish(issuerKeys, 'k1');
+    const attempt = verifier().verify(await make());
+    await expect(attempt).rejects.toThrow(InvalidCredentials);
+    await expect(attempt).rejects.toThrow(message);
   });
 
   it('rejects a WebID that does not name the issuer', async () => {
