@@ -7,7 +7,7 @@
 // own write queue keeps contention from our side to one request at a time.
 
 import { BadRequest, InsufficientStorage, StorageUnavailable } from '../../app/shared/errors.js';
-import { type ByteRange, type FileInfo, type FileLister, type FileStore, type ListedEntry, type Listing, RevisionConflict, type StoredFile, type WriteOptions } from '../../app/storage/ports.js';
+import { type ByteRange, CursorLost, type FileInfo, type FileLister, type FileStore, type ListedEntry, type Listing, RevisionConflict, type StoredFile, type WriteOptions } from '../../app/storage/ports.js';
 import { chunked } from './chunks.js';
 import { type Fetch, retryAfter, withAccessToken } from './http.js';
 
@@ -38,6 +38,7 @@ interface Metadata {
 }
 
 export class DropboxFileStore implements FileStore, FileLister {
+  readonly mergesCase = true;
   private readonly sleep: (ms: number) => Promise<void>;
   private readonly chunkSize: number;
   private readonly root: string;
@@ -114,6 +115,7 @@ export class DropboxFileStore implements FileStore, FileLister {
   async changes(cursor: string): Promise<Listing> {
     return this.listPages(`${API}/files/list_folder/continue`, { cursor });
   }
+
 
   // ---- internals ------------------------------------------------------------
 
@@ -192,6 +194,8 @@ export class DropboxFileStore implements FileStore, FileLister {
 
   private async json(url: string, body: object): Promise<Record<string, unknown>> {
     const res = await this.call(url, { json: body });
+    // Dropbox dropped the cursor; it says to list the folder again.
+    if (res.status === 409 && url.endsWith('/continue') && (await errorSummary(res.clone())).startsWith('reset')) throw new CursorLost('Dropbox reset the cursor');
     await this.ensureOk(res, url.slice(url.lastIndexOf('/2/') + 3));
     return (await res.json()) as Record<string, unknown>;
   }

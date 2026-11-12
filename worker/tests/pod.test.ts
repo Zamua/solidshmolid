@@ -8,6 +8,7 @@ import {
   NotFound,
   PreconditionFailed,
   RangeNotSatisfiable,
+  StorageUnavailable,
   Unauthenticated,
   Unprocessable,
   UnsupportedMediaType,
@@ -611,5 +612,77 @@ describe('the WebID profile', () => {
     expect((await read(pod, '/profile/card')).text).toContain('ali');
     const bare = await newPod();
     await bare.pod.put('/profile/card', alice, body(profileDocument(`${BASE}/`, ISSUER)), TTL, NO_CONDITIONS);
+  });
+});
+
+describe('an ACL that names its resource by another spelling of its URL', () => {
+  it('governs it all the same', async () => {
+    const { pod } = await newPod();
+    const path = '/notes/2026-11-12T10%3A00%3A00.txt';
+    await pod.put(path, alice, body('x'), 'text/plain', NO_CONDITIONS);
+    const acl = `@prefix acl: <http://www.w3.org/ns/auth/acl#>.
+<#o> a acl:Authorization; acl:agent <${ALICE}>; acl:accessTo <${BASE}/notes/2026-11-12T10:00:00.txt>; acl:mode acl:Read, acl:Write, acl:Control.`;
+    await pod.put(`${path}.acl`, alice, body(acl), TTL, NO_CONDITIONS);
+    expect([...(await pod.modes(path, alice))].sort()).toEqual(['append', 'control', 'read', 'write']);
+    expect((await pod.modes(path, bob)).size).toBe(0);
+    await pod.put(`${path}.acl`, alice, body(acl), TTL, NO_CONDITIONS);
+  });
+});
+
+describe('a name ending the way a stored file marks its type', () => {
+  it('is refused as a request would spell it, for documents and containers', async () => {
+    const { pod } = await newPod();
+    for (const path of ['/a%24.ttl', '/dir/b%24.txt', '/x%24.ttl/', '/x%24.ttl/inner.txt']) {
+      await expect(pod.put(path, alice, body('<#a> <#b> 1.'), TTL, NO_CONDITIONS)).rejects.toThrow(BadRequest);
+    }
+    const made = await pod.post('/', alice, body('x'), 'text/plain', 'c$.ttl', false);
+    expect(/%24\.\w+$/u.test(made.path)).toBe(false);
+    await pod.put('/price%24', alice, body('1'), 'text/plain', NO_CONDITIONS);
+  });
+});
+
+const PUBLIC_READ = (subject: string) =>
+  `@prefix acl: <http://www.w3.org/ns/auth/acl#>.
+<#o> a acl:Authorization; acl:agent <${ALICE}>; acl:accessTo <${subject}>; acl:default <${subject}>; acl:mode acl:Read, acl:Write, acl:Control.
+<#p> a acl:Authorization; acl:agentClass <http://xmlns.com/foaf/0.1/Agent>; acl:accessTo <${subject}>; acl:default <${subject}>; acl:mode acl:Read.`;
+
+describe('a pod whose folder has not answered lately', () => {
+  const stale = async () => {
+    const { index, files, pod: owner } = await newPod();
+    await owner.put('/public/', alice, body(''), null, NO_CONDITIONS);
+    await owner.put('/public/.acl', alice, body(PUBLIC_READ('./')), TTL, NO_CONDITIONS);
+    await owner.put('/public/doc.ttl', alice, body('<#a> <#b> "cached".'), TTL, NO_CONDITIONS);
+    let fresh = true;
+    let id = 0;
+    const pod = new Pod({ index, files, base: BASE, now: () => new Date(), newId: () => `s${++id}`, fresh: () => fresh });
+    await pod.read('/public/doc.ttl', anon, GET);
+    return { pod, files, goStale: () => void (fresh = false) };
+  };
+
+  it('serves and decides from its cached copies while it is fresh', async () => {
+    const { pod, files } = await stale();
+    files.read = async () => {
+      throw new StorageUnavailable('down');
+    };
+    expect(await textOf((await pod.read('/public/doc.ttl', anon, GET)).body)).toContain('cached');
+  });
+
+  it('asks the folder instead, and fails as it fails', async () => {
+    const { pod, files, goStale } = await stale();
+    goStale();
+    expect(await textOf((await pod.read('/public/doc.ttl', anon, GET)).body)).toContain('cached');
+    files.read = async () => {
+      throw new StorageUnavailable('the link was revoked');
+    };
+    await expect(pod.read('/public/doc.ttl', anon, GET)).rejects.toThrow(StorageUnavailable);
+    await expect(pod.modes('/public/doc.ttl', anon)).rejects.toThrow(StorageUnavailable);
+  });
+
+  it('takes an ACL edited in the folder as it stands there', async () => {
+    const { pod, files, goStale } = await stale();
+    await files.write('public/.acl', new TextEncoder().encode(OWNER_ONLY('./')));
+    expect((await pod.modes('/public/doc.ttl', anon)).has('read')).toBe(true);
+    goStale();
+    expect((await pod.modes('/public/doc.ttl', anon)).size).toBe(0);
   });
 });

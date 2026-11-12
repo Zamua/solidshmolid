@@ -35,6 +35,9 @@ describe('documentFile matches the CSS file layout', () => {
 
   it('refuses names that would read back as a different resource', () => {
     expect(() => documentFile('/a$.ttl', 'text/turtle')).toThrow(UnmappablePath);
+    // As a request spells it: `$` arrives percent-encoded.
+    expect(() => documentFile(canonicalPath('/a$.ttl'), 'text/turtle')).toThrow(UnmappablePath);
+    expect(documentFile(canonicalPath('/price$'), 'text/plain').file).toBe('price$$.txt');
   });
 
   it('keeps Windows-hostile characters encoded in file names', () => {

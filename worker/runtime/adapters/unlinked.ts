@@ -4,6 +4,7 @@ import { StorageUnavailable } from '../../app/shared/errors.js';
 import type { FileStore } from '../../app/storage/ports.js';
 
 export class UnlinkedStore implements FileStore {
+  readonly mergesCase = false;
   private fail(): never {
     throw new StorageUnavailable('this pod has no linked storage');
   }

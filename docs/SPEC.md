@@ -140,6 +140,14 @@ are not. Creating a resource whose path equals an existing one under Unicode
 case folding is refused with 409, so the layout stays one-to-one. A name that
 is `.acl` or `.meta`, or ends in one, in any other case (`.ACL`, `x.Meta`) is
 refused with 400: on such storage it would be read as the auxiliary resource.
+So is a name ending in `$.<extension>`, anywhere in the path: as a file it
+would be read back as another resource.
+
+What the folder itself holds is taken as data. Two names that differ only in
+case cannot both be resources: on storage that tells them apart, the first one
+listed keeps the name and the other is left out and counted; on storage that
+merges case (Dropbox), a file under another spelling is the same file renamed,
+and a folder under another spelling is the folder the pod already has.
 
 ## Resource semantics
 
@@ -218,7 +226,10 @@ a version counter bumped on membership change; their ETag derives from it.
 
 Small RDF documents (64 KiB and under, so every ACL and the profile) are
 cached in the index, which keeps access control and WebID resolution working
-while the user's storage is slow or briefly unreachable.
+while the user's storage is slow or briefly unreachable. Briefly is five
+minutes: once the folder has not answered a sync for that long, nothing is
+served or decided from a cached copy, parsed ACLs included. The storage is
+asked, and when it refuses or fails the answer is 503.
 
 Write order: storage first, index second, in one DO transaction after the
 storage call succeeds. A crash between the two leaves either an unindexed
@@ -243,7 +254,9 @@ interface FileStore {
 ```
 
 Paths are folder-relative with `/` separators. `rev` is the provider's
-revision (Dropbox `rev`, Drive version). Adapters translate
+revision (Dropbox `rev`; Drive file id and version, since a version alone
+repeats when a file is deleted and written again). A path never has the same
+revision twice. Adapters translate
 provider errors into a small set: not found, conflict, quota exceeded,
 unauthorized (access revoked), rate limited (with retry-after), unavailable.
 
@@ -330,7 +343,12 @@ the person abandons.
 While placed, a request first folds in what changed in the folder since the last look
 (Dropbox `list_folder/continue`, Drive `changes.list`, from the stored cursor), at most every
 30 s per pod. Webhooks can
-replace the polling later; the reconcile path is the same.
+replace the polling later; the reconcile path is the same. An entry the index
+cannot take is left out and counted, and the cursor moves on: one entry never
+holds up the rest. When the provider can no longer continue from the cursor
+(Dropbox resets it; the Drive pod folder was trashed or moved away), the folder
+is listed afresh and the index rebuilt from it, keeping the ETags and caches of
+files that did not change.
 
 `STORAGE` lists the providers people may connect, in the order the connect page offers
 them: `dropbox`, `google-drive`, or `dev` in the dev config, which grants consent on the
@@ -342,8 +360,9 @@ provider account that is already linked; nothing replaces the grant of an
 existing link, and pods do not move between links. So when the provider
 refuses the stored refresh token (the person removed the app's access there,
 or the provider expired the grant), the pods in that link answer 503 for
-every read and write that needs storage, while small RDF documents still
-come from the index cache. Linking the same storage again does not bring
+every read and write that needs storage. Small RDF documents still come
+from the index cache for five minutes after the last sync that worked, and
+then answer 503 too. Linking the same storage again does not bring
 them back. A link can be disconnected only while no pod uses it, and the
 first pod, which holds the WebID, goes only with the account.
 

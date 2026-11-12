@@ -3,7 +3,8 @@
 /** A stored file. `file` is relative to the pod folder, `/`-separated. */
 export interface FileInfo {
   file: string;
-  /** The storage provider's revision; changes on every write. */
+  /** The storage provider's revision: new on every write, and never one this
+   * path had before, a file deleted and written again included. */
   rev: string;
   size: number;
   modified: string;
@@ -30,6 +31,9 @@ export interface WriteOptions {
 
 /** The user's storage, rooted at the pod folder. */
 export interface FileStore {
+  /** Names that differ only in case are one name here: the storage keeps one
+   * spelling and answers to any. */
+  readonly mergesCase: boolean;
   read(file: string, range?: ByteRange): Promise<StoredFile | null>;
   write(file: string, body: ReadableStream<Uint8Array> | Uint8Array, options?: WriteOptions): Promise<FileInfo>;
   /** Removing a missing file succeeds. */
@@ -66,9 +70,14 @@ export interface Listing {
 /** Storage that can enumerate the pod folder and report later changes. */
 export interface FileLister {
   listAll(): Promise<Listing>;
-  /** Changes since `cursor`, deletions included. */
+  /** Changes since `cursor`, deletions included. Throws `CursorLost` when
+   * the storage can no longer say what changed since then. */
   changes(cursor: string): Promise<Listing>;
 }
+
+/** The change feed cannot be continued from a cursor: only a fresh listing
+ * says what the folder holds now. */
+export class CursorLost extends Error {}
 
 /** Placing a pod in a folder either starts a new pod or adopts the one there. */
 export type PlacementOutcome = 'created' | 'adopted';

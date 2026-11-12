@@ -82,10 +82,17 @@ export interface DocumentFile {
   typeInMeta: boolean;
 }
 
+/** Whether a name in the path ends the way a stored file marks its type
+ * ('a$.ttl'): as a file or folder name it would be read back as, or take the
+ * place of, another resource's file. */
+export function hasTypeSuffix(path: PodPath): boolean {
+  return path.split('/').some((name) => /\$\.\w+$/u.test(decodeURIComponent(name)));
+}
+
 /** Where a document of this type is stored. */
 export function documentFile(path: PodPath, contentType: string): DocumentFile {
   if (isContainer(path)) throw new Error(`${path} is a container`);
-  if (/\$\.\w+$/u.test(path)) throw new UnmappablePath('a document name may not end in $.<extension>');
+  if (hasTypeSuffix(path)) throw new UnmappablePath('a document name may not end in $.<extension>');
   const base = basePathOf(path);
   const type = bareType(contentType);
   if (type === typeOfFileName(base)) return { file: base, typeInMeta: false };

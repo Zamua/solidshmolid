@@ -108,6 +108,15 @@ export class FakeGoogleDrive {
     this.trashTree(this.byId.get(this.idAt(path)!)!);
   }
 
+  /** Everything in the trash put back, as restoring a trashed folder does. */
+  restoreOutOfBand(): void {
+    for (const f of this.byId.values()) {
+      if (!f.trashed) continue;
+      f.trashed = false;
+      this.touch(f);
+    }
+  }
+
   renameOutOfBand(path: string, name: string): void {
     const f = this.byId.get(this.idAt(path)!)!;
     f.name = name;
