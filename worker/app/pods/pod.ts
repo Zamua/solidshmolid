@@ -10,7 +10,7 @@ import { containerDescription } from '../../domain/pods/container.js';
 import { negotiate } from '../../domain/pods/conneg.js';
 import { UnmappablePath, basePathOf, documentFile, hasTypeSuffix, metaFileOf } from '../../domain/pods/layout.js';
 import { bareType } from '../../domain/shared/mediaTypes.js';
-import { ROOT_ACL, allowedMethods } from '../../domain/pods/methods.js';
+import { ROOT_ACL, STORAGE_DESCRIPTION, allowedMethods } from '../../domain/pods/methods.js';
 import { InvalidPatch, type Patch, PatchConflict, applyPatch, modesForPatch, parsePatch } from '../../domain/pods/n3patch.js';
 import { type Update, applyUpdate, modesForUpdate, parseUpdate } from '../../domain/pods/sparqlUpdate.js';
 import {
@@ -646,7 +646,7 @@ export class Pod {
 
   private isFree(path: PodPath): boolean {
     const { index } = this.deps;
-    if (isAclPath(path) || isMetaPath(path) || shadowsAuxiliary(path) || hasTypeSuffix(path) || this.arriving.has(path)) return false;
+    if (isAclPath(path) || isMetaPath(path) || shadowsAuxiliary(path) || hasTypeSuffix(path) || path === STORAGE_DESCRIPTION || this.arriving.has(path)) return false;
     return !index.get(path) && !index.get(otherKind(path)) && !index.byFold(foldKey(path));
   }
 
