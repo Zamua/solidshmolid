@@ -20,6 +20,7 @@ export function privacyPage(support: string | null): Response {
 <p>solidshmolid is not meant for children under 13.</p>
 <h2>Who else is involved</h2>
 <p>Cloudflare runs our servers and keeps short-lived request logs for operating the service. Clerk handles sign-in. Your storage provider (Dropbox or Google Drive) holds your files under your own account and its own terms. Google is involved only if you continue with Google or keep your pods in Google Drive.</p>
+<p>We count how much the service is used, such as how many people were active in a day or how many pods were made. Those counts are kept under a scrambled identifier that cannot be traced back to you, and they hold nothing about your files, their names or the apps you use.</p>
 <p>We do not sell your data, show ads, or use your files for anything except serving your pod to you and the apps you allow.</p>
 <h2>Leaving</h2>
 <p>You can remove apps, disconnect storage, delete a pod and delete your account. Deleting your account removes what we keep and your sign-in with Clerk. Your storage folders stay yours unless you choose to delete them too, and each is still a complete pod you can use with another Solid server. You can also revoke our access from your storage provider at any time.</p>

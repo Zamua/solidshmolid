@@ -6,9 +6,11 @@ import { Accounts } from '../app/accounts/accounts.js';
 import type { Logins, Placement } from '../app/accounts/ports.js';
 import { Provider } from '../app/identity/provider.js';
 import { Pod } from '../app/pods/pod.js';
+import { type Activity, NO_ACTIVITY } from '../app/shared/activity.js';
 import { StorageUnavailable } from '../app/shared/errors.js';
 import type { FileLister, FileStore, StorageAuthorization } from '../app/storage/ports.js';
 import { FolderSync } from '../app/storage/sync.js';
+import { AnalyticsActivity } from './adapters/activity.js';
 import { RpcAccounts, rpcAccountPods, rpcDirectory, rpcIdentities, rpcPods } from './adapters/accountRpc.js';
 import { HttpClientRegistry } from './adapters/clientRegistry.js';
 import { DevFileStore } from './adapters/devFiles.js';
@@ -136,7 +138,13 @@ export function accounts(env: Env, hosts: Hosts): Accounts {
     authorizations: storageAuthorizations(env),
     ids: { random: randomHex },
     webidOf: hosts.webidOf,
+    activity: activity(env),
   });
+}
+
+/** Usage events, where the deployment binds a dataset and sets its salt. */
+export function activity(env: Env): Activity {
+  return env.ACTIVITY && env.ACTIVITY_SALT ? new AnalyticsActivity(env.ACTIVITY, env.ACTIVITY_SALT) : NO_ACTIVITY;
 }
 
 /** A pod's services, wired to the storage it currently lives in. */

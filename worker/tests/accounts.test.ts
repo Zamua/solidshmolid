@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { Accounts, HoldsWebid, LinkExpired, NoStorageYet, NotConfirmed, NotSignedUp, StorageInUse } from '../app/accounts/accounts.js';
+import type { ActivityEvent } from '../app/shared/activity.js';
 import { NotFound } from '../app/shared/errors.js';
 import type { AccountRepository, AccountState, Directory, LinkSummary, PendingDeletion, PendingLink, Placement, PodRecord, Pods } from '../app/accounts/ports.js';
 import type { StorageAuthorization } from '../app/storage/ports.js';
@@ -109,6 +110,7 @@ function world() {
     },
   };
   let n = 0;
+  const events: ActivityEvent[] = [];
   const service = new Accounts({
     directory,
     account: (key) => {
@@ -121,8 +123,9 @@ function world() {
     authorizations: { dropbox: authorization, other: { ...authorization, provider: 'other' } },
     ids: { random: () => `r${++n}` },
     webidOf: (podId) => `https://${podId}.pods.example/profile/card#me`,
+    activity: { record: async (event) => void events.push(event) },
   });
-  return { service, accounts, directory, placed, declared, dropped, retired, removedLogins, bound };
+  return { events, service, accounts, directory, placed, declared, dropped, retired, removedLogins, bound };
 }
 
 const stateOf = (url: string) => new URL(url).searchParams.get('state')!.split('.') as [string, string];
@@ -337,5 +340,18 @@ describe('browsing files', () => {
     await service.signup('user_eve');
     await expect(service.files('user_eve', 'pod1xxxx', '/')).rejects.toThrow(NotFound);
     await expect(service.files('user_eve', 'pod2xxxx', '/')).rejects.toThrow(NoStorageYet);
+  });
+});
+
+describe('usage events', () => {
+  it('reports a signup once, a storage link by provider and each added pod, all for the WebID pod', async () => {
+    const { service, events } = await connected();
+    await service.signup('user_dana');
+    await service.addPod('user_dana');
+    expect(events).toEqual([
+      { actor: 'pod1xxxx', action: 'signup' },
+      { actor: 'pod1xxxx', action: 'storage_linked', detail: 'dropbox' },
+      { actor: 'pod1xxxx', action: 'pod_created' },
+    ]);
   });
 });

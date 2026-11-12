@@ -361,6 +361,28 @@ with 522. A failure is 401 with `WWW-Authenticate: DPoP algs="...", error="inval
 algorithms being those discovery advertises. The dev
 config also accepts an `X-Dev-WebID` header.
 
+## Usage counting
+
+Optional: a deployment that binds an Analytics Engine dataset (`ACTIVITY`) and
+sets `ACTIVITY_SALT` gets one data point per event; otherwise nothing is
+written. Events go through the `Activity` port (`app/shared/activity.ts`); the
+adapter writes `indexes[0]` = actor hash, `blobs` = app, action, detail, and
+`doubles[0]` = 1.
+
+- **Actor**: the id of the pod holding the person's WebID, so one person is
+  one actor however many pods they have. Only the first 16 hex characters of
+  HMAC-SHA256(salt, `solidshmolid:<pod id>`) are written.
+- `active`: a signed-in request on the account site by someone with an
+  account (not the shared page script), or a pod request whose verified token
+  names a WebID this service hosts, whichever pod it addresses. Requests
+  without a token, and tokens for WebIDs hosted elsewhere, write nothing.
+- `signup`: when the account is created.
+- `storage_linked`: when a storage connection completes; detail is the provider.
+- `pod_created`: each pod added after the first.
+
+No event carries a path, a pod address, a WebID, a client id or content. A
+write that fails is dropped; it never fails or delays the request.
+
 ## Milestones
 
 - **M1 core** (done): Worker + Pod DO + domain, `MemoryFileStore`/`DevFileStore`, all

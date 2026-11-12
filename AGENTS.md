@@ -33,6 +33,9 @@ worker/runtime/
 - The Solid-OIDC provider (`app/identity/provider.ts`) issues DPoP-bound
   tokens; `make e2e` proves a stock CSS accepts them.
 - No D1, no R2 for user data.
+- Usage counting (`app/shared/activity.ts`, SPEC "Usage counting") is off
+  unless the deployment binds `ACTIVITY` and sets `ACTIVITY_SALT`; events hold
+  a keyed hash of the WebID pod id and nothing else about anyone.
 
 ## Commands
 
