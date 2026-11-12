@@ -366,7 +366,8 @@ config also accepts an `X-Dev-WebID` header.
 Optional: a deployment that binds an Analytics Engine dataset (`ACTIVITY`) and
 sets `ACTIVITY_SALT` gets one data point per event; otherwise nothing is
 written. Events go through the `Activity` port (`app/shared/activity.ts`); the
-adapter writes `indexes[0]` = actor hash, `blobs` = app, action, detail, and
+adapter writes `indexes[0]` = actor hash for `active` and `<actor hash>:<action>`
+for every other action (`-` stands for no actor), `blobs` = app, action, detail, and
 `doubles[0]` = 1.
 
 - **Actor**: the id of the pod holding the person's WebID, so one person is
@@ -379,6 +380,10 @@ adapter writes `indexes[0]` = actor hash, `blobs` = app, action, detail, and
 - `signup`: when the account is created.
 - `storage_linked`: when a storage connection completes; detail is the provider.
 - `pod_created`: each pod added after the first.
+- `pod_request`: every pod request served except OPTIONS, with no actor;
+  detail is `owner` (the token's WebID lives in the pod addressed), `agent`
+  (any other valid token) or `public` (no token). A person's further pods see
+  their owner as `agent`, since the WebID lives in the first.
 
 No event carries a path, a pod address, a WebID, a client id or content. A
 write that fails is dropped; it never fails or delays the request.

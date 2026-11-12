@@ -1,5 +1,5 @@
-// Activity events as Workers Analytics Engine data points: the index is the
-// actor, keyed-hashed so the stored value cannot be turned back into a pod id.
+// Activity events as Workers Analytics Engine data points: the index names
+// the actor, keyed-hashed so the stored value cannot be turned back into a pod id.
 
 import type { Activity, ActivityEvent } from '../../app/shared/activity.js';
 
@@ -23,7 +23,10 @@ export class AnalyticsActivity implements Activity {
   async record(event: ActivityEvent): Promise<void> {
     try {
       const actor = event.actor === null ? NO_ACTOR : await this.hash(event.actor);
-      this.dataset.writeDataPoint({ indexes: [actor], blobs: [ACTIVITY_APP, event.action, event.detail ?? ''], doubles: [1] });
+      // Sampling is per index value: only `active` shares the bare actor, so
+      // distinct indexes count people and rarer actions are never sampled away.
+      const index = event.action === 'active' ? actor : `${actor}:${event.action}`;
+      this.dataset.writeDataPoint({ indexes: [index], blobs: [ACTIVITY_APP, event.action, event.detail ?? ''], doubles: [1] });
     } catch {
       // Counting is best effort: a failed write costs one data point.
     }

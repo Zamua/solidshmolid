@@ -2,7 +2,7 @@
 // totals such as people active per day can be kept without recording what
 // anyone did. It never carries a path, an address or content.
 
-export type ActivityAction = 'active' | 'signup' | 'pod_created' | 'storage_linked';
+export type ActivityAction = 'active' | 'signup' | 'pod_created' | 'storage_linked' | 'pod_request';
 
 export interface ActivityEvent {
   /** The id of the pod holding the person's WebID: one per person, however

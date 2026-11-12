@@ -22,6 +22,17 @@ describe('activity data points', () => {
     expect(d.points[0]!.indexes).toHaveLength(1);
   });
 
+  it('indexes active by the bare actor and every other action by actor and action', async () => {
+    const d = dataset();
+    const a = new AnalyticsActivity(d, 'salt-a');
+    await a.record({ actor: 'k3x9fqm7', action: 'active' });
+    await a.record({ actor: 'k3x9fqm7', action: 'signup' });
+    await a.record({ actor: null, action: 'pod_request', detail: 'public' });
+    const [active, signup, served] = d.points.map((p) => p.indexes[0]!);
+    expect(signup).toBe(`${active}:signup`);
+    expect(served).toBe('-:pod_request');
+  });
+
   it('indexes by a 16-hex keyed hash: stable per actor and salt, never the id itself', async () => {
     const d = dataset();
     const a = new AnalyticsActivity(d, 'salt-a');

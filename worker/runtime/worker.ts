@@ -117,6 +117,7 @@ async function pod(request: Request, env: Env, url: URL, handle: string, ctx?: E
   const viewingProfile = isNavigation(request) && request.method === 'GET' && url.pathname === PROFILE_PATH;
   if (viewingProfile) headers.set('Accept', 'text/turtle');
 
+  let asked: 'owner' | 'agent' | 'public' = 'public';
   if (request.method !== 'OPTIONS') {
     let agent: VerifiedAgent | null;
     try {
@@ -133,6 +134,7 @@ async function pod(request: Request, env: Env, url: URL, handle: string, ctx?: E
     if (agent) {
       const actor = hostsFor(env, url).podOfWebid(agent.webid);
       if (actor) ctx?.waitUntil(activity(env).record({ actor, action: 'active' }));
+      asked = actor === handle ? 'owner' : 'agent';
       headers.set(AGENT_HEADER, agent.webid);
       headers.set(JTI_HEADER, agent.jti);
       headers.set(JTI_EXPIRES_HEADER, String(agent.jtiExpires));
@@ -141,6 +143,7 @@ async function pod(request: Request, env: Env, url: URL, handle: string, ctx?: E
     }
   }
   const response = await stub.fetch(new Request(request, { headers }));
+  if (request.method !== 'OPTIONS') ctx?.waitUntil(activity(env).record({ actor: null, action: 'pod_request', detail: asked }));
   if (!isNavigation(request)) return response;
   if (response.status === 401 || response.status === 403 || response.status === 404) {
     return podLandingPage(response.status, `${base}/`, hostsFor(env, url).issuer, handle);
