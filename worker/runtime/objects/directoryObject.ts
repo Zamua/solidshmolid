@@ -1,9 +1,10 @@
 // The one global object. A thin shell over SqlDirectory: every lookup here is
 // keyed, so one object serves them all.
 
+import { bookmarkAt, restoreTo } from '../adapters/restore.js';
 import { DurableObject } from 'cloudflare:workers';
 import type { SqlRunner } from '../adapters/sql.js';
-import { SqlDirectory } from '../adapters/sqlDirectory.js';
+import { type DirectoryExport, SqlDirectory } from '../adapters/sqlDirectory.js';
 import type { Env } from '../env.js';
 
 export class DirectoryObject extends DurableObject<Env> {
@@ -40,5 +41,21 @@ export class DirectoryObject extends DurableObject<Env> {
 
   async clientSignedIn(id: string): Promise<void> {
     this.directory.clientSignedIn(id);
+  }
+
+  /** Operator only (see http/operator.ts): the bookmark for a past moment. */
+  async bookmark(at: number): Promise<string> {
+    return bookmarkAt(this.ctx.storage, at, Date.now());
+  }
+
+  /** Operator only: returns this object to a bookmark, discarding what was
+   * written since, and answers with the bookmark that undoes it. */
+  async restore(bookmark: string): Promise<string> {
+    return restoreTo(this.ctx.storage, bookmark, () => this.ctx.abort('restoring to a bookmark'));
+  }
+
+  /** Operator only: what the directory holds that nothing else can rebuild. */
+  async export(): Promise<DirectoryExport> {
+    return this.directory.export();
   }
 }

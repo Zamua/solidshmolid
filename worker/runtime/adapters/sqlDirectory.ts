@@ -29,6 +29,21 @@ export class SqlDirectory {
     this.sql.exec('CREATE INDEX IF NOT EXISTS client_unused ON client(created) WHERE signed_in IS NULL');
   }
 
+  /** What cannot be rebuilt from anyone's storage: who holds which account,
+   * and every pod id assigned. Registered clients are left out; apps register again. */
+  export(): DirectoryExport {
+    const rows = (query: string) => this.sql.exec(query).toArray();
+    return {
+      people: rows('SELECT person, account_key FROM person ORDER BY person').map((r) => ({ person: String(r.person), accountKey: String(r.account_key) })),
+      podIds: rows('SELECT pod_id, account_key, state, assigned FROM pod_id ORDER BY pod_id').map((r) => ({
+        podId: String(r.pod_id),
+        accountKey: String(r.account_key),
+        state: String(r.state),
+        assigned: Number(r.assigned),
+      })),
+    };
+  }
+
   /** The account key for a person, assigned on first sight. */
   accountKeyFor(person: string): string {
     const row = this.sql.exec('SELECT account_key FROM person WHERE person = ?', person).toArray()[0];
@@ -76,4 +91,9 @@ export class SqlDirectory {
     const row = this.sql.exec('SELECT doc FROM client WHERE id = ?', id).toArray()[0];
     return row ? (JSON.parse(String(row.doc)) as Record<string, unknown>) : null;
   }
+}
+
+export interface DirectoryExport {
+  people: { person: string; accountKey: string }[];
+  podIds: { podId: string; accountKey: string; state: string; assigned: number }[];
 }
