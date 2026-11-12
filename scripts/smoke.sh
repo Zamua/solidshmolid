@@ -65,6 +65,7 @@ if [ "${APEX_URL#https://}" != "$APEX_URL" ]; then
   expect 'welcome sets HSTS' "$HEADERS" 'Strict-Transport-Security: max-age='
   host=${APEX_URL#https://}
   request 'plain http moves to https' 301 "http://$host/sign-in?x=1" && expect 'http keeps path and query' "$HEADERS" "Location: $APEX_URL/sign-in?x=1"
+  request 'no dev sign-in' 404 "$APEX_URL/dev/sign-in"
   request 'another port moves to https' 301 "https://$host:8443/sign-in" && expect 'port is dropped' "$HEADERS" "Location: $APEX_URL/sign-in"
 fi
 request 'sign-in page' 200 "$APEX_URL/sign-in"

@@ -139,7 +139,7 @@ export class SqlAccountPods implements AccountRepository {
   }
 
   private insertPod(p: PodRecord): void {
-    this.sql.exec('INSERT INTO pod(pod_id, link_id, folder, seq) VALUES (?, ?, ?, (SELECT COUNT(*) FROM pod))', p.podId, p.linkId, p.folder);
+    this.sql.exec('INSERT INTO pod(pod_id, link_id, folder, seq) VALUES (?, ?, ?, (SELECT COALESCE(MAX(seq), -1) + 1 FROM pod))', p.podId, p.linkId, p.folder);
   }
 
   private key(): string | null {
