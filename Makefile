@@ -15,9 +15,10 @@ typecheck: ## typecheck the worker and its tests
 	$(NODE) tsc -p worker/tsconfig.json --noEmit
 	$(NODE) tsc -p worker/tests/tsconfig.json --noEmit
 
-icons: ## regenerate the page icons from @phosphor-icons/core (names in scripts/icons.mjs), the favicon and home-screen icons
+icons: ## regenerate the page icons from @phosphor-icons/core (names in scripts/icons.mjs), the favicon and home-screen icons, and the fonts from @fontsource
 	node scripts/icons.mjs
 	node scripts/app-icons.mjs
+	node scripts/fonts.mjs
 
 test: ## unit tests
 	$(NODE) vitest run --root worker
