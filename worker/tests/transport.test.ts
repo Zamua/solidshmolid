@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { httpsRedirect, withHsts } from '../runtime/http/transport.js';
+import { httpsRedirect, untransformed, withHsts } from '../runtime/http/transport.js';
 
 const redirect = (method: string, address: string) => httpsRedirect(new Request(address, { method }), new URL(address));
 
@@ -33,5 +33,21 @@ describe('the one address a deployment answers on', () => {
     expect(response.status).toBe(404);
     expect(response.headers.get('ETag')).toBe('"1"');
     expect(await response.text()).toBe('body');
+  });
+});
+
+describe('bodies no proxy may rewrite', () => {
+  const cache = (headers: Record<string, string>) => untransformed(new Response('body', { headers })).headers.get('Cache-Control');
+
+  it('says so on every response, beside what the response already says about caching', () => {
+    expect(cache({})).toBe('no-transform');
+    expect(cache({ 'Cache-Control': 'no-store' })).toBe('no-store, no-transform');
+    expect(cache({ 'Cache-Control': 'private, no-cache' })).toBe('private, no-cache, no-transform');
+    expect(cache({ 'Cache-Control': 'public, No-Transform' })).toBe('public, No-Transform');
+  });
+
+  it('keeps the status, the other headers and the body', async () => {
+    const response = untransformed(new Response('body', { status: 404, headers: { ETag: '"1"' } }));
+    expect([response.status, response.headers.get('ETag'), await response.text()]).toEqual([404, '"1"', 'body']);
   });
 });

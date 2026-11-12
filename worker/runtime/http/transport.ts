@@ -21,3 +21,14 @@ export function withHsts(response: Response): Response {
   out.headers.set('Strict-Transport-Security', HSTS);
   return out;
 }
+
+/** Tells every proxy on the way, the edge included, to pass the body on
+ * unchanged: a page gets no script it did not ask for, and a pod's document
+ * reaches its reader as the bytes its ETag names. */
+export function untransformed(response: Response): Response {
+  if (response.status === 101) return response;
+  const out = new Response(response.body, response);
+  const cache = out.headers.get('Cache-Control');
+  if (!/(^|,)\s*no-transform\s*(,|$)/iu.test(cache ?? '')) out.headers.set('Cache-Control', cache ? `${cache}, no-transform` : 'no-transform');
+  return out;
+}
