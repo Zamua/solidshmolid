@@ -137,7 +137,9 @@ resource URL path `p` (percent-decoded):
 
 **Case.** Solid paths are case-sensitive; Dropbox, OneDrive and default macOS
 are not. Creating a resource whose path equals an existing one under Unicode
-case folding is refused with 409, so the layout stays one-to-one.
+case folding is refused with 409, so the layout stays one-to-one. A name that
+is `.acl` or `.meta`, or ends in one, in any other case (`.ACL`, `x.Meta`) is
+refused with 400: on such storage it would be read as the auxiliary resource.
 
 ## Resource semantics
 
@@ -162,8 +164,13 @@ case folding is refused with 409, so the layout stays one-to-one.
   nested formulae) is 422. A `where` that does not match exactly once, or a
   delete that is absent, is 409. Any RDF document can be patched; it keeps
   its stored type.
-- `DELETE` removes a document (and its `.acl`/`.meta`) or an empty container
-  (409 if not empty). The root cannot be deleted.
+- `DELETE` removes a document (then its `.meta` and `.acl`, in that order, so
+  a failure never leaves the document without its ACL) or an empty container
+  (409 if not empty, and 409 if its folder holds files the pod does not
+  list: those are left for the person to move). The root and the root ACL
+  cannot be deleted (405).
+- `POST`, and `PUT`/`PATCH` of an ACL, check access before they look at what
+  exists, like every other method.
 - Conditional requests: `If-Match` and `If-None-Match` (including `*`) on
   every write, against the index ETag. A failed precondition is 412.
 - Response headers: `ETag`, `Last-Modified`, `Link` (`rel="type"` for LDP
@@ -231,7 +238,7 @@ interface FileStore {
   remove(path)
   makeFolder(path)
   removeFolder(path)
-  list(folder) -> FileInfo[]
+  namesIn(folder) -> string[]            // what the folder holds directly
 }
 ```
 
@@ -468,13 +475,13 @@ Not implemented:
 
 Deviations:
 
-- The root ACL (`/.acl`) can be deleted by an agent with Control. The protocol
-  asks for 405. Deleting it leaves the pod with no access rules, so nobody,
-  the owner included, can use it over the protocol.
-- The WebID profile is an ordinary document. `PUT` and `PATCH` may change or
-  remove `solid:oidcIssuer` and `pim:storage`, where the WebID Profile draft
-  asks for 409. A profile that no longer names the issuer, or is no longer
-  publicly readable, ends app sign-in for that WebID.
+- A root ACL that would leave no named agent with Control over the root is
+  refused with 409, which the protocol does not ask for.
+- In the WebID profile, `solid:oidcIssuer` is protected: a `PUT`, `PATCH` or
+  `DELETE` that would change or remove it is 409. `pim:storage` is not
+  protected, where the WebID Profile draft asks for that too, and nothing
+  keeps the profile publicly readable: a profile made private ends app
+  sign-in for that WebID.
 - `GET` and `HEAD` ignore `If-None-Match` and `If-Modified-Since`: there is no
   304.
 - Responses carry `Vary: Origin` but not `Vary: Accept`, though one URL can
