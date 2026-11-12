@@ -22,3 +22,8 @@ export function containerDescription(url: string, members: Member[], modified: s
   for (const m of members) out.push(quad(self, namedNode(LDP('contains')), namedNode(m.url)));
   return out;
 }
+
+/** What a storage says about itself: that it is one. */
+export function storageDescription(rootUrl: string): Quad[] {
+  return [quad(namedNode(rootUrl), namedNode(RDF('type')), namedNode(PIM('Storage')))];
+}

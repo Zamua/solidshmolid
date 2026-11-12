@@ -1,7 +1,9 @@
 // HTTP <-> pod service translation. Parses a request, calls one service
 // method, shapes the result for the wire. No Solid rules live here.
 
-import { N3, SPARQL_UPDATE } from '../../domain/shared/rdf.js';
+import { N3, RDF_TYPES, SPARQL_UPDATE, serializeRdf } from '../../domain/shared/rdf.js';
+import { storageDescription } from '../../domain/pods/container.js';
+import { negotiate } from '../../domain/pods/conneg.js';
 import {
   BadRequest,
   Conflict,
@@ -25,8 +27,8 @@ import { paced, readAll } from '../../app/shared/streams.js';
 import type { Conditions, EtagList, RangeRequest } from '../../domain/pods/requests.js';
 import { InvalidPath, type PodPath, aclPathOf, canonicalPath, isAclPath, isContainer } from '../../domain/pods/paths.js';
 import { DPOP_CHALLENGE } from '../../domain/identity/oidc.js';
-import { METHODS, allowedMethods } from '../../domain/pods/methods.js';
-import { LDP, PIM } from '../../domain/shared/vocab.js';
+import { METHODS, STORAGE_DESCRIPTION, allowedMethods } from '../../domain/pods/methods.js';
+import { LDP, PIM, SOLID } from '../../domain/shared/vocab.js';
 import { wacAllow } from '../../domain/pods/wac.js';
 
 /** N3 Patch documents are small; anything bigger is refused unread. */
@@ -70,9 +72,10 @@ export async function handleSolid(pod: Pod, request: Request, agent: Agent): Pro
 
 async function dispatch(pod: Pod, request: Request, path: PodPath, agent: Agent): Promise<Response> {
   const h = request.headers;
+  if (path === STORAGE_DESCRIPTION) return describeStorage(pod, request);
   switch (request.method) {
     case 'OPTIONS':
-      return new Response(null, { status: 204, headers: { Allow: allowedMethods(path).join(', '), ...acceptHeaders(path) } });
+      return new Response(null, { status: 204, headers: { Allow: allowedMethods(path).join(', '), Link: storageLink(pod), ...acceptHeaders(path) } });
     case 'GET':
     case 'HEAD': {
       const result = await pod.read(path, agent, {
@@ -102,6 +105,26 @@ async function dispatch(pod: Pod, request: Request, path: PodPath, agent: Agent)
     default:
       throw new MethodNotAllowed(`${request.method} is not supported`, allowedMethods(path));
   }
+}
+
+/** The storage description holds nothing of the owner's, so anyone may read
+ * it, and nobody writes it. */
+async function describeStorage(pod: Pod, request: Request): Promise<Response> {
+  const allow = allowedMethods(STORAGE_DESCRIPTION);
+  if (!pod.isProvisioned()) throw new NotFound(STORAGE_DESCRIPTION);
+  if (!(allow as string[]).includes(request.method)) throw new MethodNotAllowed('the storage description is written by the server', allow);
+  const headers = new Headers({ Allow: allow.join(', '), Link: `<${LDP('Resource')}>; rel="type", ${storageLink(pod)}` });
+  if (request.method === 'OPTIONS') return new Response(null, { status: 204, headers });
+  const type = negotiate(request.headers.get('Accept'), [...RDF_TYPES]);
+  if (!type) throw new NotAcceptable('the storage description is served as RDF');
+  const body = await serializeRdf(storageDescription(pod.url('/')), type, pod.url(STORAGE_DESCRIPTION));
+  headers.set('Content-Type', type);
+  headers.set('Content-Length', String(new TextEncoder().encode(body).byteLength));
+  return new Response(request.method === 'HEAD' ? null : body, { status: 200, headers });
+}
+
+function storageLink(pod: Pod): string {
+  return `<${pod.url(STORAGE_DESCRIPTION)}>; rel="${SOLID('storageDescription')}"`;
 }
 
 function readResponse(pod: Pod, r: ReadResult): Response {
@@ -139,6 +162,7 @@ function linkHeader(pod: Pod, path: PodPath): string {
   if (isContainer(path)) links.push(`<${LDP('Container')}>; rel="type"`, `<${LDP('BasicContainer')}>; rel="type"`);
   if (path === '/') links.push(`<${PIM('Storage')}>; rel="type"`);
   if (!isAclPath(path)) links.push(`<${pod.url(aclPathOf(path))}>; rel="acl"`);
+  links.push(storageLink(pod));
   return links.join(', ');
 }
 

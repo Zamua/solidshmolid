@@ -19,8 +19,7 @@ Not there:
 
 - SPARQL Update beyond `INSERT DATA` and `DELETE DATA` (what client
   libraries send to save a document): no variables, `WHERE` or graphs.
-- Solid Notifications, the storage description, description resources and an
-  LDN inbox.
+- Solid Notifications, description resources and an LDN inbox.
 - `acl:agentGroup` and `acl:origin` in access rules, and ACP.
 - Fixing a storage connection whose access was removed at the provider, and
   moving a pod to other storage.

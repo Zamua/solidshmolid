@@ -204,6 +204,13 @@ and a folder under another spelling is the folder the pod already has.
   `Allow`, and the list a 405 carries, are one set per kind of resource:
   containers take POST, documents PATCH, the root has no DELETE, and `.meta`
   files only OPTIONS.
+- Every `GET`, `HEAD` and `OPTIONS` answer carries `Link:
+  </.well-known/solid>; rel="http://www.w3.org/ns/solid/terms#storageDescription"`.
+  That resource is the storage description: one statement, that the pod root
+  is a `pim:Storage`, in any of the RDF types. The server writes it: anyone
+  may read it, no method changes it (405), it is not a file in the folder,
+  and it is not listed in a container. A file of that name already in the
+  folder is not served.
 - CORS on every response: echo `Origin`, allow credentials, expose
   `Accept-Patch, Accept-Post, Accept-Put, Accept-Ranges, Allow, Content-Range,
   ETag, Last-Modified, Link, Location, WAC-Allow, WWW-Authenticate`. `OPTIONS`
@@ -517,8 +524,8 @@ Not implemented:
 
 - **Solid Notifications**: no subscription service, no channels, no
   `Updates-Via`.
-- **Storage description**: no description resource and no
-  `Link: rel="http://www.w3.org/ns/solid/terms#storageDescription"` header.
+- **Storage description**: it names the storage and nothing else; no
+  notification channels are listed, because there are none.
 - **Description resources**: no `rel="describedby"` auxiliary resources. The
   only auxiliary resources are ACLs.
 - **Linked Data Notifications**: nothing advertises an inbox.
