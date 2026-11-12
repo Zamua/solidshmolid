@@ -121,6 +121,15 @@ describe('DropboxFileStore', () => {
     await expect(files.removeFolder('')).rejects.toThrow();
   });
 
+  it('names what a folder holds directly, and nothing for a folder that is not there', async () => {
+    const { files } = store();
+    await files.write('box/a.txt', bytes('1'));
+    await files.write('box/deep/b.txt', bytes('2'));
+    await files.write('boxer.txt', bytes('3'));
+    expect((await files.namesIn('box/')).sort()).toEqual(['a.txt', 'deep']);
+    expect(await files.namesIn('nowhere/')).toEqual([]);
+  });
+
   it('lists everything, then only what changed', async () => {
     const { fake, files } = store();
     await files.write('x/1.txt', bytes('1'));

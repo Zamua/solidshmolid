@@ -109,6 +109,12 @@ export class DriveFileStore implements FileStore, FileLister {
     if (found?.mimeType === FOLDER) await this.trash(found.id);
   }
 
+  async namesIn(folder: string): Promise<string[]> {
+    const found = await this.find(folder);
+    if (found?.mimeType !== FOLDER) return [];
+    return (await this.query(`'${found.id}' in parents and trashed = false`)).map((f) => f.name);
+  }
+
   async listAll(): Promise<Listing> {
     // The feed starts before the walk, so nothing done during it is missed.
     const { startPageToken } = (await this.json(`${API}/changes/startPageToken?fields=startPageToken`)) as { startPageToken: string };

@@ -14,6 +14,8 @@ import {
 } from '../app/shared/errors.js';
 import { type Agent, Pod, type ReadOptions } from '../app/pods/pod.js';
 import { Serial } from '../app/shared/serial.js';
+import { allowedMethods } from '../domain/pods/methods.js';
+import { profileDocument } from '../domain/pods/profile.js';
 import { NO_CONDITIONS } from '../domain/pods/requests.js';
 import { ALICE, BASE, BOB, type MemoryFileStore, newPod, streamOf, textOf } from './support/fakes.js';
 
@@ -491,5 +493,123 @@ describe('two views of one pod', () => {
     const put = (pod: Pod, path: string) => pod.put(path, { webid: ALICE }, { stream: streamOf('x') }, 'text/plain', NO_CONDITIONS);
     await Promise.all([put(view(), '/a.txt'), put(view(), '/b.txt'), put(view(), '/c.txt')]);
     expect(most).toBe(1);
+  });
+});
+
+const OWNER_ONLY = (subject: string) =>
+  `@prefix acl: <http://www.w3.org/ns/auth/acl#>.\n<#o> a acl:Authorization; acl:agent <${ALICE}>; acl:accessTo <${subject}>; acl:default <${subject}>; acl:mode acl:Read, acl:Write, acl:Control.`;
+
+describe('what an outsider can learn from a refusal', () => {
+  it('is nothing: POST and ACL writes ask for access before they look', async () => {
+    const { pod } = await newPod();
+    await pod.put('/private/doc.txt', alice, body('x'), 'text/plain', NO_CONDITIONS);
+    for (const target of ['/private/', '/nothere/', '/private/doc.txt', '/private/nope.txt']) {
+      await expect(pod.post(target, anon, body('x'), 'text/plain', null, false)).rejects.toThrow(Unauthenticated);
+    }
+    for (const acl of ['/private/doc.txt.acl', '/private/nope.txt.acl']) {
+      await expect(pod.put(acl, anon, body(OWNER_ONLY('./doc.txt')), TTL, NO_CONDITIONS)).rejects.toThrow(Unauthenticated);
+      await expect(pod.patch(acl, anon, `${PRE}_:p a solid:InsertDeletePatch; solid:inserts { <#a> ex:b 1 }.`, N3, NO_CONDITIONS)).rejects.toThrow(Unauthenticated);
+    }
+    // The owner still gets the plain answers.
+    await expect(pod.post('/nothere/', alice, body('x'), 'text/plain', null, false)).rejects.toThrow(NotFound);
+    await expect(pod.put('/private/nope.txt.acl', alice, body(OWNER_ONLY('./nope.txt')), TTL, NO_CONDITIONS)).rejects.toThrow(Conflict);
+  });
+});
+
+describe('the root ACL', () => {
+  it('cannot be deleted, and says so in Allow', async () => {
+    const { pod } = await newPod();
+    await expect(pod.remove('/.acl', alice, NO_CONDITIONS)).rejects.toThrow(MethodNotAllowed);
+    expect(allowedMethods('/.acl')).not.toContain('DELETE');
+    expect(allowedMethods('/notes/.acl')).toContain('DELETE');
+    expect((await pod.modes('/', alice)).has('control')).toBe(true);
+  });
+
+  it('cannot be replaced by one that leaves nobody Control over the root', async () => {
+    const { pod } = await newPod();
+    const readOnly = `@prefix acl: <http://www.w3.org/ns/auth/acl#>.\n<#o> a acl:Authorization; acl:agent <${ALICE}>; acl:accessTo <./>; acl:default <./>; acl:mode acl:Read.`;
+    await expect(pod.put('/.acl', alice, body(readOnly), TTL, NO_CONDITIONS)).rejects.toThrow(Conflict);
+    await expect(pod.put('/.acl', alice, body(OWNER_ONLY('./').replace(`acl:agent <${ALICE}>`, 'acl:agentClass acl:AuthenticatedAgent')), TTL, NO_CONDITIONS)).rejects.toThrow(Conflict);
+    await pod.put('/.acl', alice, body(OWNER_ONLY('./')), TTL, NO_CONDITIONS);
+    expect((await pod.modes('/', alice)).has('control')).toBe(true);
+  });
+});
+
+describe('deleting', () => {
+  it('takes the resource before its ACL, so a failure never leaves it under an inherited ACL', async () => {
+    const { pod, files } = await newPod();
+    await pod.put('/pub/secret.txt', alice, body('the secret'), 'text/plain', NO_CONDITIONS);
+    await pod.put('/pub/secret.txt.acl', alice, body(OWNER_ONLY('./secret.txt')), TTL, NO_CONDITIONS);
+    const remove = files.remove.bind(files);
+    files.remove = async (file) => {
+      if (file === 'pub/secret.txt') throw new Error('storage is down');
+      return remove(file);
+    };
+    await expect(pod.remove('/pub/secret.txt', alice, NO_CONDITIONS)).rejects.toThrow('storage is down');
+    expect([...files.files.keys()]).toContain('pub/secret.txt.acl');
+    files.remove = async (file) => {
+      if (file === 'pub/secret.txt.acl') throw new Error('storage is down');
+      return remove(file);
+    };
+    await expect(pod.remove('/pub/secret.txt', alice, NO_CONDITIONS)).rejects.toThrow('storage is down');
+    expect([...files.files.keys()]).not.toContain('pub/secret.txt');
+  });
+
+  it('leaves a container whose folder holds files the pod does not list', async () => {
+    const { pod, files } = await newPod();
+    await pod.put('/box/', alice, body(''), null, NO_CONDITIONS);
+    await pod.put('/box/.acl', alice, body(OWNER_ONLY('./')), TTL, NO_CONDITIONS);
+    await files.write('box/bad%ZZname.txt', new TextEncoder().encode('kept by its owner'));
+    await expect(pod.remove('/box/', alice, NO_CONDITIONS)).rejects.toThrow(Conflict);
+    expect(files.text('box/bad%ZZname.txt')).toBe('kept by its owner');
+    await files.remove('box/bad%ZZname.txt');
+    await pod.remove('/box/', alice, NO_CONDITIONS);
+    expect([...files.files.keys()].filter((f) => f.startsWith('box/'))).toEqual([]);
+    await expect(pod.read('/box/', alice, GET)).rejects.toThrow(NotFound);
+  });
+});
+
+describe('names a case-blind disk would read as .acl or .meta', () => {
+  it('are refused, and never chosen for a POST', async () => {
+    const { pod } = await newPod();
+    await pod.put('/inbox/', alice, body(''), null, NO_CONDITIONS);
+    for (const path of ['/inbox/.ACL', '/inbox/note.Acl', '/inbox/x.META', '/inbox/.ACL/', '/inbox/a.ACL/b.txt']) {
+      await expect(pod.put(path, alice, body('x'), 'text/plain', NO_CONDITIONS)).rejects.toThrow(BadRequest);
+    }
+    await expect(pod.patch('/inbox/.ACL', alice, `${PRE}_:p a solid:InsertDeletePatch; solid:inserts { <#a> ex:b 1 }.`, N3, NO_CONDITIONS)).rejects.toThrow(BadRequest);
+    const made = await pod.post('/inbox/', alice, body('x'), 'text/plain', '.ACL', false);
+    expect(made.path.toLowerCase().endsWith('.acl')).toBe(false);
+    await pod.put('/inbox/.acl', alice, body(OWNER_ONLY('./')), TTL, NO_CONDITIONS);
+  });
+});
+
+describe('the WebID profile', () => {
+  const ISSUER = 'https://id.example/';
+  const withIssuer = async () => {
+    const made = await newPod();
+    await made.pod.put('/profile/card', alice, body(profileDocument(`${BASE}/`, ISSUER)), TTL, NO_CONDITIONS);
+    return made;
+  };
+  const N3_PATCH = (clause: string) => `${PRE}_:p a solid:InsertDeletePatch; ${clause}.`;
+
+  it('keeps who signs its owner in, whatever a request asks', async () => {
+    const { pod } = await withIssuer();
+    const without = profileDocument(`${BASE}/`, null);
+    await expect(pod.put('/profile/card', alice, body(without), TTL, NO_CONDITIONS)).rejects.toThrow(Conflict);
+    await expect(pod.put('/profile/card', alice, body(profileDocument(`${BASE}/`, 'https://other.example/')), TTL, NO_CONDITIONS)).rejects.toThrow(Conflict);
+    await expect(pod.put('/profile/card', alice, body('a picture'), 'image/png', NO_CONDITIONS)).rejects.toThrow(Conflict);
+    await expect(pod.patch('/profile/card', alice, N3_PATCH(`solid:deletes { <${ALICE}> solid:oidcIssuer <${ISSUER}> }`), N3, NO_CONDITIONS)).rejects.toThrow(Conflict);
+    await expect(pod.patch('/profile/card', alice, N3_PATCH(`solid:inserts { <${ALICE}> solid:oidcIssuer <https://other.example/> }`), N3, NO_CONDITIONS)).rejects.toThrow(Conflict);
+    await expect(pod.remove('/profile/card', alice, NO_CONDITIONS)).rejects.toThrow(Conflict);
+    expect((await read(pod, '/profile/card')).text).toContain(ISSUER);
+  });
+
+  it('takes every other edit, and an issuer where none was stated', async () => {
+    const { pod } = await withIssuer();
+    await pod.patch('/profile/card', alice, N3_PATCH(`solid:inserts { <${ALICE}> ex:nick "al" }`), N3, NO_CONDITIONS);
+    await pod.put('/profile/card', alice, body(`${profileDocument(`${BASE}/`, ISSUER)}\n<${ALICE}> <http://example.org/nick> "ali".`), TTL, NO_CONDITIONS);
+    expect((await read(pod, '/profile/card')).text).toContain('ali');
+    const bare = await newPod();
+    await bare.pod.put('/profile/card', alice, body(profileDocument(`${BASE}/`, ISSUER)), TTL, NO_CONDITIONS);
   });
 });

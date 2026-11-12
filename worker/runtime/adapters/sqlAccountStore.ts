@@ -20,6 +20,8 @@ export class SqlAccountStore implements AccountStore {
     private readonly sql: SqlRunner,
     newKey: () => string,
     private readonly now: () => number,
+    /** Whether the WebID's pod is in storage; the pods are kept elsewhere. */
+    private readonly podInStorage: () => Promise<boolean> = async () => true,
   ) {
     this.sql.exec(SCHEMA);
     addColumn(this.sql, 'approval', 'site TEXT');
@@ -36,6 +38,10 @@ export class SqlAccountStore implements AccountStore {
   async webid(): Promise<string | null> {
     const row = this.sql.exec('SELECT webid FROM account WHERE id = 1').toArray()[0];
     return typeof row?.webid === 'string' ? row.webid : null;
+  }
+
+  hasPod(): Promise<boolean> {
+    return this.podInStorage();
   }
 
   bindWebid(webid: string): void {

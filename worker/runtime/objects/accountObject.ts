@@ -4,6 +4,7 @@
 // handing the person's pods short-lived access tokens over RPC.
 
 import { DurableObject } from 'cloudflare:workers';
+import { webidPod } from '../../app/accounts/accounts.js';
 import type { AccountState, LinkSummary, PendingDeletion, PendingLink, PodRecord } from '../../app/accounts/ports.js';
 import type { CodeGrant, RefreshFamily } from '../../app/identity/ports.js';
 import type { AuthorizeRequest, ClientInfo } from '../../domain/identity/oidc.js';
@@ -13,7 +14,7 @@ import { type SqlRunner, isBlank } from '../adapters/sql.js';
 import { SqlAccountPods } from '../adapters/sqlAccountPods.js';
 import { SqlAccountStore } from '../adapters/sqlAccountStore.js';
 import { storageGrants } from '../composition.js';
-import type { Env } from '../env.js';
+import { type Env, isDev } from '../env.js';
 
 export class AccountObject extends DurableObject<Env> {
   private store: SqlAccountStore | null = null;
@@ -49,6 +50,12 @@ export class AccountObject extends DurableObject<Env> {
           return key;
         },
         () => Math.floor(Date.now() / 1000),
+        async () => {
+          const state = await this.pods.load();
+          // A dev sign-in binds a named pod, which lives in the dev store and has no account behind it.
+          if (state === null) return isDev(this.env);
+          return webidPod(state).linkId !== null;
+        },
       );
     }
     return this.store;
@@ -65,6 +72,10 @@ export class AccountObject extends DurableObject<Env> {
 
   async webid(): Promise<string | null> {
     return this.open().webid();
+  }
+
+  async hasPod(): Promise<boolean> {
+    return this.open().hasPod();
   }
 
   async bindWebid(webid: string): Promise<void> {

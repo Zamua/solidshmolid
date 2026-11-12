@@ -51,7 +51,8 @@ export class Provider {
     if (!personId) return { kind: 'sign-in' };
     const { key, store: account } = await this.deps.accounts.forPerson(personId);
     const webid = await account.webid();
-    if (!webid) return { kind: 'no-pod' };
+    // A WebID without storage behind it has no profile: an app could not use it.
+    if (!webid || !(await account.hasPod())) return { kind: 'no-pod' };
     // Every public-client app shares one id and may name any redirect, so an
     // approval says nothing about who would receive the code: always ask.
     if (request.prompt !== 'consent' && !client.isPublic && (await account.hasApproval(client.clientId, webid))) {
@@ -70,7 +71,7 @@ export class Provider {
     const { request, client } = pending;
     if (!approve) return redirectWith(request.redirectUri, { error: 'access_denied', state: request.state, iss: this.deps.issuer });
     const webid = await account.webid();
-    if (!webid) throw new OidcError('invalid_request', 'no pod for this account');
+    if (!webid || !(await account.hasPod())) throw new OidcError('invalid_request', 'no pod for this account');
     await account.approve({ clientId: client.clientId, name: client.name, site: clientSite(client) }, webid);
     return this.issueCode(key, account, request, webid);
   }

@@ -94,6 +94,11 @@ export class MemoryFileStore implements FileStore {
     for (const f of [...this.files.keys()]) if (f.startsWith(folder)) this.files.delete(f);
   }
 
+  async namesIn(folder: string): Promise<string[]> {
+    const below = [...this.folders, ...this.files.keys()].filter((p) => p.startsWith(folder) && p !== folder);
+    return [...new Set(below.map((p) => p.slice(folder.length).split('/')[0]!))];
+  }
+
   /** A full listing, as a provider would report it. */
   listing(): ListedEntry[] {
     const folders = new Set<string>();

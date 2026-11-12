@@ -92,6 +92,22 @@ export function subjectOfAcl(path: PodPath): PodPath {
   return path.slice(0, -'.acl'.length);
 }
 
+/** Whether some name in the path is `.acl` or `.meta`, or ends in one, in
+ * another case. Storage that matches names whatever their case would take
+ * such a file or folder for the auxiliary resource itself. */
+export function shadowsAuxiliary(path: PodPath): boolean {
+  return path.split('/').some((segment) => {
+    let name = segment;
+    try {
+      name = decodeURIComponent(segment);
+    } catch {
+      // Not ours to judge: the layout refuses a name it cannot decode.
+    }
+    const lower = name.toLowerCase();
+    return (lower.endsWith('.acl') && !name.endsWith('.acl')) || (lower.endsWith('.meta') && !name.endsWith('.meta'));
+  });
+}
+
 export function isMetaPath(path: PodPath): boolean {
   return !isContainer(path) && nameOf(path).endsWith('.meta');
 }

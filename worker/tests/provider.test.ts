@@ -27,12 +27,13 @@ function world() {
   let n = 0;
   const signedIn: string[] = [];
   const hold = { until: Promise.resolve() };
+  const podless = new Set<string>();
   const accounts = new Map<string, SqlAccountStore>();
   const byKey = new Map<string, SqlAccountStore>();
   const accountFor = async (person: string) => {
     let a = accounts.get(person);
     if (!a) {
-      a = new SqlAccountStore(sqlRunner(), () => `acct${++n}`, () => clock);
+      a = new SqlAccountStore(sqlRunner(), () => `acct${++n}`, () => clock, async () => !podless.has(person));
       accounts.set(person, a);
       byKey.set(a.key, a);
     }
@@ -54,7 +55,7 @@ function world() {
     clock: { now: () => clock },
     secrets: { random: () => `r${++n}x${Math.random().toString(36).slice(2)}`, hash: async (s) => `h:${s}` },
   });
-  return { provider, accountFor, signedIn, hold, tick: (s: number) => (clock += s), now: () => clock };
+  return { provider, accountFor, podless, signedIn, hold, tick: (s: number) => (clock += s), now: () => clock };
 }
 
 const authQuery = (over: Record<string, string> = {}) =>
@@ -94,6 +95,15 @@ describe('authorize', () => {
   it('never redirects to an unregistered redirect_uri', async () => {
     const w = world();
     await expect(w.provider.authorize(authQuery({ redirect_uri: 'https://evil.example/cb' }), 'clerk_sam')).rejects.toThrow(OidcError);
+  });
+
+  it('sends a person whose WebID has no storage behind it to make their pod first', async () => {
+    const w = world();
+    await signedInWithPod(w);
+    const asked = await w.provider.authorize(authQuery(), 'clerk_sam');
+    w.podless.add('clerk_sam');
+    expect((await w.provider.authorize(authQuery(), 'clerk_sam')).kind).toBe('no-pod');
+    await expect(w.provider.decide('clerk_sam', (asked as { pendingId: string }).pendingId, true)).rejects.toThrow(OidcError);
   });
 
   it('asks once, then remembers the approval unless prompt=consent', async () => {

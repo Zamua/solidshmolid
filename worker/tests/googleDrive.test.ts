@@ -118,11 +118,14 @@ describe('DriveFileStore', () => {
     await files.makeFolder('');
     await files.remove('never.txt');
     await files.removeFolder('nowhere/');
+    expect(await files.namesIn('nowhere/')).toEqual([]);
     await expect(files.removeFolder('')).rejects.toThrow();
     await files.write('a/b/c.txt', bytes('c'));
     await files.remove('a/b/c.txt');
     expect(fake.files()).toEqual({});
     await files.write('a/b/c.txt', bytes('c'));
+    await files.write('a/d.txt', bytes('d'));
+    expect((await files.namesIn('a/')).sort()).toEqual(['b', 'd.txt']);
     await files.removeFolder('a/');
     expect(fake.files()).toEqual({});
     expect(await files.read('a/b/c.txt')).toBeNull();

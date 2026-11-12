@@ -10,7 +10,7 @@ import { containerDescription } from '../../domain/pods/container.js';
 import { negotiate } from '../../domain/pods/conneg.js';
 import { UnmappablePath, basePathOf, documentFile, metaFileOf } from '../../domain/pods/layout.js';
 import { bareType } from '../../domain/shared/mediaTypes.js';
-import { allowedMethods } from '../../domain/pods/methods.js';
+import { ROOT_ACL, allowedMethods } from '../../domain/pods/methods.js';
 import { InvalidPatch, PatchConflict, applyPatch, modesForPatch, parsePatch } from '../../domain/pods/n3patch.js';
 import {
   type PodPath,
@@ -23,12 +23,13 @@ import {
   isMetaPath,
   otherKind,
   parentOf,
+  shadowsAuxiliary,
   subjectOfAcl,
 } from '../../domain/pods/paths.js';
 import { InvalidRdf, N3, RDF_TYPES, TURTLE, isRdfType, parseRdf, serializeRdf } from '../../domain/shared/rdf.js';
 import { type Mode, MODES, authorizationsOf, grantedModes } from '../../domain/pods/wac.js';
-import { MA } from '../../domain/shared/vocab.js';
-import { PROFILE_PATH } from '../../domain/pods/profile.js';
+import { MA, SOLID } from '../../domain/shared/vocab.js';
+import { PROFILE_PATH, webidAt } from '../../domain/pods/profile.js';
 import { podRootAcl, profileAcl } from '../../domain/pods/starter.js';
 import {
   type Conditions,
@@ -59,6 +60,7 @@ import { type ContainerRow, type DocumentRow, type PodIndex, type ResourceRow } 
 import { newContainerRow, touch } from './rows.js';
 import { type ByteRange, type FileStore, type ListedEntry, RevisionConflict } from '../storage/ports.js';
 import { type ReconcileReport, applyChanges, rebuildIndex } from './reconcile.js';
+import type { Quad } from 'n3';
 import { Serial } from '../shared/serial.js';
 
 /** RDF bodies are parsed in memory; anything larger is refused. */
@@ -350,6 +352,7 @@ export class Pod {
   put(path: PodPath, agent: Agent, body: Body, contentType: string | null, conditions: Conditions): Promise<WriteResult> {
     return this.writes.run(async () => {
       this.refuseMeta(path);
+      this.refuseShadow(path);
       const existing = this.deps.index.get(path);
       // Authorization comes before preconditions and conflicts, so their
       // answers never tell an outsider whether a resource exists.
@@ -370,10 +373,11 @@ export class Pod {
 
   post(container: PodPath, agent: Agent, body: Body, contentType: string | null, slug: string | null, asContainer: boolean): Promise<WriteResult> {
     return this.writes.run(async () => {
+      // Access first, so the answer says nothing about what is there.
+      await this.require(container, agent, ['append']);
       const target = this.deps.index.get(container);
       if (!target) throw new NotFound(container);
       if (target.kind !== 'container') throw new MethodNotAllowed('POST is for containers', allowedMethods(container));
-      await this.require(container, agent, ['append']);
       const path = this.freeChildPath(container, slug, asContainer);
       if (asContainer) {
         await this.createContainer(path);
@@ -388,6 +392,7 @@ export class Pod {
   patch(path: PodPath, agent: Agent, text: string, contentType: string | null, conditions: Conditions): Promise<WriteResult> {
     return this.writes.run(async () => {
       this.refuseMeta(path);
+      this.refuseShadow(path);
       if (!contentType || bareType(contentType) !== N3) throw new UnsupportedMediaType('PATCH takes text/n3');
       if (isContainer(path)) throw new MethodNotAllowed('containers cannot be patched', allowedMethods(path));
       const existing = this.deps.index.get(path);
@@ -428,6 +433,8 @@ export class Pod {
   remove(path: PodPath, agent: Agent, conditions: Conditions): Promise<void> {
     return this.writes.run(async () => {
       if (path === '/') throw new MethodNotAllowed('the root cannot be deleted', allowedMethods(path));
+      // Nobody holds Control without it, so nobody could put it back.
+      if (path === ROOT_ACL) throw new MethodNotAllowed('the root ACL cannot be deleted; replace it instead', allowedMethods(path));
       this.refuseMeta(path);
       const { index, files } = this.deps;
       const row = index.get(path);
@@ -443,15 +450,28 @@ export class Pod {
       }
       this.checkConditions(row, conditions);
       if (row.kind === 'container' && this.members(path).length > 0) throw new Conflict('the container is not empty');
+      if (row.kind === 'document' && (await this.protectedIssuers(row)).length > 0) {
+        throw new Conflict('this profile names who signs its owner in, so it cannot be deleted');
+      }
 
       // A container's remaining children are auxiliary resources, its own ACL
       // among them; they go with it.
       const companions = row.kind === 'container' ? index.children(path) : [index.get(aclPathOf(path))].filter((r) => r !== null);
       if (isAclPath(path)) companions.length = 0;
-      for (const c of companions) await files.remove(c.file);
-      if (row.kind === 'document' && row.hasMeta) await files.remove(metaFileOf(path));
-      if (row.kind === 'container') await files.removeFolder(row.file);
-      else await files.remove(row.file);
+      if (row.kind === 'container') {
+        // Deleting a folder takes everything in it, and the folder can hold
+        // files this pod never listed: those are the person's, not ours.
+        const ours = new Set(companions.map((c) => c.file.slice(row.file.length)));
+        const others = (await files.namesIn(row.file)).filter((name) => !ours.has(name));
+        if (others.length > 0) throw new Conflict('the folder in storage holds files this pod does not list; move or delete them there first');
+        await files.removeFolder(row.file);
+      } else {
+        // The resource goes before its ACL: stopping in between leaves an
+        // ACL with nothing to guard, never a resource without its ACL.
+        await files.remove(row.file);
+        if (row.hasMeta) await files.remove(metaFileOf(path));
+        for (const c of companions) await files.remove(c.file);
+      }
       index.atomically(() => {
         for (const c of companions) index.delete(c.path);
         index.delete(path);
@@ -466,10 +486,33 @@ export class Pod {
     if (isMetaPath(path)) throw new MethodNotAllowed('metadata files are managed by the server', allowedMethods(path));
   }
 
+  /** Names a case-blind disk would read as `.acl` or `.meta` are refused,
+   * whoever asks: on such a disk they would become the real thing. */
+  private refuseShadow(path: PodPath): void {
+    if (shadowsAuxiliary(path)) throw new BadRequest('a name ending in .acl or .meta must be in lower case');
+  }
+
+  /** The `solid:oidcIssuer` statements a stored WebID profile makes about its
+   * owner. Apps sign the owner in through them, so requests may not change them. */
+  private async protectedIssuers(row: ResourceRow | null): Promise<string[]> {
+    if (row?.kind !== 'document' || row.path !== PROFILE_PATH || !isRdfType(row.contentType)) return [];
+    const text = await this.readText(row);
+    if (text === null) return [];
+    // A profile that no longer parses protects nothing, so it can be repaired.
+    const quads = await parseRdf(text, row.contentType, this.url(row.path)).catch(() => []);
+    return this.issuersIn(quads);
+  }
+
+  private issuersIn(quads: Quad[]): string[] {
+    const webid = webidAt(this.deps.base);
+    return quads.filter((q) => q.subject.value === webid && q.predicate.value === SOLID('oidcIssuer')).map((q) => q.object.value).sort();
+  }
+
   private async authorizeWrite(path: PodPath, existing: ResourceRow | null, agent: Agent): Promise<void> {
     if (isAclPath(path)) {
-      if (!this.deps.index.get(subjectOfAcl(path))) throw new Conflict(`${subjectOfAcl(path)} does not exist`);
+      // Access first, so the answer says nothing about what is there.
       await this.require(path, agent, ['control']);
+      if (!this.deps.index.get(subjectOfAcl(path))) throw new Conflict(`${subjectOfAcl(path)} does not exist`);
       return;
     }
     if (existing) await this.require(path, agent, ['write']);
@@ -496,7 +539,7 @@ export class Pod {
 
   private isFree(path: PodPath): boolean {
     const { index } = this.deps;
-    if (isAclPath(path) || isMetaPath(path)) return false;
+    if (isAclPath(path) || isMetaPath(path) || shadowsAuxiliary(path)) return false;
     return !index.get(path) && !index.get(otherKind(path)) && !index.byFold(foldKey(path));
   }
 
@@ -537,17 +580,26 @@ export class Pod {
       await this.storeRdf(path, contentType, text, existing);
       return;
     }
+    if ((await this.protectedIssuers(existing)).length > 0) throw new Conflict('this profile names who signs its owner in, so it stays an RDF document');
     await this.storeDocument(path, contentType, body.stream, existing, null);
   }
 
   /** Validates and stores an RDF document. */
   private async storeRdf(path: PodPath, contentType: string, text: string, existing: DocumentRow | null): Promise<void> {
+    let quads;
     try {
-      const quads = await parseRdf(text, contentType, this.url(path));
+      quads = await parseRdf(text, contentType, this.url(path));
       if (isAclPath(path)) authorizationsOf(quads);
     } catch (e) {
       if (e instanceof InvalidRdf) throw new BadRequest(`invalid ${bareType(contentType)}: ${e.message}`);
       throw e;
+    }
+    if (path === ROOT_ACL && !authorizationsOf(quads).some((a) => a.modes.includes('control') && a.accessTo.includes(this.url('/')) && a.agents.length > 0)) {
+      throw new Conflict('the root ACL must leave a named agent Control over the root, or nobody could change it again');
+    }
+    const issuers = await this.protectedIssuers(existing);
+    if (issuers.length > 0 && issuers.join(' ') !== this.issuersIn(quads).join(' ')) {
+      throw new Conflict('solid:oidcIssuer in this profile names who signs its owner in; a request cannot change it');
     }
     await this.storeDocument(path, contentType, new TextEncoder().encode(text), existing, text);
   }
