@@ -59,6 +59,19 @@ npx wrangler secret put GOOGLE_CLIENT_SECRET --config wrangler.deploy.jsonc   # 
 everyone reconnects their storage. `OIDC_SIGNING_JWK` signs the tokens apps
 receive; changing it signs everyone out of their apps.
 
+Usage counting is optional and off by default. To turn it on, bind a Workers
+Analytics Engine dataset as `ACTIVITY` and set a salt:
+
+```
+"analytics_engine_datasets": [{ "binding": "ACTIVITY", "dataset": "app_activity" }]
+```
+
+```
+head -c 32 /dev/urandom | base64 | npx wrangler secret put ACTIVITY_SALT --config wrangler.deploy.jsonc
+```
+
+Keep the salt stable: changing it makes everyone look new.
+
 ## Deploy
 
 ```

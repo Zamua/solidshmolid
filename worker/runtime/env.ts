@@ -34,4 +34,8 @@ export interface Env {
   CLERK_PUBLISHABLE_KEY?: string;
   /** Secret. */
   CLERK_SECRET_KEY?: string;
+  /** Where usage events go; without it, or without the salt, none are written. */
+  ACTIVITY?: AnalyticsEngineDataset;
+  /** Secret: at least 32 random bytes keying the hash of who an event is about. */
+  ACTIVITY_SALT?: string;
 }

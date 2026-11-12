@@ -6,6 +6,7 @@
 
 import { linkState } from '../../domain/accounts/keys.js';
 import { confirmationSentence, confirmsDeletion, providerDisplayName } from '../../domain/accounts/deletion.js';
+import type { Activity } from '../shared/activity.js';
 import { NotFound } from '../shared/errors.js';
 import type { StorageAuthorization } from '../storage/ports.js';
 import type { AccountRepository, AccountState, Directory, FileContent, FileEntry, Identities, Ids, Logins, PodRecord, Pods } from './ports.js';
@@ -43,6 +44,7 @@ export interface AccountsDeps {
   ids: Ids;
   /** The WebID of a pod id ('https://<id>.pods.example/profile/card#me'). */
   webidOf: (podId: string) => string;
+  activity: Activity;
 }
 
 export class Accounts {
@@ -57,6 +59,7 @@ export class Accounts {
     if (!state) {
       const podId = await this.deps.directory.allocatePodId(key);
       state = await account.create({ key, webid: this.deps.webidOf(podId), pods: [{ podId, linkId: null, folder: podId }], links: [] });
+      await this.deps.activity.record({ actor: webidPod(state).podId, action: 'signup' });
     }
     await this.deps.identities.bind(person, state.webid);
     return state;
@@ -91,6 +94,7 @@ export class Accounts {
     await account.addLink({ linkId, provider, account: grant.accountId }, grant.refreshToken);
     await this.placeWaiting(accountKey, linkId, provider);
     const state = (await account.load())!;
+    await this.deps.activity.record({ actor: webidPod(state).podId, action: 'storage_linked', detail: provider });
     return pending.newPod ? this.newPodIn(state, { linkId, provider }) : state;
   }
 
@@ -209,6 +213,7 @@ export class Accounts {
     await account.addPod({ podId, linkId: null, folder: podId });
     await this.placeWaiting(state.key, link.linkId, link.provider);
     await this.deps.pods.declareStorage(webidPod(state).podId, state.webid, podId);
+    await this.deps.activity.record({ actor: webidPod(state).podId, action: 'pod_created' });
     return (await account.load())!;
   }
 

@@ -8,7 +8,8 @@ import { DPOP_CHALLENGE } from '../domain/identity/oidc.js';
 import { handleFromHost } from '../domain/pods/handles.js';
 import { PROFILE_PATH, profileDocument, webidAt } from '../domain/pods/profile.js';
 import { InvalidCredentials, type VerifiedAgent } from './adapters/solidOidcVerifier.js';
-import { accounts, clerkChrome, isDev, sessions, tokenVerifier } from './composition.js';
+import { webidPod } from '../app/accounts/accounts.js';
+import { accounts, activity, clerkChrome, isDev, sessions, tokenVerifier } from './composition.js';
 import { hostsFor } from './hosts.js';
 import { withOwnHosts } from './ownHosts.js';
 import type { Env } from './env.js';
@@ -33,14 +34,14 @@ export { DirectoryObject } from './objects/directoryObject.js';
 export { PodObject } from './objects/podObject.js';
 
 const worker = {
-  async fetch(request: Request, env: Env): Promise<Response> {
+  async fetch(request: Request, env: Env, ctx?: ExecutionContext): Promise<Response> {
     const url = new URL(request.url);
     if (url.pathname === '/healthz') {
       return new Response('ok\n', { headers: { 'Content-Type': 'text/plain', 'Cache-Control': 'no-store' } });
     }
     const handle = handleFromHost(url.hostname, env.POD_HOST_TEMPLATE);
-    if (handle !== null) return pod(request, env, url, handle);
-    if (url.hostname === env.APEX_HOST) return apex(request, env, url);
+    if (handle !== null) return pod(request, env, url, handle, ctx);
+    if (url.hostname === env.APEX_HOST) return apex(request, env, url, ctx);
     return new Response('not found\n', { status: 404 });
   },
 } satisfies ExportedHandler<Env>;
@@ -48,11 +49,12 @@ const worker = {
 export default worker;
 
 /** The apex: who is signed in is settled once, before any route runs. */
-async function apex(request: Request, env: Env, url: URL): Promise<Response> {
+async function apex(request: Request, env: Env, url: URL, ctx?: ExecutionContext): Promise<Response> {
   const icon = appIconRoute(request, url);
   if (icon) return icon;
   const session = await sessions(env, url.origin).check(request);
   if (session.redirect) return session.redirect;
+  if (session.person && url.pathname !== PAGE_SCRIPT_PATH) ctx?.waitUntil(activeOnSite(env, url, session.person));
   let response =
     (await oidcRoute(request, env, url, session.person)) ??
     (await apiRoute(request, env, url, session.person)) ??
@@ -84,7 +86,17 @@ async function withAccountMenu(response: Response, env: Env, url: URL, person: s
     .transform(response);
 }
 
-async function pod(request: Request, env: Env, url: URL, handle: string): Promise<Response> {
+/** Counts a signed-in person with an account as active. */
+async function activeOnSite(env: Env, url: URL, person: string): Promise<void> {
+  try {
+    const state = await accounts(env, hostsFor(env, url)).mine(person);
+    if (state) await activity(env).record({ actor: webidPod(state).podId, action: 'active' });
+  } catch {
+    // Counting never surfaces a failure.
+  }
+}
+
+async function pod(request: Request, env: Env, url: URL, handle: string, ctx?: ExecutionContext): Promise<Response> {
   const base = url.origin;
   // Outside dev only pod ids name pods; anything else is turned away before
   // it can bring a Durable Object into being.
@@ -119,6 +131,8 @@ async function pod(request: Request, env: Env, url: URL, handle: string): Promis
       return withCors(invalidToken(e.message), request, request.headers.get('Origin'));
     }
     if (agent) {
+      const actor = hostsFor(env, url).podOfWebid(agent.webid);
+      if (actor) ctx?.waitUntil(activity(env).record({ actor, action: 'active' }));
       headers.set(AGENT_HEADER, agent.webid);
       headers.set(JTI_HEADER, agent.jti);
       headers.set(JTI_EXPIRES_HEADER, String(agent.jtiExpires));
