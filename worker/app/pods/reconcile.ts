@@ -84,10 +84,10 @@ export async function rebuildIndex(deps: ReconcileDeps, entries: ListedEntry[]):
       index.setCachedText(row.path, null);
       report.updated++;
     }
+    const before = childrenByParent(current.map((r) => r.path));
+    const after = childrenByParent([...wanted.keys()]);
     for (const container of [...wanted.values()].filter((r) => r.kind === 'container')) {
-      const before = current.filter((r) => parentOf(r.path) === container.path).map((r) => r.path).sort();
-      const after = [...wanted.keys()].filter((p) => parentOf(p) === container.path).sort();
-      if (before.join('\n') !== after.join('\n')) touch(index, container.path, deps);
+      if (before.get(container.path) !== after.get(container.path)) touch(index, container.path, deps);
     }
   });
   return report;
@@ -97,17 +97,26 @@ export async function rebuildIndex(deps: ReconcileDeps, entries: ListedEntry[]):
 export async function applyChanges(deps: ReconcileDeps, entries: ListedEntry[]): Promise<ReconcileReport> {
   const { index } = deps;
   const report: ReconcileReport = { updated: 0, removed: 0, skipped: [] };
+  // The whole index is read once for a run of deletions, not once per entry
+  // (a deleted folder is reported file by file). Anything else that changes
+  // rows drops the snapshot.
+  let snapshot: ResourceRow[] | null = null;
+  const rows = () => (snapshot ??= allRows(index));
   for (const e of entries.filter((x) => !FOREIGN.some((f) => x.path.startsWith(f)))) {
     if (e.kind === 'deleted') {
-      for (const row of rowsForDeleted(index, e.path)) {
+      const gone = rowsForDeleted(rows(), e.path);
+      for (const row of gone) {
         index.atomically(() => {
           index.delete(row.path);
           touch(index, parentOf(row.path), deps);
         });
         report.removed++;
       }
+      // `touch` changes only a container's validators, which nothing here reads.
+      if (gone.length > 0) snapshot = rows().filter((r) => !gone.includes(r));
       continue;
     }
+    snapshot = null;
     if (e.kind === 'folder') {
       const path = mapFolder(e.path, report);
       if (path && !index.get(path)) {
@@ -206,6 +215,19 @@ function unchanged(existing: ResourceRow | null, row: ResourceRow): boolean {
   return existing.kind === 'container' || (row.kind === 'document' && existing.rev === row.rev);
 }
 
+/** Each container's member paths as one sorted, comparable string. */
+function childrenByParent(paths: PodPath[]): Map<PodPath, string> {
+  const members = new Map<PodPath, PodPath[]>();
+  for (const path of paths) {
+    const parent = parentOf(path);
+    if (parent === null) continue;
+    const list = members.get(parent);
+    if (list) list.push(path);
+    else members.set(parent, [path]);
+  }
+  return new Map([...members].map(([parent, list]) => [parent, list.sort().join('\n')]));
+}
+
 function ensureContainers(deps: ReconcileDeps, paths: PodPath[]): void {
   for (const p of paths) {
     if (deps.index.get(p)) continue;
@@ -215,8 +237,7 @@ function ensureContainers(deps: ReconcileDeps, paths: PodPath[]): void {
 }
 
 /** Rows a deleted file or folder took with it. */
-function rowsForDeleted(index: PodIndex, file: string): ResourceRow[] {
-  const all = allRows(index);
+function rowsForDeleted(all: ResourceRow[], file: string): ResourceRow[] {
   const asFolder = `${file.replace(/\/$/u, '')}/`;
   return all.filter((r) => r.file === file || r.file === asFolder || r.file.startsWith(asFolder)).sort((a, b) => b.path.length - a.path.length);
 }

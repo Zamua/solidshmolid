@@ -88,6 +88,25 @@ describe('changes made outside the server', () => {
     expect(listed).not.toContain('<b.txt>');
   });
 
+  it('reads the index once for a folder deleted file by file, whatever its size', async () => {
+    const { pod, index } = await newPod();
+    const names = Array.from({ length: 40 }, (_, i) => `photos/p${i}.txt`);
+    for (const name of names) await pod.put(`/${name}`, alice, body('x'), 'text/plain', NO_CONDITIONS);
+    await pod.put('/keep/k.txt', alice, body('k'), 'text/plain', NO_CONDITIONS);
+    let listings = 0;
+    const children = index.children.bind(index);
+    index.children = (container) => {
+      listings++;
+      return children(container);
+    };
+    const report = await pod.applyChanges([...names.map((path) => ({ kind: 'deleted' as const, path })), { kind: 'deleted', path: 'photos' }]);
+    expect(report.removed).toBe(41);
+    // One walk of the four containers, not one per deleted entry.
+    expect(listings).toBeLessThan(10);
+    await expect(pod.read('/photos/', alice, GET)).rejects.toThrow(NotFound);
+    expect(await textOf((await pod.read('/keep/k.txt', alice, GET)).body)).toBe('k');
+  });
+
   it('drops a whole deleted folder', async () => {
     const { pod } = await newPod();
     await pod.put('/tree/x/y.txt', alice, body('y'), 'text/plain', NO_CONDITIONS);
