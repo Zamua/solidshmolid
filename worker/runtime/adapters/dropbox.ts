@@ -216,7 +216,7 @@ export class DropboxFileStore implements FileStore, FileLister {
     const detail = await errorSummary(res);
     if (res.status === 401) {
       if (detail.includes('missing_scope')) throw new StorageUnavailable(`the Dropbox app lacks a permission (${detail})`);
-      throw new StorageUnavailable('the Dropbox link was revoked or expired; reconnect Dropbox');
+      throw new StorageUnavailable('the Dropbox link was revoked or expired');
     }
     if (res.status === 429 || res.status >= 500) {
       throw new StorageUnavailable(`Dropbox ${what}: ${detail}`, retryAfter(res));

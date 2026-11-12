@@ -7,16 +7,19 @@ stand in for them below.
 ## What it is
 
 A hosted Solid server whose pods live in storage the user already owns
-(Dropbox and Google Drive; OneDrive and WebDAV could follow). The service runs the
-protocol: identity, access control, containers, PATCH, notifications. The
-user's storage holds every byte of every resource. Revoking our access, or the
-service disappearing, leaves the user with a complete, self-describing folder.
+(Dropbox and Google Drive). The service runs the protocol: identity, access
+control, containers, PATCH. The user's storage holds every byte of every
+resource. Revoking our access, or the service disappearing, leaves the user
+with every file in a folder a stock Community Solid Server can serve. The
+access rules in it name the WebID this service gave them (see "Conformance"
+for what is not implemented, and "Accounts and storage" for what a revoked
+grant does to a running pod).
 
 ## Goals
 
 1. **Spec-compliant Solid pod** (Solid Protocol, WAC, Solid-OIDC), checked
-   against the Solid conformance suite and Community Solid Server (CSS) as the
-   reference.
+   against Community Solid Server (CSS) as the reference. The Solid
+   conformance suite is not run. "Conformance" lists what is missing.
 2. **The folder is the pod.** The pod folder in the user's storage uses CSS's
    file-backend layout (below), so a stock CSS pointed at a synced copy of the
    folder serves the same resources. That property is tested, not promised.
@@ -26,8 +29,9 @@ service disappearing, leaves the user with a complete, self-describing folder.
 
 ## Non-goals (v1)
 
-- ACP (WAC only). Solid Notifications beyond WebSocketChannel2023.
-- SPARQL Update PATCH (N3 Patch only; SPARQL Update is a later addition).
+- ACP (WAC only).
+- Solid Notifications: no channel type is implemented.
+- SPARQL Update PATCH: only N3 Patch is accepted.
 - Remote JSON-LD contexts: a document whose `@context` is a URL is refused
   (400), because loading it would make every parse a fetch to a URL the client
   chose. Bundling a few well-known contexts is a later option.
@@ -97,7 +101,7 @@ client --> Worker (stateless)
              its family only if the token is still current, so of two
              simultaneous refreshes one wins)
            Directory DO (one): person -> account, pod ids, registered clients
-           FileStore port --> Dropbox | OneDrive | Drive | WebDAV | dev store
+           FileStore port --> Dropbox | Google Drive | dev store
 ```
 
 ### Layers (enforced by a test)
@@ -135,7 +139,7 @@ resource URL path `p` (percent-decoded):
 are not. Creating a resource whose path equals an existing one under Unicode
 case folding is refused with 409, so the layout stays one-to-one.
 
-## Resource semantics (Solid Protocol subset for M1)
+## Resource semantics
 
 - `GET`/`HEAD` on documents stream the file, honoring `Range`. RDF documents
   are stored as sent and converted on request between `text/turtle`,
@@ -169,8 +173,9 @@ case folding is refused with 409, so the layout stays one-to-one.
   containers take POST, documents PATCH, the root has no DELETE, and `.meta`
   files only OPTIONS.
 - CORS on every response: echo `Origin`, allow credentials, expose
-  `Accept-Patch, Accept-Post, Accept-Put, Allow, Content-Range, ETag, Link,
-  Location, WAC-Allow`. `OPTIONS` answers preflights with 204.
+  `Accept-Patch, Accept-Post, Accept-Put, Accept-Ranges, Allow, Content-Range,
+  ETag, Last-Modified, Link, Location, WAC-Allow, WWW-Authenticate`. `OPTIONS`
+  answers preflights with 204.
 - `GET /healthz` on the account site returns `ok\n`, `Cache-Control: no-store`, and
   `X-Release` (the deployment's `RELEASE` variable, `unknown` when unset).
 - `GET /readyz` returns `ready\n`, or 503 `not ready\n` when a key is missing
@@ -190,7 +195,8 @@ case folding is refused with 409, so the layout stays one-to-one.
   container; Control for any access to an `.acl`. Deleting needs Write on the
   resource and its container.
 - Denied without credentials is 401; denied with credentials is 403.
-- `WAC-Allow: user="...",public="..."` on every successful response.
+- `WAC-Allow: user="...",public="..."` on every successful GET, HEAD, PUT,
+  POST and PATCH. DELETE, OPTIONS and error responses do not carry it.
 - An `.acl` must parse as Turtle or the write is refused (400). An `.acl` in
   the folder that does not parse (out-of-band edit) grants nothing and is
   logged; the pod fails closed.
@@ -211,7 +217,7 @@ Write order: storage first, index second, in one DO transaction after the
 storage call succeeds. A crash between the two leaves either an unindexed
 file or a dangling row; reconcile repairs both (unindexed file: index it;
 missing file: drop the row on the next read or sweep). Reconcile is also how
-out-of-band edits arrive (M2: provider change feeds).
+out-of-band edits arrive, through the providers' change feeds.
 
 All writes to a pod take the pod's write lock, so read-modify-write (PATCH,
 conditional PUT) is atomic with respect to this server. Reads do not take it.
@@ -230,13 +236,16 @@ interface FileStore {
 ```
 
 Paths are folder-relative with `/` separators. `rev` is the provider's
-revision (Dropbox `rev`, Drive version, a hash for WebDAV). Adapters translate
+revision (Dropbox `rev`, Drive version). Adapters translate
 provider errors into a small set: not found, conflict, quota exceeded,
 unauthorized (access revoked), rate limited (with retry-after), unavailable.
 
-Adapters in order: `MemoryFileStore` (tests), `DevFileStore` (DO SQLite, local
-dev only; deployments refuse it), Dropbox (M2), Google Drive, then OneDrive and
-WebDAV.
+Adapters: `MemoryFileStore` (tests), `DevFileStore` (DO SQLite, local dev
+only; deployments refuse it), Dropbox and Google Drive.
+
+Removing a file or folder uses the provider's ordinary delete, which is
+recoverable there for a while: Dropbox keeps it among its deleted files for
+the account's retention period, and Google Drive moves it to the trash.
 
 **Google Drive** uses only the `drive.file` scope (non-sensitive, so no Google
 security review): the app sees just the files it created. Pods live under a
@@ -311,6 +320,22 @@ replace the polling later; the reconcile path is the same.
 them: `dropbox`, `google-drive`, or `dev` in the dev config, which grants consent on the
 spot and keeps files in each pod's own SQLite.
 
+A pod is bound to the storage link it was placed in, and a link is one grant
+from the provider. Every finished link flow adds a new link, even for a
+provider account that is already linked; nothing replaces the grant of an
+existing link, and pods do not move between links. So when the provider
+refuses the stored refresh token (the person removed the app's access there,
+or the provider expired the grant), the pods in that link answer 503 for
+every read and write that needs storage, while small RDF documents still
+come from the index cache. Linking the same storage again does not bring
+them back. A link can be disconnected only while no pod uses it, and the
+first pod, which holds the WebID, goes only with the account.
+
+Deleting a pod or the account keeps the folders unless the person asks for
+them to go, which takes a typed sentence. The folders then go through the
+provider's ordinary delete (see "Storage port"), so the provider's own
+recovery still applies.
+
 ## People opening a pod in a browser
 
 A top-level browser navigation (`Sec-Fetch-Mode: navigate`) that a pod would
@@ -372,7 +397,7 @@ CSS, whose verifier also checks it only when sent); and that the WebID document 
 The pod's DO rejects a `jti` it has seen inside the proof window: a proof
 names the pod's host in `htu`, so per-pod uniqueness suffices. Every URL the
 verifier fetches is chosen by the client, so each fetch is time-boxed (5 s)
-and size-capped (256 KiB). Any Solid issuer is accepted; our own comes in M3.
+and size-capped (256 KiB). Any Solid issuer is accepted, our own included.
 Lookups of the service's own hosts (its provider's discovery and keys, a
 WebID one of its pods holds) are served in-process (`runtime/ownHosts.ts`):
 Cloudflare answers a Worker's subrequest to its own custom domain or route
@@ -411,6 +436,47 @@ A request carrying `X-Activity-Skip: 1` writes no event. The header is not a
 secret: it only hides the caller's own activity. Smoke and other scripted
 checks send it (`scripts/smoke.sh` does) so that they are not counted as use.
 
+## Conformance
+
+What the server does not do, against the Solid Protocol, WAC, Solid-OIDC and
+the WebID Profile drafts. Solid-OIDC provider deviations are in
+`docs/oidc.md`.
+
+Not implemented:
+
+- **Solid Notifications**: no subscription service, no channels, no
+  `Updates-Via`.
+- **Storage description**: no description resource and no
+  `Link: rel="http://www.w3.org/ns/solid/terms#storageDescription"` header.
+- **Description resources**: no `rel="describedby"` auxiliary resources. The
+  only auxiliary resources are ACLs.
+- **Linked Data Notifications**: nothing advertises an inbox.
+- **SPARQL Update**: `PATCH` with `application/sparql-update` is 415. Clients
+  that write updates that way (some common libraries do) can read, create and
+  delete, but not update in place.
+- **The Solid conformance suite** is not run. Checks are the unit tests and
+  the tests against a running CSS.
+
+Deviations:
+
+- The root ACL (`/.acl`) can be deleted by an agent with Control. The protocol
+  asks for 405. Deleting it leaves the pod with no access rules, so nobody,
+  the owner included, can use it over the protocol.
+- The WebID profile is an ordinary document. `PUT` and `PATCH` may change or
+  remove `solid:oidcIssuer` and `pim:storage`, where the WebID Profile draft
+  asks for 409. A profile that no longer names the issuer, or is no longer
+  publicly readable, ends app sign-in for that WebID.
+- `GET` and `HEAD` ignore `If-None-Match` and `If-Modified-Since`: there is no
+  304.
+- Responses carry `Vary: Origin` but not `Vary: Accept`, though one URL can
+  yield Turtle, JSON-LD or N-Triples.
+- `PATCH` without a `Content-Type` is 415, not 400.
+- Creating a resource with `PUT` or `PATCH` needs Append on the parent
+  container only. WAC also asks for Write on the new resource.
+- `acl:agentGroup` and `acl:origin` are not evaluated: a group grants nothing,
+  and an origin restriction does not narrow a grant.
+- A JSON-LD document with a remote `@context` is refused (see "Non-goals").
+
 ## Milestones
 
 - **M1 core** (done): Worker + Pod DO + domain, `MemoryFileStore`/`DevFileStore`, all
@@ -419,13 +485,14 @@ checks send it (`scripts/smoke.sh` does) so that they are not counted as use.
 - **M1b** (done): JSON-LD; `make compat` proves a stock CSS 7.2 serves a
   folder we wrote with the same documents, members and access decisions.
   Indexing a folder CSS wrote comes with reconcile in M2.
-- **M2**: Solid-OIDC verification (done; `make compat` verifies a real CSS
-  token, `make e2e` drives a dev pod with one); reconcile (done, including
+- **M2** (done): Solid-OIDC verification (`make compat` verifies a real CSS
+  token, `make e2e` drives a dev pod with one); reconcile (including
   adopting a folder a stock CSS wrote); Dropbox adapter (App folder, PKCE + refresh
   token, encrypted at rest); link flow; Dropbox change feed into reconcile.
 - **M3**: our own Solid-OIDC identity provider (done; `make e2e` shows a
   stock CSS accepting its tokens); signup, connecting storage, more pods per
-  person, Clerk sign-in, the app list, disconnecting storage and deleting
-  pods or the account (done); then moving pods between storage links.
-- **M4**: Solid Notifications (WebSocketChannel2023 on hibernating DO
-  sockets); OneDrive, Drive, WebDAV adapters; conformance suite in CI.
+  person, Clerk sign-in, the app list, disconnecting storage, deleting
+  pods or the account, and the Google Drive adapter (done). Not built:
+  moving pods between storage links.
+- **M4** (not started): Solid Notifications, OneDrive and WebDAV adapters,
+  the conformance suite in CI.

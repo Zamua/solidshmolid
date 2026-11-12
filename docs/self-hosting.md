@@ -21,6 +21,13 @@
     `drive.file` scope on its consent screen, and a Web OAuth client with the
     redirect URI `https://account.example/link/google-drive/callback`.
 
+Before real people use it, take both provider apps out of their test modes.
+While a Google consent screen is in Testing, only listed test users can
+connect and Google expires their refresh tokens after seven days. A Dropbox
+app in development status has a limit on how many people can link it. A pod
+whose grant expires stops working, and the service has no way to give an
+existing link a new grant.
+
 ## Configure
 
 Copy `wrangler.jsonc` to `wrangler.deploy.jsonc` (ignored by git), give the
@@ -46,6 +53,12 @@ In the pod domain's DNS, add a proxied wildcard record so every pod host
 reaches the Worker, for example `*` AAAA `100::` (proxied). The account
 domain's custom domain is created on deploy.
 
+The Worker redirects plain http to https itself and sends
+`Strict-Transport-Security` on every response, so no zone setting is needed
+for that. A second deployment (staging, say) can share the pod domain with a
+template like `{handle}-test.pods.example`, and needs an account domain of
+its own (see "URLs" in [SPEC.md](SPEC.md)).
+
 Then set the secrets:
 
 ```
@@ -55,9 +68,17 @@ npx wrangler secret put CLERK_SECRET_KEY --config wrangler.deploy.jsonc
 npx wrangler secret put GOOGLE_CLIENT_SECRET --config wrangler.deploy.jsonc   # with google-drive
 ```
 
-`TOKEN_KEY` encrypts the stored storage refresh tokens; changing it means
-everyone reconnects their storage. `OIDC_SIGNING_JWK` signs the tokens apps
-receive; changing it signs everyone out of their apps.
+Set each of these once and keep it. Neither can be rotated in place.
+
+`TOKEN_KEY` encrypts the stored storage refresh tokens. Replacing it makes
+every stored storage link unreadable, so every pod loses its storage. The
+service cannot give an existing link a new grant, so linking the storage
+again does not bring those pods back. The files stay safe in people's own
+storage. Keep a copy of the key somewhere safe.
+
+`OIDC_SIGNING_JWK` signs the tokens apps receive. Replacing it invalidates
+the access and ID tokens apps hold. An app gets new ones by refreshing or by
+signing in again.
 
 Usage counting is optional and off by default. To turn it on, bind a Workers
 Analytics Engine dataset as `ACTIVITY` and set a salt:

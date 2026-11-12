@@ -59,7 +59,7 @@ export class LinkTokens {
     try {
       return await keeper.refresh(grant.refreshToken);
     } catch (e) {
-      throw new StorageUnavailable(`${grant.provider} refused the stored link (${(e as Error).message}); reconnect storage`);
+      throw new StorageUnavailable(`${grant.provider} refused the stored link (${(e as Error).message})`);
     }
   }
 }
