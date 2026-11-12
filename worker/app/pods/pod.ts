@@ -255,16 +255,23 @@ export class Pod {
     const base = { kind: 'document' as const, path: row.path, modified: row.modified, access };
 
     if (bareType(type) !== bareType(stored)) {
-      const text = await this.requireText(row);
-      const quads = await parseRdf(text, stored, this.url(row.path));
-      return {
-        ...base,
-        contentType: type,
-        etag: representationEtag(row.etag, type),
-        body: options.head ? null : await serializeRdf(quads, type, this.url(row.path)),
-        size: null,
-        range: null,
-      };
+      const quads = await this.storedQuads(row).catch((e: unknown) => {
+        // A document edited in the storage into something that no longer
+        // parses can still be read as stored, by a client that accepts that.
+        if (e instanceof Conflict && negotiate(options.accept, [stored])) return null;
+        if (e instanceof Conflict) throw new NotAcceptable(e.message);
+        throw e;
+      });
+      if (quads) {
+        return {
+          ...base,
+          contentType: type,
+          etag: representationEtag(row.etag, type),
+          body: options.head ? null : await serializeRdf(quads, type, this.url(row.path)),
+          size: null,
+          range: null,
+        };
+      }
     }
 
     const range = options.range ? this.range(options.range, row.size) : null;
@@ -276,7 +283,30 @@ export class Pod {
       this.forgetMissing(row);
       throw new NotFound(row.path);
     }
-    return { ...base, contentType: stored, etag: row.etag, body: file.body, size: row.size, range };
+    if (file.rev === row.rev) return { ...base, contentType: stored, etag: row.etag, body: file.body, size: row.size, range };
+    // The file changed in the storage and sync has not caught up: these are
+    // the new bytes, so they go out under the new validator and size.
+    if (!range) return { ...base, contentType: stored, etag: etagOfRev(file.rev), body: file.body, size: file.size, range: null };
+    await file.body.cancel();
+    const fresh = this.range(options.range!, file.size);
+    const part = await this.deps.files.read(row.file, fresh);
+    if (!part) {
+      this.forgetMissing(row);
+      throw new NotFound(row.path);
+    }
+    return { ...base, contentType: stored, etag: etagOfRev(part.rev), body: part.body, size: part.size, range: fresh };
+  }
+
+  /** A stored RDF document's triples. The file can be edited in the storage,
+   * so it may not parse: that is the document's state, not a server fault. */
+  private async storedQuads(row: DocumentRow) {
+    const text = await this.requireText(row);
+    try {
+      return await parseRdf(text, row.contentType, this.url(row.path));
+    } catch (e) {
+      if (e instanceof InvalidRdf) throw new Conflict(`${row.path} as stored does not parse as ${bareType(row.contentType)}: ${e.message}`);
+      throw e;
+    }
   }
 
   /** The members a container lists: auxiliary resources are not members. */
@@ -377,7 +407,7 @@ export class Pod {
       const storedType = existing?.contentType ?? TURTLE;
       if (!isRdfType(storedType)) throw new UnsupportedMediaType(`${path} is ${storedType}; only RDF documents can be patched`);
       await this.require(path, agent, modesForPatch(patch));
-      const current = existing ? await parseRdf(await this.requireText(existing), storedType, this.url(path)) : [];
+      const current = existing ? await this.storedQuads(existing) : [];
       let next;
       try {
         next = applyPatch(current, patch);

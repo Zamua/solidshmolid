@@ -28,7 +28,7 @@ import { accountMenu } from './http/pages/home.js';
 import { problemPage } from './http/pages/problem.js';
 import { isNavigation, podLandingPage, publicProfilePage } from './http/pages/podPages.js';
 import { summarizeProfile } from '../domain/pods/profile.js';
-import { parseRdf } from '../domain/shared/rdf.js';
+import { InvalidRdf, parseRdf } from '../domain/shared/rdf.js';
 import { withCors } from './http/solid.js';
 import { AGENT_HEADER, BASE_HEADER, INTERNAL_PREFIX, JTI_EXPIRES_HEADER, JTI_HEADER } from './objects/podObject.js';
 
@@ -41,11 +41,14 @@ const worker = {
     const env = uncountedIfAsked(bound, request);
     const url = new URL(request.url);
     // Liveness, then readiness: both name the release, neither says more.
-    if (url.pathname === '/healthz') return probe('ok', 200, env);
-    if (url.pathname === '/readyz') {
-      const problems = await unready(env);
-      if (problems.length > 0) console.error(`not ready: ${problems.join(', ')}`);
-      return problems.length > 0 ? probe('not ready', 503, env) : probe('ready', 200, env);
+    // Reads of the account site only, so on a pod these are ordinary names.
+    if (url.hostname === env.APEX_HOST && (request.method === 'GET' || request.method === 'HEAD')) {
+      if (url.pathname === '/healthz') return probe('ok', 200, env);
+      if (url.pathname === '/readyz') {
+        const problems = await unready(env);
+        if (problems.length > 0) console.error(`not ready: ${problems.join(', ')}`);
+        return problems.length > 0 ? probe('not ready', 503, env) : probe('ready', 200, env);
+      }
     }
     const handle = handleFromHost(url.hostname, env.POD_HOST_TEMPLATE);
     if (handle === null && url.hostname !== env.APEX_HOST) return new Response('not found\n', { status: 404 });
@@ -167,8 +170,15 @@ async function pod(request: Request, env: Env, url: URL, handle: string, ctx?: E
   }
   if (viewingProfile && response.status === 200) {
     const webid = webidAt(base);
-    const quads = await parseRdf(await response.text(), response.headers.get('Content-Type') ?? 'text/turtle', `${base}${PROFILE_PATH}`);
-    return publicProfilePage(webid, summarizeProfile(quads, webid), hostsFor(env, url).issuer);
+    const text = await response.text();
+    try {
+      const quads = await parseRdf(text, response.headers.get('Content-Type') ?? 'text/turtle', `${base}${PROFILE_PATH}`);
+      return publicProfilePage(webid, summarizeProfile(quads, webid), hostsFor(env, url).issuer);
+    } catch (e) {
+      // A profile edited into something that does not parse is shown as stored.
+      if (!(e instanceof InvalidRdf)) throw e;
+      return new Response(text, response);
+    }
   }
   return response;
 }

@@ -58,6 +58,8 @@ export function resolveRange(r: RangeRequest, size: number): ByteSpan | null {
   return { start: r.start, end: Math.min(r.end ?? size - 1, size - 1) };
 }
 
+const SLUG_CHARACTERS = 200;
+
 /** A Slug reduced to one safe path segment (decoded; the caller encodes). */
 export function slugName(slug: string): string {
   let name: string;
@@ -66,8 +68,10 @@ export function slugName(slug: string): string {
   } catch {
     name = slug;
   }
-  name = name.replace(/[\u0000-\u001f\u007f/\\]/gu, '-').replace(/\$\.\w+$/u, '');
+  // Cut by character, not UTF-16 unit (half an emoji cannot be encoded), and
+  // before the naming rules, so the cut cannot expose a reserved ending.
+  name = [...name.replace(/[\u0000-\u001f\u007f/\\]/gu, '-')].slice(0, SLUG_CHARACTERS).join('').replace(/\$\.\w+$/u, '');
   if (name === '.' || name === '..') name = '';
   if (/\.(acl|meta)$/u.test(name)) name = `${name}-`;
-  return name.slice(0, 200);
+  return name;
 }

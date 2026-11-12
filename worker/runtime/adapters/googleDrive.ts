@@ -11,7 +11,7 @@
 import { InsufficientStorage, StorageUnavailable } from '../../app/shared/errors.js';
 import { type ByteRange, type FileInfo, type FileLister, type FileStore, type ListedEntry, type Listing, RevisionConflict, type StoredFile, type WriteOptions } from '../../app/storage/ports.js';
 import { chunked } from './chunks.js';
-import { type Fetch, withAccessToken } from './http.js';
+import { type Fetch, retryAfter, withAccessToken } from './http.js';
 import { randomHex } from './system.js';
 import { type DriveNode, type DriveNodes, descendants, placedPathOf } from './driveNodes.js';
 
@@ -479,8 +479,7 @@ async function ensureOk(res: Response, what: string): Promise<void> {
   if (res.status === 401) throw new StorageUnavailable('the Google Drive link was revoked or expired; reconnect Google Drive');
   if (reason === 'storageQuotaExceeded') throw new InsufficientStorage('the Google Drive account is full');
   if (res.status === 429 || res.status >= 500 || /rateLimitExceeded/u.test(reason)) {
-    const retry = Number(res.headers.get('Retry-After'));
-    throw new StorageUnavailable(`Google Drive ${what}: ${message}`, Number.isFinite(retry) ? retry : null);
+    throw new StorageUnavailable(`Google Drive ${what}: ${message}`, retryAfter(res));
   }
   throw new StorageUnavailable(`Google Drive ${what} failed (${res.status}): ${message}`);
 }

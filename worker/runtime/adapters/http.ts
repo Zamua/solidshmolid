@@ -22,6 +22,15 @@ export async function limitedText(res: Response, limit: number, tooLarge: () => 
   return new TextDecoder().decode(await new Blob(chunks).arrayBuffer());
 }
 
+/** The wait a refusal asks for, in whole seconds; null when it names none
+ * (a missing header is not "retry at once"). */
+export function retryAfter(res: Response): number | null {
+  const value = res.headers.get('Retry-After')?.trim() ?? '';
+  if (!/^\d+$/u.test(value)) return null;
+  const seconds = Number(value);
+  return seconds > 0 ? seconds : null;
+}
+
 /** Sends with the current access token, and once more with a fresh one after a 401. */
 export async function withAccessToken(accessToken: (refresh: boolean) => Promise<string>, send: (token: string) => Promise<Response>): Promise<Response> {
   const res = await send(await accessToken(false));

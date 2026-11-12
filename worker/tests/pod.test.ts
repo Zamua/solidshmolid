@@ -54,6 +54,38 @@ describe('provisioning', () => {
   });
 });
 
+describe('a file changed in the storage', () => {
+  const edit = (files: MemoryFileStore, file: string, text: string) => files.files.set(file, { bytes: new TextEncoder().encode(text), rev: 'edited', modified: new Date(0).toISOString() });
+
+  it('goes out under its new validator and size before sync has seen it', async () => {
+    const { pod, files } = await newPod();
+    await pod.put('/a.txt', alice, body('01'), 'text/plain', NO_CONDITIONS);
+    const before = await read(pod, '/a.txt');
+    edit(files, 'a.txt', 'edited in the storage, much longer');
+    const whole = await read(pod, '/a.txt');
+    expect(whole.text).toBe('edited in the storage, much longer');
+    expect(whole.size).toBe(34);
+    expect(whole.etag).not.toBe(before.etag);
+    const part = await read(pod, '/a.txt', alice, { ...GET, range: { start: 1, end: null } });
+    expect(part.text).toBe('dited in the storage, much longer');
+    expect(part.size).toBe(34);
+    expect(part.range).toEqual({ start: 1, end: 33 });
+    expect(part.etag).toBe(whole.etag);
+  });
+
+  it('into RDF that does not parse is still read as stored, and says so to anything that needs its triples', async () => {
+    const { pod, files, index } = await newPod();
+    await pod.put('/notes.ttl', alice, body('<#a> <#b> <#c>.'), TTL, NO_CONDITIONS);
+    edit(files, 'notes.ttl', '<#a> <#b> oops');
+    index.setCachedText('/notes.ttl', null);
+    expect((await read(pod, '/notes.ttl', alice, { ...GET, accept: 'application/ld+json, text/turtle;q=0.5' })).text).toBe('<#a> <#b> oops');
+    await expect(pod.read('/notes.ttl', alice, { ...GET, accept: 'application/ld+json' })).rejects.toThrow(NotAcceptable);
+    const insert = `${PRE}_:p a solid:InsertDeletePatch; solid:inserts { <#x> ex:p "1" }.`;
+    await expect(pod.patch('/notes.ttl', alice, insert, N3, NO_CONDITIONS)).rejects.toThrow(/does not parse as text\/turtle/u);
+    await expect(pod.patch('/notes.ttl', alice, insert, N3, NO_CONDITIONS)).rejects.toThrow(Conflict);
+  });
+});
+
 describe('documents and containers', () => {
   it('creates intermediate containers on PUT and lists members', async () => {
     const { pod, files } = await newPod();
@@ -195,6 +227,15 @@ describe('POST', () => {
     expect(c.path).toBe('/inbox/sub/');
     const d = await pod.post('/inbox/', alice, body('z'), 'text/plain', '../x.acl', false);
     expect(d.path).toBe('/inbox/..-x.acl-');
+  });
+
+  it('cuts a long Slug between characters, and names it by the rules after the cut', async () => {
+    const { pod } = await newPod();
+    await pod.put('/inbox/', alice, body(''), null, NO_CONDITIONS);
+    const emoji = await pod.post('/inbox/', alice, body('x'), 'text/plain', `a${'😀'.repeat(300)}`, false);
+    expect([...decodeURIComponent(emoji.path.slice('/inbox/'.length))]).toHaveLength(200);
+    const reserved = await pod.post('/inbox/', alice, body('x'), 'text/plain', `${'b'.repeat(196)}.aclXYZ`, false);
+    expect(reserved.path).toBe(`/inbox/${'b'.repeat(196)}.acl-`);
   });
 
   it('refuses POST to a document', async () => {

@@ -28,7 +28,8 @@ function world(vars: Partial<Env> = {}) {
     ...vars,
   } as unknown as Env;
   const get = (url: string, headers: Record<string, string> = {}) => worker.fetch(new Request(url, { headers }), env);
-  return { get, reached, provisioned };
+  const send = (url: string, init: RequestInit) => worker.fetch(new Request(url, init), env);
+  return { get, send, reached, provisioned };
 }
 
 describe('a deployment (no DEV_MODE)', () => {
@@ -78,23 +79,43 @@ describe('a deployment (no DEV_MODE)', () => {
   });
 });
 
+const signingKey = async () => {
+  const { privateKey } = (await crypto.subtle.generateKey({ name: 'ECDSA', namedCurve: 'P-256' }, true, ['sign', 'verify'])) as CryptoKeyPair;
+  return JSON.stringify({ ...(await crypto.subtle.exportKey('jwk', privateKey)), kid: 'k1', alg: 'ES256' });
+};
+const keys = async () => ({
+  TOKEN_KEY: btoa('k'.repeat(32)),
+  OIDC_SIGNING_JWK: await signingKey(),
+  CLERK_PUBLISHABLE_KEY: 'pk_test_x',
+  CLERK_SECRET_KEY: 'sk_test_x',
+  DROPBOX_APP_KEY: 'app',
+});
+
+describe('bodies the account site reads into memory', () => {
+  it('are refused past a few kilobytes, before anything is parsed', async () => {
+    // No Clerk keys: nobody is signed in, which these routes do not need.
+    const { send } = world({ ...(await keys()), CLERK_PUBLISHABLE_KEY: undefined, CLERK_SECRET_KEY: undefined });
+    const big = 'x'.repeat(17 * 1024);
+    const token = await send('https://account.example/.oidc/token', { method: 'POST', body: big });
+    expect([token.status, ((await token.json()) as { error: string }).error]).toEqual([413, 'invalid_request']);
+    const registration = await send('https://account.example/.oidc/reg', { method: 'POST', body: big });
+    expect(registration.status).toBe(413);
+  });
+});
+
 describe('probes', () => {
-  const signingKey = async () => {
-    const { privateKey } = (await crypto.subtle.generateKey({ name: 'ECDSA', namedCurve: 'P-256' }, true, ['sign', 'verify'])) as CryptoKeyPair;
-    return JSON.stringify({ ...(await crypto.subtle.exportKey('jwk', privateKey)), kid: 'k1', alg: 'ES256' });
-  };
-  const keys = async () => ({
-    TOKEN_KEY: btoa('k'.repeat(32)),
-    OIDC_SIGNING_JWK: await signingKey(),
-    CLERK_PUBLISHABLE_KEY: 'pk_test_x',
-    CLERK_SECRET_KEY: 'sk_test_x',
-    DROPBOX_APP_KEY: 'app',
+  it('report the release', async () => {
+    const { get } = world({ RELEASE: 'v1.2.3' });
+    const health = await get('https://account.example/healthz');
+    expect([health.status, await health.text(), health.headers.get('X-Release')]).toEqual([200, 'ok\n', 'v1.2.3']);
   });
 
-  it('report the release, on any host', async () => {
-    const { get } = world({ RELEASE: 'v1.2.3' });
-    const health = await get('https://anything.example/healthz');
-    expect([health.status, await health.text(), health.headers.get('X-Release')]).toEqual([200, 'ok\n', 'v1.2.3']);
+  it('are reads of the account site: on a pod the same names are ordinary resources', async () => {
+    const { get, send, reached } = world();
+    await get(`https://${POD_ID}.pods.example/healthz`);
+    await send(`https://${POD_ID}.pods.example/readyz`, { method: 'PUT', body: 'x' });
+    expect(reached.map((r) => new URL(r.request.url).pathname)).toEqual(['/healthz', '/readyz']);
+    expect((await get('https://elsewhere.example/healthz')).status).toBe(404);
   });
 
   it('are ready with every key in place', async () => {

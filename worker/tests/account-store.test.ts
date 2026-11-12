@@ -57,6 +57,16 @@ describe("an account's pods", () => {
     await expect(account.addPod({ podId: 'p2', linkId: null, folder: 'p2' })).rejects.toThrow();
   });
 
+  it('puts a new pod last, also after earlier pods were removed', async () => {
+    const { account } = store();
+    await account.create(STATE);
+    for (const podId of ['p2', 'p3', 'p4']) await account.addPod({ podId, linkId: null, folder: podId });
+    await account.removePod('p2');
+    await account.removePod('p3');
+    await account.addPod({ podId: 'p5', linkId: null, folder: 'p5' });
+    expect((await account.load())!.pods.map((p) => p.podId)).toEqual(['k3x9fqm7', 'p4', 'p5']);
+  });
+
   it('records where pods live', async () => {
     const { account } = store();
     await account.create(STATE);
