@@ -19,7 +19,7 @@
   "observability": { "enabled": true },
   "vars": {
     "POD_HOST_TEMPLATE": "{handle}.pods.example",
-    "APEX_HOST": "pods.example",
+    "APEX_HOST": "account.example",
     "STORAGE": "dropbox"
   }
 }

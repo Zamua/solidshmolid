@@ -37,8 +37,8 @@ cannot map; it reports it and leaves it.
 The server implements the Solid Protocol, Web Access Control, Solid-OIDC and
 N3 Patch as specified, checked against a running Community Solid Server
 (folder compatibility, real identity-provider tokens, end to end through the
-Worker). Every intentional deviation is written in `docs/SPEC.md` with its
-reason.
+Worker). Every deviation, and every part of the specifications not
+implemented, is listed in `docs/SPEC.md` under "Conformance".
 
 ### Least privilege, fail closed
 

@@ -7,9 +7,10 @@ export interface Env {
   ACCOUNT: DurableObjectNamespace<AccountObject>;
   DIRECTORY: DurableObjectNamespace<DirectoryObject>;
   /** Pod hostnames, with `{handle}` standing for the handle:
-   * '{handle}.example.com' in prod, '{handle}-stg.example.com' in staging. */
+   * '{handle}.pods.example', or '{handle}-test.pods.example' for a second
+   * deployment. Never on the apex's registrable domain. */
   POD_HOST_TEMPLATE: string;
-  /** The identity provider's host. */
+  /** The account site and identity provider's host ('account.example'). */
   APEX_HOST: string;
   /** The storage providers people may connect, comma-separated, in the order
    * offered: 'dropbox', 'google-drive', and 'dev' (local only: files stay in

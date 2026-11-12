@@ -112,5 +112,8 @@ Solid-OIDC provider, signup with connecting storage, and more pods per person
 (each in storage the person picks) are in; `make e2e` covers signup on the dev
 provider, and `make clerk-live` a real Clerk session. The app list,
 Connections (connect and disconnect storage), delete, the WebID card, and
-browsing a pod's files are in. Still to come: moving pods between storage
-links, OneDrive.
+browsing a pod's files are in. Not built: moving pods between storage
+links, giving an existing link a new grant (a pod whose grant the provider
+refuses stays down), OneDrive. SPEC "Conformance" lists what the protocol
+side lacks; keep it, the README list and the page copy true in the same
+change as the behavior.
