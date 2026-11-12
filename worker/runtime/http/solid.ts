@@ -1,6 +1,7 @@
 // HTTP <-> pod service translation. Parses a request, calls one service
 // method, shapes the result for the wire. No Solid rules live here.
 
+import { N3, SPARQL_UPDATE } from '../../domain/shared/rdf.js';
 import {
   BadRequest,
   Conflict,
@@ -143,7 +144,7 @@ function linkHeader(pod: Pod, path: PodPath): string {
 
 function acceptHeaders(path: PodPath): Record<string, string> {
   if (isContainer(path)) return { 'Accept-Post': '*/*', 'Accept-Put': '*/*' };
-  return { 'Accept-Patch': 'text/n3', 'Accept-Put': '*/*' };
+  return { 'Accept-Patch': `${N3}, ${SPARQL_UPDATE}`, 'Accept-Put': '*/*' };
 }
 
 /** The body, given up once it stops arriving: a sender cannot hold its

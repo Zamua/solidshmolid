@@ -10,6 +10,7 @@ export const TURTLE = 'text/turtle';
 export const JSON_LD = 'application/ld+json';
 export const N_TRIPLES = 'application/n-triples';
 export const N3 = 'text/n3';
+export const SPARQL_UPDATE = 'application/sparql-update';
 
 /** Types stored as RDF documents and offered in each other's place. */
 export const RDF_TYPES = [TURTLE, JSON_LD, N_TRIPLES] as const;

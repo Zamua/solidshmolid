@@ -11,7 +11,8 @@ import { negotiate } from '../../domain/pods/conneg.js';
 import { UnmappablePath, basePathOf, documentFile, hasTypeSuffix, metaFileOf } from '../../domain/pods/layout.js';
 import { bareType } from '../../domain/shared/mediaTypes.js';
 import { ROOT_ACL, allowedMethods } from '../../domain/pods/methods.js';
-import { InvalidPatch, PatchConflict, applyPatch, modesForPatch, parsePatch } from '../../domain/pods/n3patch.js';
+import { InvalidPatch, type Patch, PatchConflict, applyPatch, modesForPatch, parsePatch } from '../../domain/pods/n3patch.js';
+import { type Update, applyUpdate, modesForUpdate, parseUpdate } from '../../domain/pods/sparqlUpdate.js';
 import {
   type PodPath,
   aclPathOf,
@@ -26,7 +27,7 @@ import {
   shadowsAuxiliary,
   subjectOfAcl,
 } from '../../domain/pods/paths.js';
-import { InvalidRdf, N3, RDF_TYPES, TURTLE, isRdfType, parseRdf, serializeRdf } from '../../domain/shared/rdf.js';
+import { InvalidRdf, N3, RDF_TYPES, SPARQL_UPDATE, TURTLE, isRdfType, parseRdf, serializeRdf } from '../../domain/shared/rdf.js';
 import { type Mode, MODES, authorizationsOf, grantedModes } from '../../domain/pods/wac.js';
 import { MA, SOLID } from '../../domain/shared/vocab.js';
 import { PROFILE_PATH, webidAt } from '../../domain/pods/profile.js';
@@ -130,6 +131,29 @@ export interface PodDeps {
    * not, nothing is served or decided from a cached copy: the storage is
    * asked, and its failure is the answer. Absent: always. */
   fresh?: () => boolean;
+}
+
+/** What a PATCH body asks for, whichever language it is written in. */
+interface Change {
+  modes: Mode[];
+  /** The document after it; null when it leaves the document as it is. */
+  apply(current: Quad[]): Quad[] | null;
+}
+
+function n3Change(patch: Patch): Change {
+  // A patch that only tests its where clause changes nothing, but must still match.
+  const tests = patch.inserts.length === 0 && patch.deletes.length === 0;
+  return { modes: modesForPatch(patch), apply: (current) => (tests ? (applyPatch(current, patch), null) : applyPatch(current, patch)) };
+}
+
+function updateChange(update: Update): Change {
+  return {
+    modes: modesForUpdate(update),
+    apply: (current) => {
+      const { quads, changed } = applyUpdate(current, update);
+      return changed ? quads : null;
+    },
+  };
 }
 
 /** Where a write lands, once it is allowed. */
@@ -474,7 +498,8 @@ export class Pod {
     return this.writes.run(async () => {
       this.refuseMeta(path);
       this.refuseShadow(path);
-      if (!contentType || bareType(contentType) !== N3) throw new UnsupportedMediaType('PATCH takes text/n3');
+      const type = contentType ? bareType(contentType) : null;
+      if (type !== N3 && type !== SPARQL_UPDATE) throw new UnsupportedMediaType(`PATCH takes ${N3} or ${SPARQL_UPDATE}`);
       if (isContainer(path)) throw new MethodNotAllowed('containers cannot be patched', allowedMethods(path));
       const existing = this.deps.index.get(path);
       if (existing?.kind === 'container') throw new Conflict(`${path} is a container`);
@@ -486,26 +511,25 @@ export class Pod {
         await this.require(path, agent, ['append']);
       }
       this.checkConditions(existing, conditions);
-      let patch;
+      let change;
       try {
-        patch = parsePatch(text, this.url(path));
+        change = type === N3 ? n3Change(parsePatch(text, this.url(path))) : updateChange(parseUpdate(text, this.url(path)));
       } catch (e) {
         if (e instanceof InvalidPatch) throw new Unprocessable(e.message);
         throw e;
       }
       const storedType = existing?.contentType ?? TURTLE;
       if (!isRdfType(storedType)) throw new UnsupportedMediaType(`${path} is ${storedType}; only RDF documents can be patched`);
-      await this.require(path, agent, modesForPatch(patch));
+      await this.require(path, agent, change.modes);
       const current = existing ? await this.storedQuads(existing) : [];
       let next;
       try {
-        next = applyPatch(current, patch);
+        next = change.apply(current);
       } catch (e) {
         if (e instanceof PatchConflict) throw new Conflict(e.message);
         throw e;
       }
-      // A patch that only tests its where clause changes nothing.
-      if (patch.inserts.length === 0 && patch.deletes.length === 0) return { path, created: false };
+      if (next === null) return { path, created: false };
       await this.storeRdf(path, storedType, await serializeRdf(next, storedType, this.url(path)), existing);
       return { path, created: existing === null };
     });

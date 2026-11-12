@@ -31,7 +31,8 @@ grant does to a running pod).
 
 - ACP (WAC only).
 - Solid Notifications: no channel type is implemented.
-- SPARQL Update PATCH: only N3 Patch is accepted.
+- SPARQL Update beyond `INSERT DATA` and `DELETE DATA`: no variables, no
+  `WHERE`, no graphs. N3 Patch is the full patch language.
 - Remote JSON-LD contexts: a document whose `@context` is a URL is refused
   (400), because loading it would make every parse a fetch to a URL the client
   chose. Bundling a few well-known contexts is a later option.
@@ -172,6 +173,13 @@ and a folder under another spelling is the folder the pod already has.
   nested formulae) is 422. A `where` that does not match exactly once, or a
   delete that is absent, is 409. Any RDF document can be patched; it keeps
   its stored type.
+- `PATCH` with `application/sparql-update` applies `INSERT DATA { ... }` and
+  `DELETE DATA { ... }` operations in order, separated by `;`, with `PREFIX`
+  and `BASE` declarations: what client libraries send to save a document
+  they read. Deleting a triple that is not there changes nothing (for an N3
+  Patch it is 409). Anything else in the language is 422. Access is as for
+  an N3 Patch with the same inserts and deletes: Append to insert, Read and
+  Write to delete.
 - `DELETE` removes a document (then its `.meta` and `.acl`, in that order, so
   a failure never leaves the document without its ACL) or an empty container
   (409 if not empty, and 409 if its folder holds files the pod does not
@@ -192,7 +200,7 @@ and a folder under another spelling is the folder the pod already has.
   every write, against the index ETag. A failed precondition is 412.
 - Response headers: `ETag`, `Last-Modified`, `Link` (`rel="type"` for LDP
   types and `pim:Storage` on the root, `rel="acl"`), `Allow`, `Accept-Patch:
-  text/n3`, `Accept-Post: */*` on containers, `Accept-Put: */*`, `WAC-Allow`.
+  text/n3, application/sparql-update`, `Accept-Post: */*` on containers, `Accept-Put: */*`, `WAC-Allow`.
   `Allow`, and the list a 405 carries, are one set per kind of resource:
   containers take POST, documents PATCH, the root has no DELETE, and `.meta`
   files only OPTIONS.
@@ -514,9 +522,8 @@ Not implemented:
 - **Description resources**: no `rel="describedby"` auxiliary resources. The
   only auxiliary resources are ACLs.
 - **Linked Data Notifications**: nothing advertises an inbox.
-- **SPARQL Update**: `PATCH` with `application/sparql-update` is 415. Clients
-  that write updates that way (some common libraries do) can read, create and
-  delete, but not update in place.
+- **SPARQL Update**: only `INSERT DATA` and `DELETE DATA`. An update with
+  variables, `WHERE` or `GRAPH` is 422.
 - **The Solid conformance suite** is not run. Checks are the unit tests and
   the tests against a running CSS.
 
