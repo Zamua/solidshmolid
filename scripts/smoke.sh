@@ -27,7 +27,7 @@ request() {
   local name=$1 expected=$2
   shift 2
   local out
-  out=$(curl -sS -o /tmp/smoke.body.$$ -D /tmp/smoke.headers.$$ -w '%{http_code} %{time_total}' "$@" 2>&1)
+  out=$(curl -sS -o /tmp/smoke.body.$$ -D /tmp/smoke.headers.$$ -w '%{http_code} %{time_total}' -H 'X-Activity-Skip: 1' "$@" 2>&1)
   local status=${out%% *} secs=${out##* }
   local ms
   ms=$(awk -v s="$secs" 'BEGIN { printf "%d", s * 1000 }')

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { NO_ACTIVITY } from '../app/shared/activity.js';
 import { AnalyticsActivity } from '../runtime/adapters/activity.js';
-import { activity } from '../runtime/composition.js';
+import { activity, uncountedIfAsked } from '../runtime/composition.js';
 import type { Env } from '../runtime/env.js';
 import { hostsFor } from '../runtime/hosts.js';
 
@@ -72,6 +72,13 @@ describe('activity data points', () => {
     expect(activity({ ACTIVITY: d } as unknown as Env)).toBe(NO_ACTIVITY);
     expect(activity({ ACTIVITY_SALT: 's' } as Env)).toBe(NO_ACTIVITY);
     expect(activity({ ACTIVITY: d, ACTIVITY_SALT: 's' } as unknown as Env)).toBeInstanceOf(AnalyticsActivity);
+  });
+
+  it('is off for a request that asks not to be counted', () => {
+    const env = { ACTIVITY: dataset(), ACTIVITY_SALT: 's' } as unknown as Env;
+    const asked = new Request('https://id.example/', { headers: { 'X-Activity-Skip': '1' } });
+    expect(activity(uncountedIfAsked(env, asked))).toBe(NO_ACTIVITY);
+    expect(uncountedIfAsked(env, new Request('https://id.example/'))).toBe(env);
   });
 });
 
