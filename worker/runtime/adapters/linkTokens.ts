@@ -3,6 +3,7 @@
 // Concurrent askers share one refresh.
 
 import { StorageUnavailable } from '../../app/shared/errors.js';
+import { GrantRefused } from '../../app/storage/ports.js';
 
 export interface AccessToken {
   token: string;
@@ -19,6 +20,7 @@ export interface GrantKeeper {
 }
 
 const MARGIN_MS = 60_000;
+const RECONNECT = "the pod's owner can connect the storage again from their account";
 
 export class LinkTokens {
   private readonly cache = new Map<string, Promise<AccessToken>>();
@@ -27,6 +29,8 @@ export class LinkTokens {
     private readonly grant: (linkId: string) => Promise<{ provider: string; refreshToken: string } | null>,
     private readonly keepers: Record<string, GrantKeeper>,
     private readonly nowMs: () => number = () => Date.now(),
+    /** Told when a link's grant turns out to be gone for good. */
+    private readonly lost: (linkId: string) => void = () => {},
   ) {}
 
   async accessToken(linkId: string, refresh: boolean): Promise<AccessToken> {
@@ -41,25 +45,39 @@ export class LinkTokens {
     return fresh;
   }
 
+  /** Forgets the access token minted from a link's previous grant. */
+  forget(linkId: string): void {
+    this.cache.delete(linkId);
+  }
+
   /** Gives the link's grant up with its provider. Best effort: a provider
-   * that is down or already revoked it must not keep the link alive here. */
+   * that is down or already revoked it, or a grant that can no longer be
+   * read, must not keep the link alive here. */
   async revoke(linkId: string): Promise<void> {
     this.cache.delete(linkId);
-    const grant = await this.grant(linkId);
+    const warn = (e: Error, provider?: string) => console.error(JSON.stringify({ level: 'warn', msg: 'revoke failed', provider, error: e.message }));
+    const grant = await this.grant(linkId).catch((e: Error) => (warn(e), null));
     const keeper = grant && this.keepers[grant.provider];
     if (!grant || !keeper) return;
-    await keeper.revoke(grant.refreshToken).catch((e: Error) => console.error(JSON.stringify({ level: 'warn', msg: 'revoke failed', provider: grant.provider, error: e.message })));
+    await keeper.revoke(grant.refreshToken).catch((e: Error) => warn(e, grant.provider));
   }
 
   private async mint(linkId: string): Promise<AccessToken> {
-    const grant = await this.grant(linkId);
+    const grant = await this.grant(linkId).catch((e: Error) => {
+      // Sealed under a key this deployment does not hold: as gone as a revoked one.
+      console.error(JSON.stringify({ level: 'error', msg: 'stored grant does not open', error: e.message }));
+      this.lost(linkId);
+      throw new StorageUnavailable(`the stored link can no longer be used; ${RECONNECT}`);
+    });
     if (!grant) throw new StorageUnavailable('this storage link no longer exists');
     const keeper = this.keepers[grant.provider];
     if (!keeper) throw new StorageUnavailable(`no way to reach ${grant.provider} storage here`);
     try {
       return await keeper.refresh(grant.refreshToken);
     } catch (e) {
-      throw new StorageUnavailable(`${grant.provider} refused the stored link (${(e as Error).message})`);
+      const gone = e instanceof GrantRefused && e.gone;
+      if (gone) this.lost(linkId);
+      throw new StorageUnavailable(`${grant.provider} refused the stored link (${(e as Error).message})${gone ? `; ${RECONNECT}` : ''}`);
     }
   }
 }

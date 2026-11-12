@@ -100,8 +100,17 @@ export interface Grant {
 }
 
 /** The provider would not give or renew a grant: consent was cut short,
- * the code was bad, or the person took the app's access away. */
-export class GrantRefused extends Error {}
+ * the code was bad, or the person took the app's access away. `gone` says
+ * the provider named the grant itself as no longer good, so asking again
+ * with it will not help; only the person connecting again will. */
+export class GrantRefused extends Error {
+  constructor(
+    message: string,
+    readonly gone = false,
+  ) {
+    super(message);
+  }
+}
 
 /** A storage provider's OAuth (PKCE, offline access). */
 export interface StorageAuthorization {

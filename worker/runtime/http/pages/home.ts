@@ -46,7 +46,7 @@ ${icon('caretRight', 20)}</button></form>`;
 </div>
 <ul class="plain" style="margin-top:18px">
 <li>${icon('eye')}<span>We can only open that one folder, nothing else in your storage.</span></li>
-<li>${icon('plugs')}<span>If you take our access away in your storage provider's settings, your pods stop working and cannot be connected again.</span></li>
+<li>${icon('plugs')}<span>If you take our access away in your storage provider's settings, your pods stop until you connect it again.</span></li>
 </ul>`,
   );
 }
@@ -62,10 +62,12 @@ export function podsPage(state: AccountState, apps: Approval[], hosts: Hosts, of
   const rows = state.pods
     .map((p, i) => {
       const link = state.links.find((l) => l.linkId === p.linkId);
-      const backend = link ? backendLine(link.provider) : '<span class="small" style="display:block">Waiting for storage</span>';
+      const stopped = link?.grantLost ? '<span class="small warn" style="display:block">Stopped: <a href="/connections">connect its storage again</a></span>' : '';
+      const backend = link ? `${backendLine(link.provider)}${stopped}` : '<span class="small" style="display:block">Waiting for storage</span>';
       const text = `<span class="grow"><b>${podLabel(i)}</b>${backend}${i === 0 ? '<span class="small" style="display:block">Holds your WebID</span>' : ''}</span>`;
       // A pod waiting with storage connected is one whose placement failed.
       const retry = state.links.length > 0 ? '<form method="post" action="/api/pods/place"><button class="chip-btn">Try again</button></form>' : '';
+      if (link?.grantLost) return `<div class="row list-row">${podCloud(String(i + 1), true)}${text}</div>`;
       return p.linkId
         ? `<a class="row list-row row-link" href="/pods/${escapeHtml(p.podId)}/files">${podCloud(String(i + 1), true)}${text}<span class="chevron">${icon('caretRight', 20)}</span></a>`
         : `<div class="row list-row">${podCloud(String(i + 1), true)}${text}${retry}</div>`;
@@ -102,10 +104,17 @@ export function connectionsPage(state: AccountState, offered: string[]): Respons
     .map((l) => {
       const look = lookOf(l.provider);
       const held = state.pods.filter((p) => p.linkId === l.linkId).length;
-      const action = held
-        ? `<span class="small">${held === 1 ? '1 pod' : `${held} pods`}</span>`
-        : `<form method="post" action="/api/storage/${escapeHtml(l.linkId)}/disconnect"><button class="chip-btn">Disconnect</button></form>`;
-      return `<div class="row list-row"><span class="provider-logo"${look.color ? ` style="color:${look.color}"` : ''}>${icon(look.icon, 24)}</span><div class="grow"><b>${escapeHtml(look.name)}</b><div class="small">${escapeHtml(look.where)}</div></div>${action}</div>`;
+      // Connecting the same storage account again gives this link a new grant.
+      const again = `<form method="post" action="/api/storage/${escapeHtml(l.provider)}/start" style="margin-top:8px"><button class="chip-btn">Connect again</button></form>`;
+      const action = l.grantLost
+        ? ''
+        : held
+          ? `<span class="small">${held === 1 ? '1 pod' : `${held} pods`}</span>`
+          : `<form method="post" action="/api/storage/${escapeHtml(l.linkId)}/disconnect"><button class="chip-btn">Disconnect</button></form>`;
+      const where = l.grantLost
+        ? `<div class="small warn">We lost access${held ? `, so ${held === 1 ? 'its pod has' : `its ${held} pods have`} stopped` : ''}. Connect the same ${escapeHtml(look.name)} account again to carry on.</div>${again}`
+        : `<div class="small">${escapeHtml(look.where)}</div>`;
+      return `<div class="row list-row"><span class="provider-logo"${look.color ? ` style="color:${look.color}"` : ''}>${icon(look.icon, 24)}</span><div class="grow"><b>${escapeHtml(look.name)}</b>${where}</div>${action}</div>`;
     })
     .join('');
   const more = unconnected(state, offered)
@@ -123,7 +132,7 @@ ${icon('caretRight', 20)}</button></form>`;
 <p class="lede">The storage your pods live in. We can open only our own folder there.</p>
 <div class="card" style="padding:6px 16px">${connected}</div>
 ${more ? `<h2 style="margin-top:28px">Add storage</h2><div class="choices" style="margin-top:12px">${more}</div>` : ''}
-<p class="small" style="margin-top:22px">Storage holding pods stays connected while they live there. If you take our access away in your Dropbox or Google account settings, the pods there stop working and cannot be connected again.</p>`,
+<p class="small" style="margin-top:22px">Storage holding pods stays connected while they live there. If you take our access away in your Dropbox or Google account settings, the pods there stop until you connect that storage again here.</p>`,
   );
 }
 

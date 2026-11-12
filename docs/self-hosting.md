@@ -68,13 +68,21 @@ npx wrangler secret put CLERK_SECRET_KEY --config wrangler.deploy.jsonc
 npx wrangler secret put GOOGLE_CLIENT_SECRET --config wrangler.deploy.jsonc   # with google-drive
 ```
 
-Set each of these once and keep it. Neither can be rotated in place.
+Set each of these once and keep it.
 
-`TOKEN_KEY` encrypts the stored storage refresh tokens. Replacing it makes
-every stored storage link unreadable, so every pod loses its storage. The
-service cannot give an existing link a new grant, so linking the storage
-again does not bring those pods back. The files stay safe in people's own
-storage. Keep a copy of the key somewhere safe.
+`TOKEN_KEY` encrypts the stored storage refresh tokens. Keep a copy of the
+key somewhere safe. To replace it, set the new key as `TOKEN_KEY` and the
+one it replaces as `TOKEN_KEY_OLD` (several old keys: newest first, separated
+by commas), then deploy. Tokens sealed under an old key still open, and each
+is sealed again under the new key the next time its pod is used. A pod nobody
+uses keeps its old sealing, so remove `TOKEN_KEY_OLD` only once you accept
+that such pods lose their storage link.
+
+A link whose token no longer opens (the key was replaced without keeping the
+old one) or whose grant the provider dropped shows as "We lost access" on its
+owner's Connections page. Its pods stop until the owner connects the same
+storage account again; the link then gets the new grant and the pods carry
+on. The files stay in people's own storage throughout.
 
 `OIDC_SIGNING_JWK` signs the tokens apps receive. Replacing it invalidates
 the access and ID tokens apps hold. An app gets new ones by refreshing or by

@@ -277,7 +277,16 @@ client's secret (`GOOGLE_CLIENT_SECRET`) to exchange and refresh, so that is the
 secret the service holds. The refresh token is stored in
 the account, AES-GCM-sealed under the `TOKEN_KEY` secret with `account/<key>/link/<linkId>` as
 associated data. Pods get short-lived access tokens from their account over RPC; nothing else
-holds a grant.
+holds a grant. A token also opens under the keys in `TOKEN_KEY_OLD` and is then sealed again
+under `TOKEN_KEY`, so the key can be replaced without cutting links off.
+
+An account holds one link per storage account at a provider. Connecting storage it already
+has gives that link the new grant and keeps its id, so its pods carry on. When the provider
+answers a refresh with `invalid_grant`, or the stored token no longer opens, the link is
+marked as having lost its grant: its pods answer 503, the account pages say so, and
+connecting the same storage account again repairs it. Disconnecting a link leaves the grant
+alone when another link of the account shares its storage account, since a provider may end
+the whole grant and not one token.
 
 Each pod waiting for storage is then placed in its own folder of the link,
 `Apps/solidshmolid/<pod id>/` on Dropbox, `solidshmolid/<pod id>/` in My Drive

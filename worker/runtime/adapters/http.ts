@@ -39,7 +39,7 @@ export async function withAccessToken(accessToken: (refresh: boolean) => Promise
 
 /** A form POST to an OAuth token endpoint; any answer without an access token
  * is `fail`ed with the provider's own description. */
-export async function tokenCall(fetcher: Fetch, url: string, form: Record<string, string>, fail: (message: string) => Error): Promise<Record<string, unknown>> {
+export async function tokenCall(fetcher: Fetch, url: string, form: Record<string, string>, fail: (message: string, code?: string) => Error): Promise<Record<string, unknown>> {
   const res = await fetcher(url, {
     method: 'POST',
     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
@@ -51,6 +51,6 @@ export async function tokenCall(fetcher: Fetch, url: string, form: Record<string
   } catch {
     throw fail(`the token endpoint answered ${res.status}`);
   }
-  if (!res.ok || typeof body.access_token !== 'string') throw fail(String(body.error_description ?? body.error ?? `HTTP ${res.status}`));
+  if (!res.ok || typeof body.access_token !== 'string') throw fail(String(body.error_description ?? body.error ?? `HTTP ${res.status}`), typeof body.error === 'string' ? body.error : undefined);
   return body;
 }

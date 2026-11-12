@@ -23,6 +23,10 @@ class MemoryAccount implements AccountRepository {
     this.state!.links.push(link);
     this.refreshTokens.set(link.linkId, refreshToken);
   }
+  async renewLink(linkId: string, refreshToken: string) {
+    this.state!.links.find((l) => l.linkId === linkId)!.grantLost = false;
+    this.refreshTokens.set(linkId, refreshToken);
+  }
   async placePod(podId: string, linkId: string) {
     this.state!.pods.find((p) => p.podId === podId)!.linkId = linkId;
   }
@@ -100,13 +104,15 @@ function world() {
   };
   const removedLogins: string[] = [];
   const bound = new Map<string, string>();
+  /** What the provider grants next: change it to connect another storage account. */
+  const granted = { refreshToken: 'refresh1', accountId: 'dbid:1' };
   const authorization: StorageAuthorization = {
     provider: 'dropbox',
     pkce: async () => ({ verifier: 'v1', challenge: 'c1' }),
     authorizeUrl: (redirect, state, challenge) => `https://dropbox.example/authorize?state=${state}&c=${challenge}&r=${redirect}`,
     exchange: async (code, verifier) => {
       if (code !== 'code' || verifier !== 'v1') throw new Error('bad exchange');
-      return { refreshToken: 'refresh1', accountId: 'dbid:1', accessToken: 'a', expiresAt: 0 };
+      return { ...granted, accessToken: 'a', expiresAt: 0 };
     },
   };
   let n = 0;
@@ -125,7 +131,7 @@ function world() {
     webidOf: (podId) => `https://${podId}.pods.example/profile/card#me`,
     activity: { record: async (event) => void events.push(event) },
   });
-  return { events, service, accounts, directory, pods, placed, declared, dropped, retired, removedLogins, bound };
+  return { events, service, accounts, directory, pods, placed, declared, dropped, retired, removedLogins, bound, granted };
 }
 
 const stateOf = (url: string) => new URL(url).searchParams.get('state')!.split('.') as [string, string];
@@ -157,7 +163,7 @@ describe('signing up', () => {
 describe('connecting storage', () => {
   it('places the first pod in its own folder, with the WebID profile', async () => {
     const { state, placed } = await connected();
-    expect(state.links).toEqual([{ linkId: expect.any(String), provider: 'dropbox', account: 'dbid:1' }]);
+    expect(state.links).toEqual([{ linkId: expect.any(String), provider: 'dropbox', account: 'dbid:1', grantLost: false }]);
     expect(state.pods[0]!.linkId).toBe(state.links[0]!.linkId);
     expect(placed).toEqual([
       { podId: 'pod1xxxx', placement: { accountKey: state.key, linkId: state.links[0]!.linkId, provider: 'dropbox', folder: 'pod1xxxx' }, owner: state.webid, withProfile: true },
@@ -244,6 +250,41 @@ describe('connecting storage', () => {
     const w = world();
     await w.service.signup('user_dana');
     await expect(w.service.retryPlacement('user_dana')).rejects.toThrow(NoStorageYet);
+  });
+
+  it('gives storage it already has a new grant, on the same link, so its pods carry on', async () => {
+    const { service, accounts, state, granted, placed, events } = await connected();
+    const account = accounts.get(state.key)!;
+    const link = state.links[0]!.linkId;
+    account.state!.links[0]!.grantLost = true;
+    granted.refreshToken = 'refresh2';
+    const [key, nonce] = stateOf(await service.beginLink('user_dana', 'dropbox', 'https://x/cb'));
+    const again = await service.completeLink('user_dana', 'dropbox', key, nonce, 'code', 'https://x/cb');
+    expect(again.links).toEqual([{ linkId: link, provider: 'dropbox', account: 'dbid:1', grantLost: false }]);
+    expect(again.pods).toEqual(state.pods);
+    expect([...account.refreshTokens]).toEqual([[link, 'refresh2']]);
+    expect(placed).toHaveLength(1);
+    expect(events.filter((e) => e.action === 'storage_linked')).toHaveLength(1);
+  });
+
+  it('adds a link for another account at the same provider', async () => {
+    const { service, state, granted } = await connected();
+    granted.accountId = 'dbid:2';
+    const [key, nonce] = stateOf(await service.beginLink('user_dana', 'dropbox', 'https://x/cb'));
+    const two = await service.completeLink('user_dana', 'dropbox', key, nonce, 'code', 'https://x/cb');
+    expect(two.links.map((l) => l.account)).toEqual(['dbid:1', 'dbid:2']);
+    expect(two.links[0]).toEqual(state.links[0]);
+  });
+
+  it('renews every link an account already holds twice for one storage account', async () => {
+    const { service, accounts, state, granted } = await connected();
+    const account = accounts.get(state.key)!;
+    await account.addLink({ linkId: 'twin', provider: 'dropbox', account: 'dbid:1', grantLost: true }, 'old');
+    granted.refreshToken = 'refresh2';
+    const [key, nonce] = stateOf(await service.beginLink('user_dana', 'dropbox', 'https://x/cb'));
+    const again = await service.completeLink('user_dana', 'dropbox', key, nonce, 'code', 'https://x/cb');
+    expect(again.links.map((l) => [l.linkId, l.grantLost])).toEqual([[state.links[0]!.linkId, false], ['twin', false]]);
+    expect([...account.refreshTokens.values()]).toEqual(['refresh2', 'refresh2']);
   });
 
   it('does not place a pod twice when a second link is connected', async () => {
@@ -354,7 +395,8 @@ describe('disconnecting storage', () => {
   });
 
   it('gives up a link no pod uses', async () => {
-    const { service, accounts, state } = await connected();
+    const { service, accounts, state, granted } = await connected();
+    granted.accountId = 'dbid:2';
     const [key, nonce] = stateOf(await service.beginLink('user_dana', 'dropbox', 'https://x/cb'));
     const two = await service.completeLink('user_dana', 'dropbox', key, nonce, 'code', 'https://x/cb');
     const spare = two.links[1]!.linkId;

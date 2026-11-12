@@ -3,6 +3,7 @@
 // wrong, never a value.
 
 import { isDev, storageAuthorizations, storageProviders, tokenSigner } from './composition.js';
+import { keyList } from './adapters/sealing.js';
 import type { Env } from './env.js';
 
 /** What is missing or malformed, by name; empty when the deployment is ready. */
@@ -10,6 +11,7 @@ export async function unready(env: Env): Promise<string[]> {
   const problems: string[] = [];
   if (!isDev(env)) {
     if (!sealingKeyFits(env.TOKEN_KEY)) problems.push('TOKEN_KEY');
+    if (!keyList(env.TOKEN_KEY_OLD).every(sealingKeyFits)) problems.push('TOKEN_KEY_OLD');
     if (!env.CLERK_PUBLISHABLE_KEY || !env.CLERK_SECRET_KEY) problems.push('Clerk keys');
   }
   try {
