@@ -3,6 +3,28 @@
 
 export type Fetch = (input: string, init?: RequestInit) => Promise<Response>;
 
+/** The same fetch, given up with `late()` when no answer has begun within
+ * `ms`. Only the wait for the answer is timed: a body, once it is coming, is
+ * the reader's to pace. */
+export function deadlined(fetcher: Fetch, ms: number, late: () => Error): Fetch {
+  return async (input, init) => {
+    const abort = new AbortController();
+    let expired = false;
+    const timer = setTimeout(() => {
+      expired = true;
+      abort.abort();
+    }, ms);
+    try {
+      return await fetcher(input, { ...init, signal: abort.signal });
+    } catch (e) {
+      if (expired) throw late();
+      throw e;
+    } finally {
+      clearTimeout(timer);
+    }
+  };
+}
+
 /** The body as text, refused once it passes `limit` bytes, without reading more. */
 export async function limitedText(res: Response, limit: number, tooLarge: () => Error): Promise<string> {
   const reader = res.body?.getReader();

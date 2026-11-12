@@ -40,7 +40,7 @@ import {
   resolveRange,
   slugName,
 } from '../../domain/pods/requests.js';
-import { readAll } from '../shared/streams.js';
+import { readAhead, readAll } from '../shared/streams.js';
 import {
   BadRequest,
   Conflict,
@@ -58,7 +58,7 @@ import {
 import { AclResolver } from './acl.js';
 import { type ContainerRow, type DocumentRow, type PodIndex, type ResourceRow } from './ports.js';
 import { newContainerRow, touch } from './rows.js';
-import { type ByteRange, type FileStore, type ListedEntry, type Listing, RevisionConflict } from '../storage/ports.js';
+import { type ByteRange, type FileInfo, type FileStore, type ListedEntry, type Listing, RevisionConflict } from '../storage/ports.js';
 import { type ReconcileReport, applyChanges, rebuildIndex } from './reconcile.js';
 import type { Quad } from 'n3';
 import { Serial } from '../shared/serial.js';
@@ -124,10 +124,36 @@ export interface PodDeps {
   newId: () => string;
   /** The pod's write queue, given when several `Pod`s serve one index. */
   writes?: Serial;
+  /** The resources whose bodies are arriving, shared as the queue is. */
+  arriving?: Set<PodPath>;
   /** Whether the index was lately checked against the folder. When it was
    * not, nothing is served or decided from a cached copy: the storage is
    * asked, and its failure is the answer. Absent: always. */
   fresh?: () => boolean;
+}
+
+/** Where a write lands, once it is allowed. */
+interface Destination {
+  path: PodPath;
+  existing: DocumentRow | null;
+}
+
+/** A request body read in: RDF text, short bytes, or the rest of a long one. */
+type TakenBody = { text: string } | { bytes: Uint8Array } | { stream: ReadableStream<Uint8Array> };
+
+interface Place {
+  mapped: ReturnType<typeof documentFile>;
+  /** Containers made in storage for it that the index does not hold yet. */
+  missing: PodPath[];
+  ifRev: string | null | undefined;
+}
+
+/** A body up to this long is held and written in one step; a longer one goes
+ * to the storage as it arrives. */
+const HELD_LIMIT = 1024 * 1024;
+
+function sameDocument(a: DocumentRow | null, b: DocumentRow | null): boolean {
+  return a === null || b === null ? a === b : a.file === b.file && a.rev === b.rev;
 }
 
 const ALL_MODES = new Set<Mode>(MODES);
@@ -136,9 +162,12 @@ const ACL_TYPE = TURTLE;
 export class Pod {
   private readonly writes: Serial;
   private readonly acls: AclResolver;
+  /** Resources whose bodies are on their way to storage; a POST names its new resource otherwise. */
+  private readonly arriving: Set<PodPath>;
 
   constructor(private readonly deps: PodDeps) {
     this.writes = deps.writes ?? new Serial();
+    this.arriving = deps.arriving ?? new Set();
     this.acls = new AclResolver(deps.index, (path) => this.url(path), (row) => this.readText(row), () => this.fresh());
   }
 
@@ -387,44 +416,58 @@ export class Pod {
 
   // ---- writes -------------------------------------------------------------
 
-  put(path: PodPath, agent: Agent, body: Body, contentType: string | null, conditions: Conditions): Promise<WriteResult> {
-    return this.writes.run(async () => {
-      this.refuseMeta(path);
-      this.refuseShadow(path);
-      const existing = this.deps.index.get(path);
-      // Authorization comes before preconditions and conflicts, so their
-      // answers never tell an outsider whether a resource exists.
-      if (isContainer(path)) {
+  // A body arrives at its sender's pace, so it is taken in before the write
+  // queue: the queue is held for what the storage does, never for a sender.
+  // What a write is allowed to do is decided outside the queue first, so an
+  // outsider's body is not read, and again inside it, where the answer holds.
+
+  async put(path: PodPath, agent: Agent, body: Body, contentType: string | null, conditions: Conditions): Promise<WriteResult> {
+    if (isContainer(path)) {
+      return this.writes.run(async () => {
+        this.refuseMeta(path);
+        this.refuseShadow(path);
+        const existing = this.deps.index.get(path);
         await this.authorizeWrite(path, existing, agent);
         this.checkConditions(existing, conditions);
         if (existing) throw new Conflict('the container already exists; PUT cannot replace a container');
         await this.createContainer(path);
         return { path, created: true };
-      }
+      });
+    }
+    // Authorization comes before preconditions and conflicts, so their
+    // answers never tell an outsider whether a resource exists.
+    const admit = async (): Promise<Destination> => {
+      this.refuseMeta(path);
+      this.refuseShadow(path);
+      const existing = this.deps.index.get(path);
       if (!contentType) throw new BadRequest('Content-Type is required');
       await this.authorizeWrite(path, existing, agent);
       this.checkConditions(existing, conditions);
-      await this.storeBody(path, contentType, body, existing);
-      return { path, created: existing === null };
-    });
+      return { path, existing: this.documentAt(path, existing) };
+    };
+    await admit();
+    return this.storeTaken(await this.take(body, contentType!), contentType!, admit);
   }
 
-  post(container: PodPath, agent: Agent, body: Body, contentType: string | null, slug: string | null, asContainer: boolean): Promise<WriteResult> {
-    return this.writes.run(async () => {
+  async post(container: PodPath, agent: Agent, body: Body, contentType: string | null, slug: string | null, asContainer: boolean): Promise<WriteResult> {
+    const admit = async (): Promise<Destination> => {
       // Access first, so the answer says nothing about what is there.
       await this.require(container, agent, ['append']);
       const target = this.deps.index.get(container);
       if (!target) throw new NotFound(container);
       if (target.kind !== 'container') throw new MethodNotAllowed('POST is for containers', allowedMethods(container));
-      const path = this.freeChildPath(container, slug, asContainer);
-      if (asContainer) {
+      if (!asContainer && !contentType) throw new BadRequest('Content-Type is required');
+      return { path: this.freeChildPath(container, slug, asContainer), existing: null };
+    };
+    if (asContainer) {
+      return this.writes.run(async () => {
+        const { path } = await admit();
         await this.createContainer(path);
-      } else {
-        if (!contentType) throw new BadRequest('Content-Type is required');
-        await this.storeBody(path, contentType, body, null);
-      }
-      return { path, created: true };
-    });
+        return { path, created: true };
+      });
+    }
+    await admit();
+    return this.storeTaken(await this.take(body, contentType!), contentType!, admit);
   }
 
   patch(path: PodPath, agent: Agent, text: string, contentType: string | null, conditions: Conditions): Promise<WriteResult> {
@@ -579,7 +622,7 @@ export class Pod {
 
   private isFree(path: PodPath): boolean {
     const { index } = this.deps;
-    if (isAclPath(path) || isMetaPath(path) || shadowsAuxiliary(path) || hasTypeSuffix(path)) return false;
+    if (isAclPath(path) || isMetaPath(path) || shadowsAuxiliary(path) || hasTypeSuffix(path) || this.arriving.has(path)) return false;
     return !index.get(path) && !index.get(otherKind(path)) && !index.byFold(foldKey(path));
   }
 
@@ -604,24 +647,77 @@ export class Pod {
     this.checkCreatable(path);
     const missing = await this.ensureAncestors(path);
     await this.deps.files.makeFolder(basePathOf(path));
-    this.deps.index.atomically(() => {
-      for (const a of [...missing, path]) {
-        this.deps.index.upsert(newContainerRow(a, this.deps));
-        touch(this.deps.index, parentOf(a), this.deps);
-      }
+    this.deps.index.atomically(() => this.recordContainers([...missing, path]));
+  }
+
+  /** The document a write to `path` replaces; a container there is a conflict. */
+  private documentAt(path: PodPath, existing: ResourceRow | null): DocumentRow | null {
+    if (existing?.kind === 'container') throw new Conflict(`${path} is a container`);
+    return existing;
+  }
+
+  /** Reads a body in, outside the write queue: RDF as text, anything else
+   * whole when it is short, and as the stream to go on from when it is not. */
+  private async take(body: Body, contentType: string): Promise<TakenBody> {
+    if (isRdfType(contentType)) return { text: new TextDecoder().decode(await readAll(body.stream, RDF_LIMIT)) };
+    const { head, rest } = await readAhead(body.stream, HELD_LIMIT);
+    return rest ? { stream: rest } : { bytes: head };
+  }
+
+  /** Stores a body `take` read in, at the destination `admit` allows. */
+  private storeTaken(taken: TakenBody, contentType: string, admit: () => Promise<Destination>): Promise<WriteResult> {
+    if ('stream' in taken) return this.storeLong(taken.stream, contentType, admit);
+    return this.writes.run(async () => {
+      const { path, existing } = await admit();
+      await this.checkBody(path, contentType, existing, 'text' in taken);
+      if ('text' in taken) await this.storeRdf(path, contentType, taken.text, existing);
+      else await this.storeDocument(path, contentType, taken.bytes, existing, null);
+      return { path, created: existing === null };
     });
   }
 
-  private async storeBody(path: PodPath, contentType: string, body: Body, existing: ResourceRow | null): Promise<void> {
-    if (existing?.kind === 'container') throw new Conflict(`${path} is a container`);
+  /** What a body's type rules out, whatever its bytes. */
+  private async checkBody(path: PodPath, contentType: string, existing: DocumentRow | null, rdf: boolean): Promise<void> {
     if (isAclPath(path) && bareType(contentType) !== ACL_TYPE) throw new UnsupportedMediaType('ACL documents are text/turtle');
-    if (isRdfType(contentType)) {
-      const text = new TextDecoder().decode(await readAll(body.stream, RDF_LIMIT));
-      await this.storeRdf(path, contentType, text, existing);
-      return;
+    if (!rdf && (await this.protectedIssuers(existing)).length > 0) throw new Conflict('this profile names who signs its owner in, so it stays an RDF document');
+  }
+
+  /** Stores a body too long to hold: the queue is taken to open the upload
+   * and again to finish it, and the bytes go to the storage in between. A
+   * write to the same resource in that time wins, and this one is a conflict. */
+  private async storeLong(stream: ReadableStream<Uint8Array>, contentType: string, admit: () => Promise<Destination>): Promise<WriteResult> {
+    const { files } = this.deps;
+    const opened = await this.writes.run(async () => {
+      const { path, existing } = await admit();
+      await this.checkBody(path, contentType, existing, false);
+      const place = await this.placeFor(path, contentType, existing);
+      // The folders above exist from here on, as a container made by hand would.
+      this.deps.index.atomically(() => this.recordContainers(place.missing));
+      const upload = await files.begin(place.mapped.file, { ifRev: place.ifRev }).catch((e: unknown) => this.conflictOf(path, e));
+      this.arriving.add(path);
+      return { path, existing, place, upload };
+    });
+    const { path, upload } = opened;
+    try {
+      await upload.send(stream);
+      return await this.writes.run(async () => {
+        const now = this.documentAt(path, this.deps.index.get(path));
+        const parent = parentOf(path);
+        if (!sameDocument(now, opened.existing) || (parent !== null && !this.deps.index.get(parent))) {
+          throw new Conflict(`${path} changed while its body arrived; retry`);
+        }
+        const info = await upload.finish().catch((e: unknown) => this.conflictOf(path, e));
+        await this.recordDocument(path, contentType, { ...opened.place, missing: [] }, opened.existing, info, null);
+        return { path, created: opened.existing === null };
+      });
+    } finally {
+      this.arriving.delete(path);
     }
-    if ((await this.protectedIssuers(existing)).length > 0) throw new Conflict('this profile names who signs its owner in, so it stays an RDF document');
-    await this.storeDocument(path, contentType, body.stream, existing, null);
+  }
+
+  private conflictOf(path: PodPath, e: unknown): never {
+    if (e instanceof RevisionConflict) throw new Conflict(`${path} changed in storage; retry after it is re-read`);
+    throw e;
   }
 
   /** Validates and stores an RDF document. */
@@ -644,14 +740,14 @@ export class Pod {
     await this.storeDocument(path, contentType, new TextEncoder().encode(text), existing, text);
   }
 
-  private async storeDocument(
-    path: PodPath,
-    contentType: string,
-    body: ReadableStream<Uint8Array> | Uint8Array,
-    existing: DocumentRow | null,
-    text: string | null,
-  ): Promise<void> {
-    const { index, files } = this.deps;
+  private async storeDocument(path: PodPath, contentType: string, body: Uint8Array, existing: DocumentRow | null, text: string | null): Promise<void> {
+    const place = await this.placeFor(path, contentType, existing);
+    const info = await this.deps.files.write(place.mapped.file, body, { ifRev: place.ifRev }).catch((e: unknown) => this.conflictOf(path, e));
+    await this.recordDocument(path, contentType, place, existing, info, text);
+  }
+
+  /** Where a document's bytes go, with the folders above it made. */
+  private async placeFor(path: PodPath, contentType: string, existing: DocumentRow | null): Promise<Place> {
     let mapped;
     try {
       mapped = documentFile(path, contentType);
@@ -661,15 +757,22 @@ export class Pod {
     }
     if (!existing) this.checkCreatable(path);
     const missing = await this.ensureAncestors(path);
-
     const sameFile = existing?.file === mapped.file;
-    let info;
-    try {
-      info = await files.write(mapped.file, body, { ifRev: existing ? (sameFile ? existing.rev : undefined) : null });
-    } catch (e) {
-      if (e instanceof RevisionConflict) throw new Conflict(`${path} changed in storage; retry after it is re-read`);
-      throw e;
+    return { mapped, missing, ifRev: existing ? (sameFile ? existing.rev : undefined) : null };
+  }
+
+  private recordContainers(paths: PodPath[]): void {
+    for (const a of paths) {
+      this.deps.index.upsert(newContainerRow(a, this.deps));
+      touch(this.deps.index, parentOf(a), this.deps);
     }
+  }
+
+  /** Takes a written file into the index, with what goes beside it in storage. */
+  private async recordDocument(path: PodPath, contentType: string, place: Place, existing: DocumentRow | null, info: FileInfo, text: string | null): Promise<void> {
+    const { index, files } = this.deps;
+    const { mapped, missing } = place;
+    const sameFile = existing?.file === mapped.file;
     if (mapped.typeInMeta) {
       await files.write(metaFileOf(path), new TextEncoder().encode(`<> <${MA('format')}> "${bareType(contentType)}".\n`));
     } else if (existing?.hasMeta) {
@@ -678,10 +781,7 @@ export class Pod {
     if (existing && !sameFile) await files.remove(existing.file);
 
     index.atomically(() => {
-      for (const a of missing) {
-        index.upsert(newContainerRow(a, this.deps));
-        touch(this.deps.index, parentOf(a), this.deps);
-      }
+      this.recordContainers(missing);
       index.upsert({
         path,
         kind: 'document',

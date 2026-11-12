@@ -179,6 +179,15 @@ and a folder under another spelling is the folder the pod already has.
   cannot be deleted (405).
 - `POST`, and `PUT`/`PATCH` of an ACL, check access before they look at what
   exists, like every other method.
+- Writes to a pod go one at a time, and that queue is held only for what the
+  storage does. A request body is read before the queue is taken: whether the
+  write is allowed is decided first (an outsider's body is not read) and
+  again inside the queue. A body over 1 MiB that is not RDF goes to the
+  storage as it arrives, between two turns in the queue: the first opens the
+  upload and makes missing containers, the second makes the upload the
+  document. If the resource or its container changed in between, the upload
+  is dropped and the answer is 409; a `POST`'s chosen name is kept for it
+  meanwhile. A body that sends nothing for 30 seconds is given up (408).
 - Conditional requests: `If-Match` and `If-None-Match` (including `*`) on
   every write, against the index ETag. A failed precondition is 412.
 - Response headers: `ETag`, `Last-Modified`, `Link` (`rel="type"` for LDP
@@ -246,6 +255,7 @@ conditional PUT) is atomic with respect to this server. Reads do not take it.
 interface FileStore {
   read(path, range?) -> { body, size, rev, range? } | null
   write(path, body, { size?, ifRev? })  -> FileInfo   // ifRev null: must not exist
+  begin(path, { ifRev? }) -> Upload      // send(body), then finish() -> FileInfo
   remove(path)
   makeFolder(path)
   removeFolder(path)
@@ -259,6 +269,15 @@ repeats when a file is deleted and written again). A path never has the same
 revision twice. Adapters translate
 provider errors into a small set: not found, conflict, quota exceeded,
 unauthorized (access revoked), rate limited (with retry-after), unavailable.
+
+`begin` splits a write in three so the body can travel while other writes
+run: nothing shows under the file's name until `finish`, which refuses
+(conflict) when the file is no longer as `begin` found it. Dropbox keeps an
+upload session apart from any file and checks the revision when the session
+is committed. Drive makes a resumable upload the file with its last piece,
+so that piece is held until `finish`, which looks the file up once more
+first. A call to a provider that has not begun to answer in 60 seconds is
+given up as unavailable storage, so a hung call does not hold the queue.
 
 Adapters: `MemoryFileStore` (tests), `DevFileStore` (DO SQLite, local dev
 only; deployments refuse it), Dropbox and Google Drive.

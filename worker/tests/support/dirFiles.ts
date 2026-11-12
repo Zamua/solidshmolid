@@ -2,7 +2,8 @@
 
 import { mkdir, readFile, readdir, rm, stat, writeFile } from 'node:fs/promises';
 import { dirname, join, relative } from 'node:path';
-import { type ByteRange, type FileInfo, type FileStore, type ListedEntry, RevisionConflict, type StoredFile, type WriteOptions } from '../../app/storage/ports.js';
+import { type ByteRange, type FileInfo, type FileStore, type ListedEntry, RevisionConflict, type StoredFile, type Upload, type WriteOptions } from '../../app/storage/ports.js';
+import { heldUpload } from '../../app/storage/upload.js';
 import { bytesOf, streamOf } from './fakes.js';
 
 export class DirFileStore implements FileStore {
@@ -34,6 +35,10 @@ export class DirFileStore implements FileStore {
     const rev = `r${++this.counter}`;
     this.revs.set(file, rev);
     return { file, rev, size: bytes.byteLength, modified: new Date().toISOString() };
+  }
+
+  async begin(file: string, options?: WriteOptions): Promise<Upload> {
+    return heldUpload(this, file, options);
   }
 
   async remove(file: string): Promise<void> {

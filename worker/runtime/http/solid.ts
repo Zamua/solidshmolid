@@ -10,6 +10,7 @@ import {
   NotAcceptable,
   NotFound,
   PayloadTooLarge,
+  RequestTimeout,
   PodError,
   PreconditionFailed,
   RangeNotSatisfiable,
@@ -19,7 +20,7 @@ import {
   UnsupportedMediaType,
 } from '../../app/shared/errors.js';
 import { type Access, type Agent, Pod, type ReadResult } from '../../app/pods/pod.js';
-import { readAll } from '../../app/shared/streams.js';
+import { paced, readAll } from '../../app/shared/streams.js';
 import type { Conditions, EtagList, RangeRequest } from '../../domain/pods/requests.js';
 import { InvalidPath, type PodPath, aclPathOf, canonicalPath, isAclPath, isContainer } from '../../domain/pods/paths.js';
 import { DPOP_CHALLENGE } from '../../domain/identity/oidc.js';
@@ -28,6 +29,8 @@ import { LDP, PIM } from '../../domain/shared/vocab.js';
 import { wacAllow } from '../../domain/pods/wac.js';
 
 /** N3 Patch documents are small; anything bigger is refused unread. */
+/** How long a request body may send nothing before the request is given up. */
+const BODY_STALL_MS = 30_000;
 const PATCH_LIMIT = 1024 * 1024;
 
 const EXPOSED = [
@@ -143,8 +146,10 @@ function acceptHeaders(path: PodPath): Record<string, string> {
   return { 'Accept-Patch': 'text/n3', 'Accept-Put': '*/*' };
 }
 
+/** The body, given up once it stops arriving: a sender cannot hold its
+ * request open by sending nothing. */
 function bodyOf(request: Request): ReadableStream<Uint8Array> {
-  return request.body ?? new Response('').body!;
+  return paced(request.body ?? new Response('').body!, BODY_STALL_MS, () => new RequestTimeout('the request body stopped arriving'));
 }
 
 function etagList(value: string | null): EtagList {
@@ -188,6 +193,7 @@ const STATUS: [new (...args: never[]) => PodError, number][] = [
   [Conflict, 409],
   [PreconditionFailed, 412],
   [PayloadTooLarge, 413],
+  [RequestTimeout, 408],
   [UnsupportedMediaType, 415],
   [RangeNotSatisfiable, 416],
   [Unprocessable, 422],

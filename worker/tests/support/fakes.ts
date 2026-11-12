@@ -1,7 +1,8 @@
 // Test doubles: an in-memory FileStore and the SQLite index over node:sqlite.
 
 import { createRequire } from 'node:module';
-import { type ByteRange, type FileInfo, type FileStore, type ListedEntry, RevisionConflict, type StoredFile, type WriteOptions } from '../../app/storage/ports.js';
+import { heldUpload } from '../../app/storage/upload.js';
+import { type ByteRange, type FileInfo, type FileStore, type ListedEntry, RevisionConflict, type StoredFile, type Upload, type WriteOptions } from '../../app/storage/ports.js';
 import { Pod } from '../../app/pods/pod.js';
 import { SqlIndex } from '../../runtime/adapters/sqlPodIndex.js';
 
@@ -82,6 +83,10 @@ export class MemoryFileStore implements FileStore {
     const entry = { bytes, rev: `r${++this.counter}`, modified: new Date(0).toISOString() };
     this.files.set(file, entry);
     return { file, rev: entry.rev, size: bytes.byteLength, modified: entry.modified };
+  }
+
+  async begin(file: string, options?: WriteOptions): Promise<Upload> {
+    return heldUpload(this, file, options);
   }
 
   async remove(file: string): Promise<void> {

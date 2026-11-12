@@ -36,6 +36,10 @@ export interface FileStore {
   readonly mergesCase: boolean;
   read(file: string, range?: ByteRange): Promise<StoredFile | null>;
   write(file: string, body: ReadableStream<Uint8Array> | Uint8Array, options?: WriteOptions): Promise<FileInfo>;
+  /** A write in three steps, for a body too long to wait for: `begin` finds
+   * the file as it is now, `send` takes the bytes, `finish` makes them the
+   * file. Only `begin` and `finish` need the file left alone meanwhile. */
+  begin(file: string, options?: WriteOptions): Promise<Upload>;
   /** Removing a missing file succeeds. */
   remove(file: string): Promise<void>;
   /** Creating an existing folder succeeds. */
@@ -44,6 +48,16 @@ export interface FileStore {
   /** The names of what a folder holds directly, files and folders alike;
    * none for a folder that is not there. */
   namesIn(folder: string): Promise<string[]>;
+}
+
+/** A write whose bytes go to the storage ahead of the write itself. */
+export interface Upload {
+  /** Takes the whole body, once. Nothing shows under the file's name yet,
+   * and a body that fails leaves the file as it was. */
+  send(body: ReadableStream<Uint8Array>): Promise<void>;
+  /** Makes the bytes sent the file. Throws `RevisionConflict` when the file
+   * is no longer as `begin` found it. */
+  finish(): Promise<FileInfo>;
 }
 
 /** A write's revision precondition failed. */
