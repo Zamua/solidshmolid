@@ -8,7 +8,7 @@
 
 import { containerDescription } from '../../domain/pods/container.js';
 import { negotiate } from '../../domain/pods/conneg.js';
-import { UnmappablePath, basePathOf, documentFile, metaFileOf } from '../../domain/pods/layout.js';
+import { UnmappablePath, basePathOf, documentFile, hasTypeSuffix, metaFileOf } from '../../domain/pods/layout.js';
 import { bareType } from '../../domain/shared/mediaTypes.js';
 import { ROOT_ACL, allowedMethods } from '../../domain/pods/methods.js';
 import { InvalidPatch, PatchConflict, applyPatch, modesForPatch, parsePatch } from '../../domain/pods/n3patch.js';
@@ -58,7 +58,7 @@ import {
 import { AclResolver } from './acl.js';
 import { type ContainerRow, type DocumentRow, type PodIndex, type ResourceRow } from './ports.js';
 import { newContainerRow, touch } from './rows.js';
-import { type ByteRange, type FileStore, type ListedEntry, RevisionConflict } from '../storage/ports.js';
+import { type ByteRange, type FileStore, type ListedEntry, type Listing, RevisionConflict } from '../storage/ports.js';
 import { type ReconcileReport, applyChanges, rebuildIndex } from './reconcile.js';
 import type { Quad } from 'n3';
 import { Serial } from '../shared/serial.js';
@@ -124,6 +124,10 @@ export interface PodDeps {
   newId: () => string;
   /** The pod's write queue, given when several `Pod`s serve one index. */
   writes?: Serial;
+  /** Whether the index was lately checked against the folder. When it was
+   * not, nothing is served or decided from a cached copy: the storage is
+   * asked, and its failure is the answer. Absent: always. */
+  fresh?: () => boolean;
 }
 
 const ALL_MODES = new Set<Mode>(MODES);
@@ -135,7 +139,7 @@ export class Pod {
 
   constructor(private readonly deps: PodDeps) {
     this.writes = deps.writes ?? new Serial();
-    this.acls = new AclResolver(deps.index, (path) => this.url(path), (row) => this.readText(row));
+    this.acls = new AclResolver(deps.index, (path) => this.url(path), (row) => this.readText(row), () => this.fresh());
   }
 
   url(path: PodPath): string {
@@ -172,7 +176,7 @@ export class Pod {
   /** Takes over an existing pod folder: the index becomes what it holds. */
   adopt(owner: string, entries: ListedEntry[]): Promise<ReconcileReport> {
     return this.writes.run(async () => {
-      const report = await rebuildIndex(this.deps, entries);
+      const report = await rebuildIndex(this.deps, entries).finally(() => this.acls.forgetAll());
       if (!this.deps.index.state()) this.deps.index.setState({ owner, created: this.deps.now().toISOString() });
       return report;
     });
@@ -180,7 +184,18 @@ export class Pod {
 
   /** Folds in changes made to the folder outside this server. */
   applyChanges(entries: ListedEntry[]): Promise<ReconcileReport> {
-    return this.writes.run(() => applyChanges(this.deps, entries));
+    if (entries.length === 0) return Promise.resolve({ updated: 0, removed: 0, skipped: [] });
+    return this.writes.run(() => applyChanges(this.deps, entries).finally(() => this.acls.forgetAll()));
+  }
+
+  /** Makes the index what the folder holds now. The listing is taken inside
+   * the write queue, so no write of this pod's falls between it and the index. */
+  relist(list: () => Promise<Listing>): Promise<{ report: ReconcileReport; cursor: string }> {
+    return this.writes.run(async () => {
+      const listing = await list();
+      const report = await rebuildIndex(this.deps, listing.entries).finally(() => this.acls.forgetAll());
+      return { report, cursor: listing.cursor };
+    });
   }
 
   // ---- access control ---------------------------------------------------
@@ -281,7 +296,7 @@ export class Pod {
 
     const range = options.range ? this.range(options.range, row.size) : null;
     if (options.head) return { ...base, contentType: stored, etag: row.etag, body: null, size: row.size, range };
-    const cached = range ? null : this.deps.index.cachedText(row.path);
+    const cached = range ? null : this.cachedText(row.path);
     if (cached !== null) return { ...base, contentType: stored, etag: row.etag, body: cached, size: row.size, range: null };
     const file = await this.deps.files.read(row.file, range ?? undefined);
     if (!file) {
@@ -291,6 +306,7 @@ export class Pod {
     if (file.rev === row.rev) return { ...base, contentType: stored, etag: row.etag, body: file.body, size: row.size, range };
     // The file changed in the storage and sync has not caught up: these are
     // the new bytes, so they go out under the new validator and size.
+    this.caughtUp(row, file);
     if (!range) return { ...base, contentType: stored, etag: etagOfRev(file.rev), body: file.body, size: file.size, range: null };
     await file.body.cancel();
     const fresh = this.range(options.range!, file.size);
@@ -320,13 +336,21 @@ export class Pod {
   }
 
   private async readText(row: DocumentRow): Promise<string | null> {
-    const cached = this.deps.index.cachedText(row.path);
+    const cached = this.cachedText(row.path);
     if (cached !== null) return cached;
     const file = await this.deps.files.read(row.file);
     if (!file) return null;
     const text = new TextDecoder().decode(await readAll(file.body, RDF_LIMIT));
     if (text.length <= CACHE_LIMIT) this.deps.index.setCachedText(row.path, text);
     return text;
+  }
+
+  private fresh(): boolean {
+    return this.deps.fresh?.() ?? true;
+  }
+
+  private cachedText(path: PodPath): string | null {
+    return this.fresh() ? this.deps.index.cachedText(path) : null;
   }
 
   private async requireText(row: DocumentRow): Promise<string> {
@@ -345,6 +369,20 @@ export class Pod {
       index.delete(row.path);
       touch(this.deps.index, parentOf(row.path), this.deps);
     });
+    this.acls.forget(row.path);
+  }
+
+  /** The folder holds a newer `row.file` than the index knew: the index takes
+   * its revision, unless something else has replaced the row meanwhile. */
+  private caughtUp(row: DocumentRow, file: { rev: string; size: number }): void {
+    const { index } = this.deps;
+    const now = index.get(row.path);
+    if (now?.kind !== 'document' || now.rev !== row.rev || now.file !== row.file) return;
+    index.atomically(() => {
+      index.upsert({ ...row, rev: file.rev, etag: etagOfRev(file.rev), size: file.size });
+      index.setCachedText(row.path, null);
+    });
+    this.acls.forget(row.path);
   }
 
   // ---- writes -------------------------------------------------------------
@@ -477,6 +515,7 @@ export class Pod {
         index.delete(path);
         touch(this.deps.index, parentOf(path), this.deps);
       });
+      for (const gone of [path, ...companions.map((c) => c.path)]) this.acls.forget(gone);
     });
   }
 
@@ -490,6 +529,7 @@ export class Pod {
    * whoever asks: on such a disk they would become the real thing. */
   private refuseShadow(path: PodPath): void {
     if (shadowsAuxiliary(path)) throw new BadRequest('a name ending in .acl or .meta must be in lower case');
+    if (hasTypeSuffix(path)) throw new BadRequest('a name may not end in $.<extension>');
   }
 
   /** The `solid:oidcIssuer` statements a stored WebID profile makes about its
@@ -539,7 +579,7 @@ export class Pod {
 
   private isFree(path: PodPath): boolean {
     const { index } = this.deps;
-    if (isAclPath(path) || isMetaPath(path) || shadowsAuxiliary(path)) return false;
+    if (isAclPath(path) || isMetaPath(path) || shadowsAuxiliary(path) || hasTypeSuffix(path)) return false;
     return !index.get(path) && !index.get(otherKind(path)) && !index.byFold(foldKey(path));
   }
 
@@ -656,6 +696,7 @@ export class Pod {
       index.setCachedText(path, text !== null && text.length <= CACHE_LIMIT ? text : null);
       if (!existing) touch(this.deps.index, parentOf(path), this.deps);
     });
+    this.acls.forget(path);
   }
 
   private checkConditions(row: ResourceRow | null, conditions: Conditions): void {

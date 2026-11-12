@@ -120,12 +120,12 @@ describe('placing a pod in its folder', () => {
     let now = 0;
     const sync = new FolderSync(pod, cursor, storage, 30_000, () => now);
     folder.editOutOfBand('/k3x9fqm7/notes/a.txt', 'edited in Dropbox');
-    expect(await sync.syncIfStale()).toBeGreaterThan(0);
+    expect((await sync.syncIfStale())?.updated).toBeGreaterThan(0);
     folder.editOutOfBand('/k3x9fqm7/notes/a.txt', 'edited again');
     now += 10_000;
-    expect(await sync.syncIfStale()).toBe(0);
+    expect(await sync.syncIfStale()).toBeNull();
     now += 30_000;
-    expect(await sync.syncIfStale()).toBeGreaterThan(0);
+    expect((await sync.syncIfStale())?.updated).toBeGreaterThan(0);
     expect(await textOf((await pod.read('/notes/a.txt', { webid: ALICE }, READ)).body)).toBe('edited again');
   });
 
@@ -135,9 +135,9 @@ describe('placing a pod in its folder', () => {
     const clock = neverSynced();
     const rebuilt = () => new FolderSync(pod, cursor, storage, 30_000, () => 5_000, clock);
     folder.editOutOfBand('/k3x9fqm7/notes/a.txt', 'one');
-    expect(await rebuilt().syncIfStale()).toBeGreaterThan(0);
+    expect((await rebuilt().syncIfStale())?.updated).toBeGreaterThan(0);
     folder.editOutOfBand('/k3x9fqm7/notes/a.txt', 'two');
-    expect(await rebuilt().syncIfStale()).toBe(0);
+    expect(await rebuilt().syncIfStale()).toBeNull();
   });
 });
 
@@ -190,5 +190,57 @@ describe('the placement lifecycle', () => {
     expect(() => nextPlacement({ state: 'unplaced' }, { kind: 'synced', cursor: 'c' })).toThrow();
     expect(() => nextPlacement({ state: 'placing', target: TARGET }, { kind: 'ready' })).toThrow();
     expect(() => nextPlacement({ state: 'placed', target: TARGET, cursor: 'c' }, { kind: 'listed', listing: listing([]) })).toThrow();
+  });
+});
+
+describe('a placed pod whose change feed goes wrong', () => {
+  const placed = async () => {
+    const world = setup();
+    await placePod(world.pod, world.storage, world.cursor, TARGET, { owner: ALICE, profile: PROFILE });
+    await world.pod.put('/n/Foo.txt', { webid: ALICE }, { stream: streamOf('v1') }, 'text/plain', NO_CONDITIONS);
+    return world;
+  };
+  const sync = (w: ReturnType<typeof setup>) => new FolderSync(w.pod, w.cursor, w.storage, 0, () => 0).syncIfStale();
+
+  it('keeps following it past a file renamed only in case', async () => {
+    const w = await placed();
+    await sync(w);
+    w.folder.renameCaseOutOfBand('/k3x9fqm7/n/foo.txt');
+    w.folder.editOutOfBand('/k3x9fqm7/n/foo.txt', 'v2');
+    w.folder.editOutOfBand('/k3x9fqm7/n/new.txt', 'new');
+    const before = cursorOf(w.cursor.value);
+    expect((await sync(w))?.skipped).toEqual([]);
+    expect(cursorOf(w.cursor.value)).not.toBe(before);
+    expect(await textOf((await w.pod.read('/n/foo.txt', { webid: ALICE }, READ)).body)).toBe('v2');
+    expect(await textOf((await w.pod.read('/n/new.txt', { webid: ALICE }, READ)).body)).toBe('new');
+  });
+
+  it('lists the folder again when Dropbox drops the cursor', async () => {
+    const w = await placed();
+    await sync(w);
+    w.folder.editOutOfBand('/k3x9fqm7/n/missed.txt', 'missed');
+    w.folder.resetCursors();
+    const report = await sync(w);
+    expect(report?.updated).toBeGreaterThan(0);
+    expect(await textOf((await w.pod.read('/n/missed.txt', { webid: ALICE }, READ)).body)).toBe('missed');
+    expect((await w.pod.modes('/', { webid: ALICE })).has('control')).toBe(true);
+    w.folder.editOutOfBand('/k3x9fqm7/n/after.txt', 'after');
+    expect((await sync(w))?.updated).toBe(1);
+  });
+
+  it('records when the folder last answered, and not a sync that failed', async () => {
+    const w = await placed();
+    const clock = neverSynced();
+    let now = 1000;
+    const down = Object.assign(Object.create(w.storage) as DropboxFileStore, {
+      changes: async () => {
+        throw new StorageUnavailable('down');
+      },
+    });
+    await new FolderSync(w.pod, w.cursor, w.storage, 0, () => now, clock).syncIfStale();
+    expect(clock.ok).toBe(1000);
+    now = 2000;
+    await expect(new FolderSync(w.pod, w.cursor, down, 0, () => now, clock).syncIfStale()).rejects.toThrow(StorageUnavailable);
+    expect([clock.last, clock.ok]).toEqual([2000, 1000]);
   });
 });

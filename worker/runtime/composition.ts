@@ -163,6 +163,8 @@ export interface PodServices {
 }
 
 const SYNC_INTERVAL_MS = 30_000;
+/** How long after the folder last answered a cached copy still stands in for it. */
+const CACHE_FRESH_MS = 5 * 60_000;
 
 /** What outlives a rebuild of a pod's services: every `Pod` over one index
  * writes through one queue, and every sync reads one clock. */
@@ -175,10 +177,10 @@ export function podServices(env: Env, storage: DurableObjectStorage, base: strin
   const sql = storage.sql as SqlRunner;
   const index = new SqlIndex(sql, (fn) => storage.transactionSync(fn));
   const placement = new SqlPlacement(sql);
-  const podOn = (files: FileStore) => new Pod({ index, files, base, now: () => new Date(), newId: randomHex, writes: state.writes });
+  const podOn = (files: FileStore, fresh?: () => boolean) => new Pod({ index, files, base, now: () => new Date(), newId: randomHex, writes: state.writes, fresh });
   const podIn = (p: Placement) => {
     const files = placedStorage(env, sql, p);
-    return { pod: podOn(files), files };
+    return { pod: podOn(files, () => Date.now() - state.synced.ok < CACHE_FRESH_MS), files };
   };
 
   const placed = placement.current();

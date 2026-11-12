@@ -9,7 +9,7 @@
 // before writing; the pod's write queue makes that exact for its own writes.
 
 import { InsufficientStorage, StorageUnavailable } from '../../app/shared/errors.js';
-import { type ByteRange, type FileInfo, type FileLister, type FileStore, type ListedEntry, type Listing, RevisionConflict, type StoredFile, type WriteOptions } from '../../app/storage/ports.js';
+import { type ByteRange, CursorLost, type FileInfo, type FileLister, type FileStore, type ListedEntry, type Listing, RevisionConflict, type StoredFile, type WriteOptions } from '../../app/storage/ports.js';
 import { chunked } from './chunks.js';
 import { type Fetch, retryAfter, withAccessToken } from './http.js';
 import { randomHex } from './system.js';
@@ -55,6 +55,7 @@ interface Change {
 }
 
 export class DriveFileStore implements FileStore, FileLister {
+  readonly mergesCase = false;
   private readonly nodes: DriveNodes;
   private readonly root: string;
   private readonly sleep: (ms: number) => Promise<void>;
@@ -76,7 +77,7 @@ export class DriveFileStore implements FileStore, FileLister {
       return null;
     }
     await ensureOk(res, 'download');
-    return { body: res.body ?? new Response('').body!, size: Number(found.size ?? 0), rev: found.version ?? '' };
+    return { body: res.body ?? new Response('').body!, size: Number(found.size ?? 0), rev: revOf(found) };
   }
 
   async write(file: string, body: ReadableStream<Uint8Array> | Uint8Array, options: WriteOptions = {}): Promise<FileInfo> {
@@ -86,11 +87,14 @@ export class DriveFileStore implements FileStore, FileLister {
     const current = await this.lookup(parent!, name);
     if (current?.mimeType === FOLDER) throw new RevisionConflict(`${file} is a folder`);
     if (options.ifRev === null && current) throw new RevisionConflict(`${file} exists`);
-    if (typeof options.ifRev === 'string' && current?.version !== options.ifRev) throw new RevisionConflict(`${file} changed`);
+    // A bare version is a revision as this adapter used to give it.
+    if (typeof options.ifRev === 'string' && (!current || (options.ifRev !== revOf(current) && options.ifRev !== current.version))) {
+      throw new RevisionConflict(`${file} changed`);
+    }
     const target = { id: current?.id ?? null, parent: parent!, name };
     const saved = body instanceof Uint8Array ? await this.upload(target, body) : await this.uploadStream(target, body);
     this.remember(saved, parent!);
-    return { file, rev: saved.version ?? '', size: Number(saved.size ?? 0), modified: saved.modifiedTime ?? new Date().toISOString() };
+    return { file, rev: revOf(saved), size: Number(saved.size ?? 0), modified: saved.modifiedTime ?? new Date().toISOString() };
   }
 
   async remove(file: string): Promise<void> {
@@ -125,6 +129,9 @@ export class DriveFileStore implements FileStore, FileLister {
   }
 
   async changes(cursor: string): Promise<Listing> {
+    // Without the pod folder no change can be placed, and its return is not
+    // one the feed spells out file by file.
+    if (!this.nodes.root()) throw new CursorLost('the pod folder is not where it was');
     const changes: Change[] = [];
     let token = cursor;
     for (;;) {
@@ -457,7 +464,13 @@ function nodeOf(f: DriveFile, parent: string): DriveNode {
 }
 
 function entryOf(node: DriveNode, path: string): ListedEntry {
-  return node.folder ? { kind: 'folder', path } : { kind: 'file', path, rev: node.version ?? '', size: node.size, modified: node.modified };
+  return node.folder ? { kind: 'folder', path } : { kind: 'file', path, rev: revOf(node), size: node.size, modified: node.modified };
+}
+
+/** Drive counts versions per file, and a file written again after a delete
+ * is a new file: the id keeps a path's revisions from repeating. */
+function revOf(file: { id: string; version?: string | null }): string {
+  return `${file.id}:${file.version ?? ''}`;
 }
 
 function deletedAt(path: string): ListedEntry {

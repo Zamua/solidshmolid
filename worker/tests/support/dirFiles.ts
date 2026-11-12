@@ -6,6 +6,7 @@ import { type ByteRange, type FileInfo, type FileStore, type ListedEntry, Revisi
 import { bytesOf, streamOf } from './fakes.js';
 
 export class DirFileStore implements FileStore {
+  readonly mergesCase = false;
   private readonly revs = new Map<string, string>();
   private counter = 0;
 

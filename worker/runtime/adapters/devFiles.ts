@@ -11,6 +11,7 @@ import { randomHex } from './system.js';
 const DEV_FILE_LIMIT = 2 * 1024 * 1024;
 
 export class DevFileStore implements FileStore, FileLister {
+  readonly mergesCase = false;
   constructor(private readonly sql: SqlRunner) {
     this.sql.exec(`
       CREATE TABLE IF NOT EXISTS dev_file(file TEXT PRIMARY KEY, body BLOB NOT NULL, rev TEXT NOT NULL, modified TEXT NOT NULL);

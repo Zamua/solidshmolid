@@ -14,6 +14,8 @@ export class FakeDropbox {
   private readonly nodes = new Map<string, Node>();
   private readonly sessions = new Map<string, Uint8Array[]>();
   private readonly log: { path: string; deleted: boolean }[] = [];
+  /** Cursors of an earlier generation are ones Dropbox has dropped. */
+  private generation = 0;
   private counter = 0;
   validToken = 'tok1';
   /** Remaining calls to answer with 429 too_many_write_operations. */
@@ -73,15 +75,17 @@ export class FakeDropbox {
           const folder = String(params.path).toLowerCase();
           if (folder !== '' && !this.nodes.get(folder)?.folder) return json({ error_summary: 'path/not_found/' }, 409);
           const direct = [...this.nodes.entries()].filter(([key]) => key.startsWith(`${folder}/`) && !key.slice(folder.length + 1).includes('/'));
-          return json({ entries: direct.map(([, n]) => entry(n)), cursor: String(this.log.length), has_more: false });
+          return json({ entries: direct.map(([, n]) => entry(n)), cursor: this.cursor(), has_more: false });
         }
-        return json({ entries: [...this.nodes.values()].map(entry), cursor: String(this.log.length), has_more: false });
+        return json({ entries: [...this.nodes.values()].map(entry), cursor: this.cursor(), has_more: false });
       case 'files/list_folder/continue': {
-        const changed = this.log.slice(Number(params.cursor));
+        const [generation, at] = String(params.cursor).split('.');
+        if (Number(generation) !== this.generation) return json({ error_summary: 'reset/' }, 409);
+        const changed = this.log.slice(Number(at));
         const entries = changed.map((c) =>
           c.deleted ? { '.tag': 'deleted', path_display: c.path } : entry(this.nodes.get(c.path.toLowerCase())!),
         );
-        return json({ entries, cursor: String(this.log.length), has_more: false });
+        return json({ entries, cursor: this.cursor(), has_more: false });
       }
       default:
         return json({ error_summary: `unknown endpoint ${endpoint}` }, 400);
@@ -98,6 +102,23 @@ export class FakeDropbox {
   /** An edit made outside our server, e.g. in the Dropbox app. */
   editOutOfBand(path: string, text: string): void {
     this.put(path, new TextEncoder().encode(text));
+  }
+
+  /** A rename that changes only case: Dropbox reports no change for it. */
+  renameCaseOutOfBand(path: string): void {
+    const key = path.toLowerCase();
+    const node = this.nodes.get(key)!;
+    for (const [k, n] of this.nodes) if (k === key || k.startsWith(`${key}/`)) n.display = path + n.display.slice(path.length);
+    void node;
+  }
+
+  /** Dropbox invalidates every cursor it has given out. */
+  resetCursors(): void {
+    this.generation++;
+  }
+
+  private cursor(): string {
+    return `${this.generation}.${this.log.length}`;
   }
 
   private download(path: string, range: string | null): Response {

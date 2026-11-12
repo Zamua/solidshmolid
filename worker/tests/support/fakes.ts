@@ -64,6 +64,9 @@ export class MemoryFileStore implements FileStore {
   readonly folders = new Set<string>();
   private counter = 0;
 
+  /** `mergesCase` only labels the store; the tests that set it name files as such storage would. */
+  constructor(readonly mergesCase = false) {}
+
   async read(file: string, range?: ByteRange): Promise<StoredFile | null> {
     const entry = this.files.get(file);
     if (!entry) return null;

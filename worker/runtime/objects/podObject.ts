@@ -57,7 +57,9 @@ export class PodObject extends DurableObject<Env> {
     }
     if (sync) {
       // A failed sync leaves the request to proceed on the index as it stands.
-      await sync.syncIfStale().catch((e: Error) => console.error(JSON.stringify({ level: 'warn', msg: 'sync failed', error: e.message })));
+      const report = await sync.syncIfStale().catch((e: Error) => void console.error(JSON.stringify({ level: 'warn', msg: 'sync failed', error: e.message })));
+      // Counted, not named: a file name is the person's.
+      if (report && report.skipped.length > 0) console.error(JSON.stringify({ level: 'warn', msg: 'sync skipped entries', count: report.skipped.length }));
     }
     return handleSolid(pod, request, { webid: request.headers.get(AGENT_HEADER) || null });
   }
@@ -82,7 +84,7 @@ export class PodObject extends DurableObject<Env> {
     } finally {
       // Built before the placement was saved, the services serve the old storage.
       this.services = null;
-      this.state.synced.last = neverSynced().last;
+      Object.assign(this.state.synced, neverSynced());
     }
   }
 
@@ -124,7 +126,7 @@ export class PodObject extends DurableObject<Env> {
     await this.ctx.storage.deleteAll();
     this.services = null;
     this.proofs = null;
-    this.state.synced.last = neverSynced().last;
+    Object.assign(this.state.synced, neverSynced());
   }
 
   private open(base: string): PodServices {

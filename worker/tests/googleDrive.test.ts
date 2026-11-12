@@ -166,7 +166,7 @@ describe('DriveFileStore', () => {
       ['folder', 'z/'],
       ['file', 'z/3.txt'],
     ]);
-    expect(changes.entries[0]).toMatchObject({ kind: 'file', rev: '2' });
+    expect(changes.entries[0]).toMatchObject({ kind: 'file', rev: expect.stringMatching(/^.+:2$/u) });
     expect(kinds((await files.changes(changes.cursor)).entries)).toEqual([]);
   });
 
@@ -239,5 +239,61 @@ describe('a pod on Google Drive', () => {
     ]);
     const read = await pod.read('/notes/a.ttl', { webid: ALICE }, { accept: 'text/turtle', range: null, head: false });
     expect(await textOf(read.body)).toContain('<#b>');
+  });
+});
+
+describe('a pod on Google Drive, changed in Drive', () => {
+  const placedPod = async () => {
+    const { fake, files } = store();
+    let id = 0;
+    const pod = new Pod({ index: sqliteIndex(), files, base: BASE, now: () => new Date(), newId: () => `i${++id}` });
+    let value: PodPlacement = { state: 'unplaced' };
+    const cursor = { current: () => value, save: (p: PodPlacement) => void (value = p) };
+    await placePod(pod, files, cursor, { accountKey: 'k1', linkId: 'l1', provider: 'google-drive', folder: 'pod1' }, { owner: ALICE, profile: PROFILE });
+    const sync = () => new FolderSync(pod, cursor, files, 0, () => 0).syncIfStale();
+    return { fake, files, pod, sync };
+  };
+  const GET = { accept: null, range: null, head: false } as const;
+
+  it('comes back when its trashed folder is restored', async () => {
+    const { fake, pod, sync } = await placedPod();
+    await pod.put('/notes/a.txt', { webid: ALICE }, { stream: streamOf('kept') }, 'text/plain', NO_CONDITIONS);
+    await sync();
+    fake.trashOutOfBand('solidshmolid/pod1');
+    await sync();
+    expect((await pod.modes('/', { webid: ALICE })).size).toBe(0);
+    fake.restoreOutOfBand();
+    await sync();
+    expect((await pod.modes('/', { webid: ALICE })).has('control')).toBe(true);
+    expect(await textOf((await pod.read('/notes/a.txt', { webid: ALICE }, GET)).body)).toBe('kept');
+  });
+
+  it('never gives a path a revision it had before', async () => {
+    const { files } = store();
+    const first = await files.write('doc.txt', bytes('1'));
+    await files.remove('doc.txt');
+    const second = await files.write('doc.txt', bytes('2'));
+    expect(second.rev).not.toBe(first.rev);
+    expect((await files.read('doc.txt'))?.rev).toBe(second.rev);
+    await expect(files.write('doc.txt', bytes('3'), { ifRev: first.rev })).rejects.toThrow(RevisionConflict);
+    await files.write('doc.txt', bytes('3'), { ifRev: second.rev });
+  });
+
+  it('takes a revision as it used to give them: the bare version', async () => {
+    const { files } = store();
+    const info = await files.write('old.txt', bytes('1'));
+    await files.write('old.txt', bytes('2'), { ifRev: info.rev.split(':')[1]! });
+  });
+
+  it('an ACL deleted and written again is the new one', async () => {
+    const { pod } = await placedPod();
+    const acl = (agents: string) =>
+      `@prefix acl: <http://www.w3.org/ns/auth/acl#>. <#o> a acl:Authorization; acl:agent <${ALICE}>; acl:accessTo <./doc.txt>; acl:mode acl:Read, acl:Write, acl:Control. ${agents}`;
+    await pod.put('/doc.txt', { webid: ALICE }, { stream: streamOf('d') }, 'text/plain', NO_CONDITIONS);
+    await pod.put('/doc.txt.acl', { webid: ALICE }, { stream: streamOf(acl('<#p> a acl:Authorization; acl:agentClass <http://xmlns.com/foaf/0.1/Agent>; acl:accessTo <./doc.txt>; acl:mode acl:Read.')) }, 'text/turtle', NO_CONDITIONS);
+    expect((await pod.modes('/doc.txt', { webid: null })).has('read')).toBe(true);
+    await pod.remove('/doc.txt.acl', { webid: ALICE }, NO_CONDITIONS);
+    await pod.put('/doc.txt.acl', { webid: ALICE }, { stream: streamOf(acl('')) }, 'text/turtle', NO_CONDITIONS);
+    expect((await pod.modes('/doc.txt', { webid: null })).size).toBe(0);
   });
 });
