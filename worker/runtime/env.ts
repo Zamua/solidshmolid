@@ -48,7 +48,14 @@ export interface Env {
   ACTIVITY_SALT?: string;
 }
 
-/** Whether this is the local dev config, which trusts what a deployment never does. */
+/** Whether this is the local dev config, which trusts what a deployment never does.
+ * The flag alone is not enough: it counts only on a loopback host, so one set
+ * by mistake on a deployment changes nothing. */
 export function isDev(env: Env): boolean {
-  return env.DEV_MODE === '1';
+  return env.DEV_MODE === '1' && isLoopback(env.APEX_HOST);
+}
+
+function isLoopback(host: string | undefined): boolean {
+  const name = (host ?? '').replace(/:\d+$/u, '');
+  return name === 'localhost' || name.endsWith('.localhost') || name === '127.0.0.1' || name === '[::1]';
 }

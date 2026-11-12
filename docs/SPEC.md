@@ -423,16 +423,25 @@ signs out. A link from another site cannot sign anyone out.
 Resource-server side of Solid-OIDC (`runtime/adapters/solidOidcVerifier.ts`,
 in the Worker): `Authorization: DPoP <jwt>` plus a `DPoP` proof. Bearer tokens are
 refused. Checked: the token signature against the issuer's JWKS (discovered
-from `/.well-known/openid-configuration`, cached 5 minutes, refetched once on
-an unknown key), `iss`, `exp`, `aud` including `solid`, a `webid` claim and a
+from `/.well-known/openid-configuration`, cached 5 minutes, refetched on an
+unknown key unless it was fetched within the last minute), `iss`, `exp`, `aud` including `solid`, a `webid` claim and a
 `cnf.jkt`; the proof's signature, `typ`, key thumbprint equal to `cnf.jkt`,
-`htm`, `htu` (query ignored), `iat` within 5 minutes, a `jti`, and `ath` when
+`htm`, `htu` (query ignored), `iat` no more than 5 minutes old and no more
+than 1 minute ahead, a `jti` of at most 256 characters, and `ath` when
 present (RFC 9449 requires it, but Solid clients that omit it work against
 CSS, whose verifier also checks it only when sent); and that the WebID document names the issuer as `solid:oidcIssuer`.
 The pod's DO rejects a `jti` it has seen inside the proof window: a proof
-names the pod's host in `htu`, so per-pod uniqueness suffices. Every URL the
-verifier fetches is chosen by the client, so each fetch is time-boxed (5 s)
-and size-capped (256 KiB). Any Solid issuer is accepted, our own included.
+names the pod's host in `htu`, so per-pod uniqueness suffices. A proof is
+written down once its request got through; one answered 401 or 403 is not,
+so refused requests leave nothing stored. Every URL the verifier fetches is
+chosen by the client, so each must be https on a named host (no address, no
+loopback name, no credentials), each fetch is time-boxed (5 s) and
+size-capped (256 KiB), and a lookup that failed is not repeated for a
+minute. Redirects are not followed for an issuer's configuration or keys; a
+WebID document may redirect up to 3 times, each hop held to the same rule.
+The caller is told only that the issuer could not be reached or the profile
+could not be read; what the lookup found (origin and status) goes to the
+log. Any Solid issuer is accepted, our own included.
 Lookups of the service's own hosts (its provider's discovery and keys, a
 WebID one of its pods holds) are served in-process (`runtime/ownHosts.ts`):
 Cloudflare answers a Worker's subrequest to its own custom domain or route

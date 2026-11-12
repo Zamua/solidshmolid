@@ -3,7 +3,11 @@
 
 import type { AccountStore, Approval, CodeGrant, RefreshFamily } from '../../app/identity/ports.js';
 import { type AuthorizeRequest, type ClientInfo, type CodeEffect, type CodeState, codeIssues, nextCode } from '../../domain/identity/oidc.js';
+import { ProofLedger } from './proofLedger.js';
 import { type SqlRunner, addColumn } from './sql.js';
+
+/** A spent code is kept this long past its expiry, so one presented again is still known for a replay. */
+const CODE_KEPT_S = 24 * 3600;
 
 const SCHEMA = `
 CREATE TABLE IF NOT EXISTS account(id INTEGER PRIMARY KEY CHECK (id = 1), key TEXT NOT NULL, webid TEXT);
@@ -15,6 +19,7 @@ CREATE TABLE IF NOT EXISTS family(id TEXT PRIMARY KEY, json TEXT NOT NULL, curre
 
 export class SqlAccountStore implements AccountStore {
   readonly key: string;
+  private proofs: ProofLedger | null = null;
 
   constructor(
     private readonly sql: SqlRunner,
@@ -26,6 +31,7 @@ export class SqlAccountStore implements AccountStore {
     this.sql.exec(SCHEMA);
     addColumn(this.sql, 'approval', 'site TEXT');
     addColumn(this.sql, 'code', 'state TEXT');
+    addColumn(this.sql, 'code', 'expires INTEGER');
     const row = this.sql.exec('SELECT key FROM account WHERE id = 1').toArray()[0];
     if (row) {
       this.key = String(row.key);
@@ -102,7 +108,17 @@ export class SqlAccountStore implements AccountStore {
   }
 
   async saveCode(hash: string, grant: CodeGrant): Promise<void> {
-    this.sql.exec('INSERT INTO code(hash, grant_json) VALUES (?, ?)', hash, JSON.stringify(grant));
+    this.prune();
+    this.sql.exec('INSERT INTO code(hash, grant_json, expires) VALUES (?, ?, ?)', hash, JSON.stringify(grant), grant.expires);
+  }
+
+  /** Drops what can no longer be used: every sign-in passes through here, so
+   * an account holds its live grants and not its history. */
+  private prune(): void {
+    const now = this.now();
+    // Codes stored before the column carry their expiry only in the grant.
+    this.sql.exec("DELETE FROM code WHERE COALESCE(expires, json_extract(grant_json, '$.expires')) < ?", now - CODE_KEPT_S);
+    this.sql.exec('DELETE FROM family WHERE revoked = 1 OR expires < ?', now);
   }
 
   async presentCode(hash: string): Promise<{ grant: CodeGrant; effect: CodeEffect } | null> {
@@ -156,6 +172,11 @@ export class SqlAccountStore implements AccountStore {
 
   async revokeFamily(id: string): Promise<void> {
     this.sql.exec('UPDATE family SET revoked = 1 WHERE id = ?', id);
+  }
+
+  async spendProof(jti: string, expires: number): Promise<boolean> {
+    this.proofs ??= new ProofLedger(this.sql);
+    return this.proofs.firstUse(jti, expires, this.now());
   }
 
 }

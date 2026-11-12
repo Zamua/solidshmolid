@@ -57,6 +57,13 @@ describe.skipIf(!CSS_BIN || !POD)('a CSS WebID on a dev pod', () => {
     expect(again.status).toBe(401);
   });
 
+  it('does not count a refused request as the use of its proof', async () => {
+    const jti = crypto.randomUUID();
+    const put = () => as(guest, 'PUT', `${shared}.acl`, { headers: { 'Content-Type': 'text/turtle' }, body: '' }, jti);
+    expect((await put()).status).toBe(403);
+    expect((await put()).status).toBe(403);
+  });
+
   it('turns away a forged token with invalid_token', async () => {
     const res = await fetch(`${shared}note.txt`, { headers: { Authorization: 'DPoP a.b.c', DPoP: 'x.y.z' } });
     expect(res.status).toBe(401);

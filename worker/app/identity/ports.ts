@@ -28,6 +28,18 @@ export interface AccountStore {
    * false when another refresh got there first. */
   rotateFamily(id: string, fromHash: string, newHash: string, expires: number): Promise<boolean>;
   revokeFamily(id: string): Promise<void>;
+  /** Spends a DPoP proof id at the token endpoint; false if it was spent
+   * before. `expires` is epoch seconds. */
+  spendProof(jti: string, expires: number): Promise<boolean>;
+}
+
+/** The verified DPoP proof of a token request. */
+export interface TokenProof {
+  /** The thumbprint of the key that signed it. */
+  jkt: string;
+  jti: string;
+  /** Epoch seconds after which the proof is refused anyway. */
+  expires: number;
 }
 
 export interface Approval {

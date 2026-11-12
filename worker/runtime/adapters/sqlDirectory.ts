@@ -8,6 +8,9 @@ import { randomHex } from './system.js';
 /** Registration is open to anyone, so one no one has signed in through within
  * this long is dropped. Apps register just before sending someone to sign in. */
 export const UNUSED_CLIENT_TTL_S = 7 * 24 * 3600;
+/** And however fast they arrive, only this many unused ones are held: the
+ * oldest make room. A client someone signed in through is never dropped. */
+export const UNUSED_CLIENTS = 5000;
 
 export class SqlDirectory {
   constructor(
@@ -15,6 +18,7 @@ export class SqlDirectory {
     private readonly nowS: () => number = () => Math.floor(Date.now() / 1000),
     private readonly newKey: () => string = randomHex,
     private readonly randomBytes: (n: number) => Uint8Array = (n) => crypto.getRandomValues(new Uint8Array(n)),
+    private readonly unusedClients = UNUSED_CLIENTS,
   ) {
     this.sql.exec(`
       CREATE TABLE IF NOT EXISTS person(person TEXT PRIMARY KEY, account_key TEXT NOT NULL UNIQUE);
@@ -60,6 +64,7 @@ export class SqlDirectory {
     this.sql.exec('DELETE FROM client WHERE signed_in IS NULL AND created < ?', now - UNUSED_CLIENT_TTL_S);
     const id = `reg_${this.newKey()}`;
     this.sql.exec('INSERT INTO client(id, doc, created) VALUES (?, ?, ?)', id, JSON.stringify({ ...doc, client_id: id }), now);
+    this.sql.exec('DELETE FROM client WHERE id IN (SELECT id FROM client WHERE signed_in IS NULL ORDER BY created DESC, rowid DESC LIMIT -1 OFFSET ?)', this.unusedClients);
     return id;
   }
 

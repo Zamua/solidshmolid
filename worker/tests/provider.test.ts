@@ -22,10 +22,15 @@ beforeAll(async () => {
 type Keys = Awaited<ReturnType<typeof generateKeyPair>>;
 const thumb = async (k: Keys) => calculateJwkThumbprint(await exportJWK(k.publicKey), 'sha256');
 
+let proofs = 0;
+/** A fresh DPoP proof, as the token endpoint verified it. */
+const pf = (jkt = 'jkt', jti = `proof${++proofs}`) => ({ jkt, jti, expires: 1_800_000_300 });
+
 function world() {
   let clock = 1_800_000_000;
   let n = 0;
   const signedIn: string[] = [];
+  const resolved: string[] = [];
   const hold = { until: Promise.resolve() };
   const podless = new Set<string>();
   const accounts = new Map<string, SqlAccountStore>();
@@ -44,7 +49,7 @@ function world() {
     accounts: { forPerson: async (p) => ({ key: (await accountFor(p)).key, store: await accountFor(p) }), byKey: async (k) => byKey.get(k) ?? null },
     clients: {
       resolve: async (id) =>
-        id === CLIENT ? clientFromDocument(CLIENT, { client_id: CLIENT, client_name: 'Sketchpad', redirect_uris: [REDIRECT] }) : publicClient(),
+        (resolved.push(id), id) === CLIENT ? clientFromDocument(CLIENT, { client_id: CLIENT, client_name: 'Sketchpad', redirect_uris: [REDIRECT] }) : publicClient(),
       register: async () => `reg_${++n}`,
       signedIn: async (id) => {
         signedIn.push(id);
@@ -55,7 +60,7 @@ function world() {
     clock: { now: () => clock },
     secrets: { random: () => `r${++n}x${Math.random().toString(36).slice(2)}`, hash: async (s) => `h:${s}` },
   });
-  return { provider, accountFor, podless, signedIn, hold, tick: (s: number) => (clock += s), now: () => clock };
+  return { provider, accountFor, podless, signedIn, resolved, hold, tick: (s: number) => (clock += s), now: () => clock };
 }
 
 const authQuery = (over: Record<string, string> = {}) =>
@@ -77,15 +82,26 @@ async function signedInWithPod(w: ReturnType<typeof world>) {
 
 async function code(w: ReturnType<typeof world>): Promise<string> {
   const out = await w.provider.authorize(authQuery(), 'clerk_sam');
+  // An app approved before is sent straight back with its code.
+  if (out.kind === 'redirect') return new URL(out.location).searchParams.get('code')!;
   if (out.kind !== 'consent') throw new Error(out.kind);
   const location = new URL(await w.provider.decide('clerk_sam', out.pendingId, true));
   return location.searchParams.get('code')!;
 }
 
 const exchange = (w: ReturnType<typeof world>, c: string, jkt: string, over: Record<string, string> = {}) =>
-  w.provider.token(new URLSearchParams({ grant_type: 'authorization_code', code: c, client_id: CLIENT, redirect_uri: REDIRECT, code_verifier: VERIFIER, ...over }), jkt);
+  w.provider.token(new URLSearchParams({ grant_type: 'authorization_code', code: c, client_id: CLIENT, redirect_uri: REDIRECT, code_verifier: VERIFIER, ...over }), pf(jkt));
+
+const exchangeWith = (w: ReturnType<typeof world>, c: string, proof: ReturnType<typeof pf>, over: Record<string, string> = {}) =>
+  w.provider.token(new URLSearchParams({ grant_type: 'authorization_code', code: c, client_id: CLIENT, redirect_uri: REDIRECT, code_verifier: VERIFIER, ...over }), proof);
 
 describe('authorize', () => {
+  it('asks for sign-in before it looks the client up', async () => {
+    const w = world();
+    expect((await w.provider.authorize(authQuery({ client_id: 'https://unknown.example/id' }), null)).kind).toBe('sign-in');
+    expect(w.resolved).toEqual([]);
+  });
+
   it('sends a signed-out person to sign in and a podless one to sign up', async () => {
     const w = world();
     expect((await w.provider.authorize(authQuery(), null)).kind).toBe('sign-in');
@@ -220,7 +236,7 @@ describe('token', () => {
     const first = await exchange(w, c, 'jkt');
     await expect(exchange(w, c, 'jkt')).rejects.toMatchObject({ code: 'invalid_grant' });
     await expect(
-      w.provider.token(new URLSearchParams({ grant_type: 'refresh_token', refresh_token: String(first.refresh_token) }), 'jkt'),
+      w.provider.token(new URLSearchParams({ grant_type: 'refresh_token', refresh_token: String(first.refresh_token) }), pf()),
     ).rejects.toMatchObject({ code: 'invalid_grant' });
   });
 
@@ -239,7 +255,7 @@ describe('token', () => {
     const token = (out as Record<string, unknown>).refresh_token;
     if (token !== undefined) {
       await expect(
-        w.provider.token(new URLSearchParams({ grant_type: 'refresh_token', refresh_token: String(token) }), 'jkt'),
+        w.provider.token(new URLSearchParams({ grant_type: 'refresh_token', refresh_token: String(token) }), pf()),
       ).rejects.toMatchObject({ code: 'invalid_grant' });
     } else expect(out).toMatchObject({ code: 'invalid_grant' });
   });
@@ -256,7 +272,7 @@ describe('token', () => {
     const w = world();
     await signedInWithPod(w);
     const first = await exchange(w, await code(w), 'jkt');
-    const refresh = (t: unknown, jkt = 'jkt') => w.provider.token(new URLSearchParams({ grant_type: 'refresh_token', refresh_token: String(t) }), jkt);
+    const refresh = (t: unknown, jkt = 'jkt') => w.provider.token(new URLSearchParams({ grant_type: 'refresh_token', refresh_token: String(t) }), pf(jkt));
     const second = await refresh(first.refresh_token);
     expect(second.refresh_token).not.toBe(first.refresh_token);
     await expect(refresh(second.refresh_token, 'other-key')).rejects.toMatchObject({ code: 'invalid_dpop_proof' });
@@ -268,7 +284,7 @@ describe('token', () => {
     const w = world();
     await signedInWithPod(w);
     const first = await exchange(w, await code(w), 'jkt');
-    const refresh = (t: unknown) => w.provider.token(new URLSearchParams({ grant_type: 'refresh_token', refresh_token: String(t) }), 'jkt');
+    const refresh = (t: unknown) => w.provider.token(new URLSearchParams({ grant_type: 'refresh_token', refresh_token: String(t) }), pf());
     w.tick(30 * 24 * 3600);
     const second = await refresh(first.refresh_token);
     w.tick(30 * 24 * 3600 + 1);
@@ -280,16 +296,39 @@ describe('token', () => {
     await signedInWithPod(w);
     const first = await exchange(w, await code(w), 'jkt');
     const refresh = (client: string) =>
-      w.provider.token(new URLSearchParams({ grant_type: 'refresh_token', refresh_token: String(first.refresh_token), client_id: client }), 'jkt');
+      w.provider.token(new URLSearchParams({ grant_type: 'refresh_token', refresh_token: String(first.refresh_token), client_id: client }), pf());
     await expect(refresh('https://evil.example/id')).rejects.toMatchObject({ code: 'invalid_grant' });
     expect((await refresh(CLIENT)).access_token).toBeTruthy();
+  });
+
+  it('refuses a DPoP proof it already took, at a refresh and at a code', async () => {
+    const w = world();
+    await signedInWithPod(w);
+    const proof = pf();
+    const first = await w.provider.token(new URLSearchParams({ grant_type: 'authorization_code', code: await code(w), client_id: CLIENT, redirect_uri: REDIRECT, code_verifier: VERIFIER }), proof);
+    const refresh = (p = pf()) => w.provider.token(new URLSearchParams({ grant_type: 'refresh_token', refresh_token: String(first.refresh_token) }), p);
+    await expect(refresh(proof)).rejects.toMatchObject({ code: 'invalid_dpop_proof' });
+    // The replay was refused for its proof alone: the refresh token still works.
+    const second = await refresh();
+    expect(second.access_token).toBeTruthy();
+    await expect(
+      w.provider.token(new URLSearchParams({ grant_type: 'authorization_code', code: await code(w), client_id: CLIENT, redirect_uri: REDIRECT, code_verifier: VERIFIER }), proof),
+    ).rejects.toMatchObject({ code: 'invalid_dpop_proof' });
+  });
+
+  it('does not spend the proof of a request whose grant was not genuine', async () => {
+    const w = world();
+    await signedInWithPod(w);
+    const proof = pf();
+    await expect(exchangeWith(w, await code(w), proof, { code_verifier: 'wrong' })).rejects.toMatchObject({ code: 'invalid_grant' });
+    expect((await exchangeWith(w, await code(w), proof)).access_token).toBeTruthy();
   });
 
   it('lets only one of two simultaneous refreshes with the same token through', async () => {
     const w = world();
     await signedInWithPod(w);
     const first = await exchange(w, await code(w), 'jkt');
-    const refresh = (t: unknown) => w.provider.token(new URLSearchParams({ grant_type: 'refresh_token', refresh_token: String(t) }), 'jkt');
+    const refresh = (t: unknown) => w.provider.token(new URLSearchParams({ grant_type: 'refresh_token', refresh_token: String(t) }), pf());
     const results = await Promise.allSettled([refresh(first.refresh_token), refresh(first.refresh_token)]);
     expect(results.map((r) => r.status).sort()).toEqual(['fulfilled', 'rejected']);
     const winner = results.find((r) => r.status === 'fulfilled') as PromiseFulfilledResult<Record<string, unknown>>;
@@ -304,7 +343,7 @@ describe('token', () => {
     await w.provider.revokeApp('clerk_sam', CLIENT);
     expect(await w.provider.apps('clerk_sam')).toEqual([]);
     await expect(
-      w.provider.token(new URLSearchParams({ grant_type: 'refresh_token', refresh_token: String(first.refresh_token) }), 'jkt'),
+      w.provider.token(new URLSearchParams({ grant_type: 'refresh_token', refresh_token: String(first.refresh_token) }), pf()),
     ).rejects.toMatchObject({ code: 'invalid_grant' });
     expect((await w.provider.authorize(authQuery(), 'clerk_sam')).kind).toBe('consent');
   });

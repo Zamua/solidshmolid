@@ -5,7 +5,7 @@
 // the token endpoint can find the account without a global table. Their
 // secret parts are stored only as hashes.
 
-import type { AccountStore, Accounts, Approval, ClientRegistry, Clock, Secrets, TokenSigner } from './ports.js';
+import type { AccountStore, Accounts, Approval, ClientRegistry, Clock, Secrets, TokenProof, TokenSigner } from './ports.js';
 import {
   ACCESS_TOKEN_TTL_S,
   type AuthorizeRequest,
@@ -46,9 +46,11 @@ export class Provider {
    * the client and redirect are trusted throw OidcError (shown, not sent). */
   async authorize(query: URLSearchParams, personId: string | null): Promise<AuthorizeOutcome> {
     const request = parseAuthorizeRequest(query);
+    // Before the client: resolving one may fetch a URL the request named,
+    // which only a signed-in person gets to cause.
+    if (!personId) return { kind: 'sign-in' };
     const client = await this.deps.clients.resolve(request.clientId);
     if (!redirectAllowed(client, request.redirectUri)) throw new OidcError('invalid_request', 'redirect_uri is not registered for this client');
-    if (!personId) return { kind: 'sign-in' };
     const { key, store: account } = await this.deps.accounts.forPerson(personId);
     const webid = await account.webid();
     // A WebID without storage behind it has no profile: an app could not use it.
@@ -94,12 +96,11 @@ export class Provider {
     return { ...registration, client_id: clientId, client_id_issued_at: this.deps.clock.now() };
   }
 
-  /** The token endpoint. `jkt` is the thumbprint of the request's verified
-   * DPoP proof. */
-  async token(form: URLSearchParams, jkt: string): Promise<Record<string, unknown>> {
+  /** The token endpoint. `proof` is the request's verified DPoP proof. */
+  async token(form: URLSearchParams, proof: TokenProof): Promise<Record<string, unknown>> {
     const grant = form.get('grant_type');
-    if (grant === 'authorization_code') return this.redeemCode(form, jkt);
-    if (grant === 'refresh_token') return this.refresh(form, jkt);
+    if (grant === 'authorization_code') return this.redeemCode(form, proof);
+    if (grant === 'refresh_token') return this.refresh(form, proof);
     throw new OidcError('unsupported_grant_type', `grant_type ${grant ?? '(none)'} is not supported`);
   }
 
@@ -117,7 +118,7 @@ export class Provider {
     return redirectWith(request.redirectUri, { code: `${key}.${secret}`, state: request.state, iss: this.deps.issuer });
   }
 
-  private async redeemCode(form: URLSearchParams, jkt: string): Promise<Record<string, unknown>> {
+  private async redeemCode(form: URLSearchParams, proof: TokenProof): Promise<Record<string, unknown>> {
     const [key, secret] = splitToken(form.get('code'));
     const account = await this.deps.accounts.byKey(key);
     if (!account) throw new OidcError('invalid_grant', 'unknown code');
@@ -132,11 +133,13 @@ export class Provider {
       throw new OidcError('invalid_grant', 'client_id or redirect_uri does not match the authorization');
     }
     if (!(await pkceMatches(form.get('code_verifier') ?? '', grant.codeChallenge))) throw new OidcError('invalid_grant', 'PKCE verification failed');
+    await spend(account, proof);
     await this.deps.clients.signedIn(grant.clientId);
-    return this.tokens(key, account, grant.webid, grant.clientId, grant.scopes, grant.nonce, jkt, codeHash);
+    return this.tokens(key, account, grant.webid, grant.clientId, grant.scopes, grant.nonce, proof.jkt, codeHash);
   }
 
-  private async refresh(form: URLSearchParams, jkt: string): Promise<Record<string, unknown>> {
+  private async refresh(form: URLSearchParams, proof: TokenProof): Promise<Record<string, unknown>> {
+    const { jkt } = proof;
     const parts = (form.get('refresh_token') ?? '').split('.');
     if (parts.length !== 3) throw new OidcError('invalid_grant', 'malformed refresh token');
     const [key, familyId, secret] = parts as [string, string, string];
@@ -151,6 +154,7 @@ export class Provider {
     }
     if (family.jkt !== jkt) throw new OidcError('invalid_dpop_proof', 'refresh token is bound to a different DPoP key');
     if (form.get('client_id') && form.get('client_id') !== family.clientId) throw new OidcError('invalid_grant', 'client_id does not match');
+    await spend(account, proof);
     const next = this.deps.secrets.random();
     // The loser of a race is refused but revokes nothing: if it was a thief,
     // its old token coming back later still kills the family.
@@ -198,6 +202,12 @@ export class Provider {
     }
     return out;
   }
+}
+
+/** A proof is spent once the grant beside it proved genuine, in that grant's
+ * account: a request that names no real grant leaves nothing behind. */
+async function spend(account: AccountStore, proof: TokenProof): Promise<void> {
+  if (!(await account.spendProof(proof.jti, proof.expires))) throw new OidcError('invalid_dpop_proof', 'DPoP proof already used');
 }
 
 function splitToken(value: string | null): [string, string] {
