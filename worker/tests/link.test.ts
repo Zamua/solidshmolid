@@ -41,6 +41,9 @@ describe('Dropbox OAuth with PKCE', () => {
     expect(grant).toEqual({ accessToken: 'a1', expiresAt: 1000 + 14_400_000, refreshToken: 'r1', accountId: 'dbid:1' });
     expect(await refreshAccess(fake, 'KEY', 'r1', 0)).toEqual({ accessToken: 'a2', expiresAt: 14_400_000 });
     await expect(refreshAccess(fake, 'KEY', 'revoked', 0)).rejects.toThrow(DropboxAuthError);
+    await expect(refreshAccess(fake, 'KEY', 'revoked', 0)).rejects.toMatchObject({ gone: true });
+    const down = async () => Response.json({ error: 'temporarily_unavailable' }, { status: 503 });
+    await expect(refreshAccess(down, 'KEY', 'r1', 0)).rejects.toMatchObject({ gone: false });
     expect(forms.every((f) => !('client_secret' in f))).toBe(true);
     expect(forms[0]).toMatchObject({ code_verifier: 'v1', client_id: 'KEY' });
   });
@@ -83,6 +86,7 @@ describe('Google Drive OAuth with PKCE', () => {
     expect(forms[0]).toMatchObject({ code_verifier: 'v1', client_id: 'CID', client_secret: 'CSECRET' });
     expect(await refreshGoogleAccess(fake, client, 'r1', 0)).toEqual({ accessToken: 'a2', expiresAt: 3_599_000 });
     await expect(refreshGoogleAccess(fake, client, 'revoked', 0)).rejects.toThrow(GrantRefused);
+    await expect(refreshGoogleAccess(fake, client, 'revoked', 0)).rejects.toMatchObject({ gone: true });
     await revokeGoogleGrant(fake, 'r1');
     await revokeGoogleGrant(fake, 'gone');
     scope = 'openid';

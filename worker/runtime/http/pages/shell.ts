@@ -47,6 +47,7 @@ h2{font:600 22px/1.2 var(--display);margin:0 0 6px}
 p.lede{color:var(--ink-soft);max-width:34ch}
 .welcome h1{margin-top:28px}
 .small{font-size:14px;color:var(--ink-soft);overflow-wrap:anywhere}
+.small.warn{color:var(--berry)}
 a{color:var(--blue-deep)}
 .card{background:var(--cloud);border-radius:26px;padding:20px;box-shadow:0 1px 0 var(--line),0 14px 30px -18px rgba(42,82,184,.35);margin-top:16px}
 .row{display:flex;align-items:center;gap:12px}

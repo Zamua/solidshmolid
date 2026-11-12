@@ -1,10 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import type { AccountState } from '../app/accounts/ports.js';
 import { StorageUnavailable } from '../app/shared/errors.js';
+import { GrantRefused } from '../app/storage/ports.js';
 import { RpcAccounts } from '../runtime/adapters/accountRpc.js';
 import { LinkTokens } from '../runtime/adapters/linkTokens.js';
 import { ProofLedger } from '../runtime/adapters/proofLedger.js';
-import { Sealer } from '../runtime/adapters/sealing.js';
+import { Sealer, keyList } from '../runtime/adapters/sealing.js';
 import { SqlAccountPods } from '../runtime/adapters/sqlAccountPods.js';
 import { isBlank } from '../runtime/adapters/sql.js';
 import { SqlPlacement } from '../runtime/adapters/sqlPlacement.js';
@@ -33,9 +34,10 @@ function store(nowMs = () => 100_000) {
       throw e;
     }
   };
-  const ended = { revoked: [] as string[], wiped: 0 };
+  const ended = { revoked: [] as string[], forgotten: [] as string[], wiped: 0 };
   const endings = {
     revoke: async (linkId: string) => void ended.revoked.push(linkId),
+    forget: (linkId: string) => void ended.forgotten.push(linkId),
     wipe: async () => void ended.wiped++,
   };
   return { sql, ended, account: new SqlAccountPods(sql, new Sealer(KEY), atomically, endings, nowMs) };
@@ -70,17 +72,17 @@ describe("an account's pods", () => {
   it('records where pods live', async () => {
     const { account } = store();
     await account.create(STATE);
-    await account.addLink({ linkId: 'l1', provider: 'dropbox', account: 'dbid:1' }, 'refresh-1');
+    await account.addLink({ linkId: 'l1', provider: 'dropbox', account: 'dbid:1', grantLost: false }, 'refresh-1');
     await account.placePod('k3x9fqm7', 'l1');
     const state = (await account.load())!;
-    expect(state.links).toEqual([{ linkId: 'l1', provider: 'dropbox', account: 'dbid:1' }]);
+    expect(state.links).toEqual([{ linkId: 'l1', provider: 'dropbox', account: 'dbid:1', grantLost: false }]);
     expect(state.pods[0]!.linkId).toBe('l1');
   });
 
   it('keeps refresh tokens sealed, bound to their account and link', async () => {
     const { sql, account } = store();
     await account.create(STATE);
-    await account.addLink({ linkId: 'l1', provider: 'dropbox', account: 'dbid:1' }, 'secret-refresh');
+    await account.addLink({ linkId: 'l1', provider: 'dropbox', account: 'dbid:1', grantLost: false }, 'secret-refresh');
     const raw = sql.db.prepare('SELECT refresh FROM storage_link').get() as { refresh: string };
     expect(raw.refresh).not.toContain('secret-refresh');
     expect(await account.grant('l1')).toEqual({ provider: 'dropbox', refreshToken: 'secret-refresh' });
@@ -119,7 +121,7 @@ describe('ending things', () => {
   it('gives a link up with its provider before forgetting it', async () => {
     const { account, ended } = store();
     await account.create(STATE);
-    await account.addLink({ linkId: 'l1', provider: 'dropbox', account: 'dbid:1' }, 'r1');
+    await account.addLink({ linkId: 'l1', provider: 'dropbox', account: 'dbid:1', grantLost: false }, 'r1');
     await account.removeLink('l1');
     expect(ended.revoked).toEqual(['l1']);
     expect((await account.load())!.links).toEqual([]);
@@ -128,13 +130,83 @@ describe('ending things', () => {
   it('gives every link up, then wipes, when the account is erased', async () => {
     const { account, ended } = store();
     await account.create(STATE);
-    await account.addLink({ linkId: 'l1', provider: 'dropbox', account: 'a' }, 'r1');
-    await account.addLink({ linkId: 'l2', provider: 'dropbox', account: 'b' }, 'r2');
+    await account.addLink({ linkId: 'l1', provider: 'dropbox', account: 'a', grantLost: false }, 'r1');
+    await account.addLink({ linkId: 'l2', provider: 'dropbox', account: 'b', grantLost: false }, 'r2');
     await account.removePod('k3x9fqm7');
     expect((await account.load())!.pods).toEqual([]);
     await account.erase();
     expect(ended.revoked.sort()).toEqual(['l1', 'l2']);
     expect(ended.wiped).toBe(1);
+  });
+});
+
+describe('a link whose grant stopped working', () => {
+  it('is marked, and comes back with a new grant under the same id', async () => {
+    const { sql, account, ended } = store();
+    await account.create(STATE);
+    await account.addLink({ linkId: 'l1', provider: 'dropbox', account: 'dbid:1', grantLost: false }, 'r1');
+    await account.placePod('k3x9fqm7', 'l1');
+    account.markGrantLost('l1');
+    expect((await account.load())!.links[0]!.grantLost).toBe(true);
+    await account.renewLink('l1', 'r2');
+    const state = (await account.load())!;
+    expect(state.links).toEqual([{ linkId: 'l1', provider: 'dropbox', account: 'dbid:1', grantLost: false }]);
+    expect(state.pods[0]!.linkId).toBe('l1');
+    expect(await account.grant('l1')).toEqual({ provider: 'dropbox', refreshToken: 'r2' });
+    expect(ended.forgotten).toEqual(['l1']);
+    expect(JSON.stringify(sql.db.prepare('SELECT refresh FROM storage_link').all())).not.toContain('r2');
+  });
+
+  it('keeps the provider grant another link of the same storage account lives on', async () => {
+    const { account, ended } = store();
+    await account.create(STATE);
+    await account.addLink({ linkId: 'l1', provider: 'google-drive', account: 'perm1', grantLost: false }, 'r1');
+    await account.addLink({ linkId: 'l2', provider: 'google-drive', account: 'perm1', grantLost: false }, 'r2');
+    await account.addLink({ linkId: 'l3', provider: 'dropbox', account: 'perm1', grantLost: false }, 'r3');
+    await account.removeLink('l2');
+    expect(ended.revoked).toEqual([]);
+    await account.removeLink('l1');
+    await account.removeLink('l3');
+    expect(ended.revoked).toEqual(['l1', 'l3']);
+    expect((await account.load())!.links).toEqual([]);
+  });
+});
+
+describe('replacing the sealing key', () => {
+  const NEW_KEY = btoa(String.fromCharCode(...new Uint8Array(32).map((_, i) => 255 - i)));
+
+  it('opens what a replaced key sealed and seals it again under the current one', async () => {
+    const { sql, account } = store();
+    await account.create(STATE);
+    await account.addLink({ linkId: 'l1', provider: 'dropbox', account: 'dbid:1', grantLost: false }, 'r1');
+    const before = (sql.db.prepare('SELECT refresh FROM storage_link').get() as { refresh: string }).refresh;
+    const noop = { revoke: async () => {}, forget: () => {}, wipe: async () => {} };
+    const rotating = new SqlAccountPods(sql, new Sealer(NEW_KEY, [KEY]), (fn) => fn(), noop);
+    expect(await rotating.grant('l1')).toEqual({ provider: 'dropbox', refreshToken: 'r1' });
+    const after = (sql.db.prepare('SELECT refresh FROM storage_link').get() as { refresh: string }).refresh;
+    expect(after).not.toBe(before);
+    // The old key is no longer needed for it.
+    expect(await new SqlAccountPods(sql, new Sealer(NEW_KEY), (fn) => fn(), noop).grant('l1')).toEqual({ provider: 'dropbox', refreshToken: 'r1' });
+  });
+
+  it('leaves a token sealed under the current key as it is', async () => {
+    const { sql, account } = store();
+    await account.create(STATE);
+    await account.addLink({ linkId: 'l1', provider: 'dropbox', account: 'dbid:1', grantLost: false }, 'r1');
+    const before = (sql.db.prepare('SELECT refresh FROM storage_link').get() as { refresh: string }).refresh;
+    await account.grant('l1');
+    expect((sql.db.prepare('SELECT refresh FROM storage_link').get() as { refresh: string }).refresh).toBe(before);
+  });
+
+  it('does not open under a key that sealed nothing here, old keys or not', async () => {
+    const sealed = await new Sealer(KEY).seal('secret', 'rec');
+    await expect(new Sealer(NEW_KEY).open(sealed, 'rec')).rejects.toThrow();
+    await expect(new Sealer(NEW_KEY, [NEW_KEY]).open(sealed, 'rec')).rejects.toThrow();
+    await expect(new Sealer(NEW_KEY, [KEY]).open(sealed, 'other')).rejects.toThrow();
+    expect(await new Sealer(NEW_KEY, [KEY]).unseal(sealed, 'rec')).toEqual({ plain: 'secret', current: false });
+    await expect(new Sealer(NEW_KEY, [btoa('short')]).open(sealed, 'rec')).rejects.toThrow(/TOKEN_KEY_OLD/u);
+    expect(keyList(' a, b\nc ,')).toEqual(['a', 'b', 'c']);
+    expect(keyList(undefined)).toEqual([]);
   });
 });
 
@@ -167,6 +239,34 @@ describe('link access tokens', () => {
     await expect(tokens.accessToken('l9', false)).rejects.toThrow(StorageUnavailable);
     fail = false;
     expect((await tokens.accessToken('l1', false)).token).toBe('ok');
+  });
+
+  it('reports a grant the provider dropped as lost, and a provider that is only failing as not', async () => {
+    const lost: string[] = [];
+    let failure: Error = new GrantRefused('Dropbox: down', false);
+    const tokens = new LinkTokens(grant, { dropbox: { refresh: async () => Promise.reject(failure), revoke: async () => {} } }, undefined, (linkId) => void lost.push(linkId));
+    await expect(tokens.accessToken('l1', false)).rejects.toThrow(StorageUnavailable);
+    expect(lost).toEqual([]);
+    failure = new GrantRefused('Dropbox: invalid_grant', true);
+    await expect(tokens.accessToken('l1', false)).rejects.toThrow(/connect the storage again/u);
+    expect(lost).toEqual(['l1']);
+  });
+
+  it('reports a grant that no longer opens as lost, and still lets its link go', async () => {
+    const lost: string[] = [];
+    const unreadable = async (): Promise<never> => Promise.reject(new Error('The operation failed'));
+    const tokens = new LinkTokens(unreadable, { dropbox: { refresh: async () => ({ token: 'ok', expiresAt: 0 }), revoke: async () => {} } }, undefined, (linkId) => void lost.push(linkId));
+    await expect(tokens.accessToken('l1', false)).rejects.toThrow(StorageUnavailable);
+    expect(lost).toEqual(['l1']);
+    await expect(tokens.revoke('l1')).resolves.toBeUndefined();
+  });
+
+  it('forgets the token of a replaced grant', async () => {
+    let minted = 0;
+    const tokens = new LinkTokens(grant, { dropbox: { refresh: async () => ({ token: `a${++minted}`, expiresAt: Number.MAX_SAFE_INTEGER }), revoke: async () => {} } });
+    expect((await tokens.accessToken('l1', false)).token).toBe('a1');
+    tokens.forget('l1');
+    expect((await tokens.accessToken('l1', false)).token).toBe('a2');
   });
 
   it('gives a grant up even when the provider refuses, so the link can still go', async () => {

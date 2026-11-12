@@ -182,7 +182,7 @@ function view(a: AccountState, env: Env, url: URL) {
   return {
     webid: a.webid,
     pods: a.pods.map((p) => ({ id: p.podId, url: `${hosts.podOrigin(p.podId)}/`, connected: p.linkId !== null })),
-    storage: a.links.map((l) => ({ id: l.linkId, provider: l.provider })),
+    storage: a.links.map((l) => ({ id: l.linkId, provider: l.provider, needsReconnect: l.grantLost })),
   };
 }
 

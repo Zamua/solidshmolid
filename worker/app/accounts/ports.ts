@@ -15,7 +15,11 @@ export interface PodRecord {
 export interface LinkSummary {
   linkId: string;
   provider: string;
+  /** The provider's own id for the storage account behind the link. */
   account: string;
+  /** The provider no longer honors the link's grant, or the grant cannot be
+   * read: the pods there stop until the person connects the storage again. */
+  grantLost: boolean;
 }
 
 /** A person's account: their WebID, which lives in their first pod, every
@@ -50,6 +54,8 @@ export interface AccountRepository {
   addPod(pod: PodRecord): Promise<void>;
   /** Stores a new storage link; the grant stays inside the repository. */
   addLink(link: LinkSummary, refreshToken: string): Promise<void>;
+  /** Gives an existing link a new grant; its pods carry on where they are. */
+  renewLink(linkId: string, refreshToken: string): Promise<void>;
   placePod(podId: string, linkId: string): Promise<void>;
   rememberLinkPending(nonce: string, pending: PendingLink): Promise<void>;
   /** Consumed on read; null when absent or expired. */
@@ -58,7 +64,8 @@ export interface AccountRepository {
   /** Consumed on read; null when absent or expired. */
   takeDeletion(token: string): Promise<PendingDeletion | null>;
   removePod(podId: string): Promise<void>;
-  /** Removes the link and gives up its grant with the provider. */
+  /** Removes the link and gives up its grant with the provider, unless
+   * another link of the account lives on the same grant. */
   removeLink(linkId: string): Promise<void>;
   /** Removes everything the account holds, provider state included; grants
    * are given up with their providers first. */

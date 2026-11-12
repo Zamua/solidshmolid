@@ -140,6 +140,12 @@ describe('probes', () => {
     const { get } = world({ ...(await keys()), TOKEN_KEY: btoa('short') });
     expect((await get('https://account.example/readyz')).status).toBe(503);
   });
+
+  it('are ready while a sealing key is being replaced, and not with a malformed old key', async () => {
+    const all = await keys();
+    expect((await world({ ...all, TOKEN_KEY_OLD: `${all.TOKEN_KEY}, ${all.TOKEN_KEY}` }).get('https://account.example/readyz')).status).toBe(200);
+    expect((await world({ ...all, TOKEN_KEY_OLD: btoa('short') }).get('https://account.example/readyz')).status).toBe(503);
+  });
 });
 
 describe('the dev config (DEV_MODE)', () => {

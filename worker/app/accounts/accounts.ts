@@ -81,8 +81,11 @@ export class Accounts {
   }
 
   /** Finishes connecting storage, then places every pod still waiting for
-   * storage into its own folder there. Only the account that started the
-   * flow may finish it, so a consent link cannot be handed to someone else. */
+   * storage into its own folder there. Storage the account already has (the
+   * same account at the same provider) is not connected twice: its link gets
+   * the new grant, which is how a link whose grant died comes back. Only the
+   * account that started the flow may finish it, so a consent link cannot be
+   * handed to someone else. */
   async completeLink(person: string, provider: string, accountKey: string, nonce: string, code: string, redirectUri: string): Promise<AccountState> {
     const authorization = this.authorization(provider);
     if ((await this.deps.directory.accountKeyFor(person)) !== accountKey) throw new LinkExpired('this connection attempt expired; start again');
@@ -90,11 +93,13 @@ export class Accounts {
     const pending = await account.takeLinkPending(nonce);
     if (!pending || pending.provider !== provider) throw new LinkExpired('this connection attempt expired; start again');
     const grant = await authorization.exchange(code, pending.verifier, redirectUri);
-    const linkId = this.deps.ids.random();
-    await account.addLink({ linkId, provider, account: grant.accountId }, grant.refreshToken);
+    const known = ((await account.load())?.links ?? []).filter((l) => l.provider === provider && l.account === grant.accountId);
+    const linkId = known[0]?.linkId ?? this.deps.ids.random();
+    if (known.length === 0) await account.addLink({ linkId, provider, account: grant.accountId, grantLost: false }, grant.refreshToken);
+    for (const link of known) await account.renewLink(link.linkId, grant.refreshToken);
     await this.placeWaiting(accountKey, linkId, provider);
     const state = (await account.load())!;
-    await this.deps.activity.record({ actor: webidPod(state).podId, action: 'storage_linked', detail: provider });
+    if (known.length === 0) await this.deps.activity.record({ actor: webidPod(state).podId, action: 'storage_linked', detail: provider });
     return pending.newPod ? this.newPodIn(state, { linkId, provider }) : state;
   }
 

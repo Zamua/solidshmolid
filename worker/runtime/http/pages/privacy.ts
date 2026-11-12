@@ -26,7 +26,7 @@ export function privacyPage(support: string | null): Response {
 <h2>Leaving</h2>
 <p>You can remove apps and delete your account whenever you like. You can delete any pod except your first: it holds your WebID and goes only with your account. You can disconnect storage once no pod lives in it.</p>
 <p>Deleting your account removes what we keep and your sign-in with Clerk. Your storage folders stay yours unless you choose to delete them too. Each folder still holds every file, in the layout other Solid servers use. Its access rules name the WebID you had here, so to use the folder with another server you would rewrite them for your new identity.</p>
-<p>If you take our access away at your storage provider instead, the pods kept there stop working and cannot be connected again.</p>
+<p>If you take our access away at your storage provider instead, the pods kept there stop until you connect that storage again from your account.</p>
 ${support ? `<h2>Contact</h2>
 <p>Questions or requests: <a href="mailto:${escapeHtml(support)}">${escapeHtml(support)}</a>.</p>` : ''}
 </div>`,

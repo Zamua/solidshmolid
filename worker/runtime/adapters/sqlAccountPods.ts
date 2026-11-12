@@ -16,6 +16,8 @@ const DELETION_TTL_S = 10 * 60;
 export interface Endings {
   /** Gives a link's grant up with its provider. */
   revoke(linkId: string): Promise<void>;
+  /** Drops what is remembered of a link's old grant. */
+  forget(linkId: string): void;
   /** Removes all of the account's storage, provider state included. */
   wipe(): Promise<void>;
 }
@@ -39,6 +41,7 @@ export class SqlAccountPods implements AccountRepository {
     this.sql.exec(SCHEMA);
     addColumn(this.sql, 'link_pending', 'provider TEXT');
     addColumn(this.sql, 'link_pending', 'new_pod INTEGER');
+    addColumn(this.sql, 'storage_link', 'grant_lost INTEGER');
   }
 
   async load(): Promise<AccountState | null> {
@@ -52,10 +55,11 @@ export class SqlAccountPods implements AccountRepository {
         linkId: r.link_id === null ? null : String(r.link_id),
         folder: String(r.folder),
       })),
-      links: this.sql.exec('SELECT link_id, provider, account FROM storage_link ORDER BY created, link_id').toArray().map((r) => ({
+      links: this.sql.exec('SELECT link_id, provider, account, grant_lost FROM storage_link ORDER BY created, link_id').toArray().map((r) => ({
         linkId: String(r.link_id),
         provider: String(r.provider),
         account: String(r.account),
+        grantLost: Number(r.grant_lost) === 1,
       })),
     };
   }
@@ -83,6 +87,17 @@ export class SqlAccountPods implements AccountRepository {
       sealed,
       new Date(this.nowMs()).toISOString(),
     );
+  }
+
+  async renewLink(linkId: string, refreshToken: string): Promise<void> {
+    const sealed = await this.sealer.seal(refreshToken, this.recordId(linkId));
+    this.sql.exec('UPDATE storage_link SET refresh = ?, grant_lost = 0 WHERE link_id = ?', sealed, linkId);
+    this.endings.forget(linkId);
+  }
+
+  /** Records that the link's grant no longer works. */
+  markGrantLost(linkId: string): void {
+    this.sql.exec('UPDATE storage_link SET grant_lost = 1 WHERE link_id = ?', linkId);
   }
 
   async placePod(podId: string, linkId: string): Promise<void> {
@@ -122,7 +137,12 @@ export class SqlAccountPods implements AccountRepository {
   }
 
   async removeLink(linkId: string): Promise<void> {
-    await this.endings.revoke(linkId);
+    // A provider may end the whole grant of its account, not one token of
+    // it, so a grant another link still lives on is left alone.
+    const shared = this.sql
+      .exec('SELECT 1 FROM storage_link a JOIN storage_link b ON b.provider = a.provider AND b.account = a.account AND b.link_id != a.link_id WHERE a.link_id = ? LIMIT 1', linkId)
+      .toArray().length > 0;
+    if (!shared) await this.endings.revoke(linkId);
     this.sql.exec('DELETE FROM storage_link WHERE link_id = ?', linkId);
   }
 
@@ -131,11 +151,18 @@ export class SqlAccountPods implements AccountRepository {
     await this.endings.wipe();
   }
 
-  /** A link's provider and refresh token, for minting access tokens. */
+  /** A link's provider and refresh token, for minting access tokens. One
+   * that opened under a replaced key is sealed again under the current one. */
   async grant(linkId: string): Promise<{ provider: string; refreshToken: string } | null> {
     const row = this.sql.exec('SELECT provider, refresh FROM storage_link WHERE link_id = ?', linkId).toArray()[0];
     if (!row) return null;
-    return { provider: String(row.provider), refreshToken: await this.sealer.open(String(row.refresh), this.recordId(linkId)) };
+    const stored = String(row.refresh);
+    const opened = await this.sealer.unseal(stored, this.recordId(linkId));
+    if (!opened.current) {
+      const sealed = await this.sealer.seal(opened.plain, this.recordId(linkId));
+      this.sql.exec('UPDATE storage_link SET refresh = ? WHERE link_id = ? AND refresh = ?', sealed, linkId, stored);
+    }
+    return { provider: String(row.provider), refreshToken: opened.plain };
   }
 
   private insertPod(p: PodRecord): void {

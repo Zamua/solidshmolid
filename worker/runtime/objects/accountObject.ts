@@ -8,7 +8,7 @@ import type { AccountState, LinkSummary, PendingDeletion, PendingLink, PodRecord
 import type { CodeGrant, RefreshFamily } from '../../app/identity/ports.js';
 import type { AuthorizeRequest, ClientInfo } from '../../domain/identity/oidc.js';
 import { type AccessToken, LinkTokens } from '../adapters/linkTokens.js';
-import { Sealer } from '../adapters/sealing.js';
+import { Sealer, keyList } from '../adapters/sealing.js';
 import { type SqlRunner, isBlank } from '../adapters/sql.js';
 import { SqlAccountPods } from '../adapters/sqlAccountPods.js';
 import { SqlAccountStore } from '../adapters/sqlAccountStore.js';
@@ -22,13 +22,14 @@ export class AccountObject extends DurableObject<Env> {
 
   constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, env);
-    this.tokens = new LinkTokens((linkId) => this.pods.grant(linkId), storageGrants(env));
+    this.tokens = new LinkTokens((linkId) => this.pods.grant(linkId), storageGrants(env), undefined, (linkId) => this.pods.markGrantLost(linkId));
   }
 
   /** Opened on first use, so an object reached by a guessed key stores nothing. */
   private get pods(): SqlAccountPods {
-    this.accountPods ??= new SqlAccountPods(this.ctx.storage.sql as SqlRunner, new Sealer(this.env.TOKEN_KEY), (fn) => this.ctx.storage.transactionSync(fn), {
+    this.accountPods ??= new SqlAccountPods(this.ctx.storage.sql as SqlRunner, new Sealer(this.env.TOKEN_KEY, keyList(this.env.TOKEN_KEY_OLD)), (fn) => this.ctx.storage.transactionSync(fn), {
       revoke: (linkId) => this.tokens.revoke(linkId),
+      forget: (linkId) => this.tokens.forget(linkId),
       wipe: async () => {
         await this.ctx.storage.deleteAll();
         this.store = null;
@@ -135,6 +136,10 @@ export class AccountObject extends DurableObject<Env> {
 
   async addLink(link: LinkSummary, refreshToken: string): Promise<void> {
     return this.pods.addLink(link, refreshToken);
+  }
+
+  async renewLink(linkId: string, refreshToken: string): Promise<void> {
+    return this.pods.renewLink(linkId, refreshToken);
   }
 
   async placePod(podId: string, linkId: string): Promise<void> {

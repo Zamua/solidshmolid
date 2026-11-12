@@ -12,7 +12,7 @@ const TOKEN = 'https://api.dropboxapi.com/oauth2/token';
 export class DropboxAuthError extends GrantRefused {}
 
 // invalid_grant on refresh means the user revoked the app.
-const refused = (message: string) => new DropboxAuthError(`Dropbox: ${message}`);
+const refused = (message: string, code?: string) => new DropboxAuthError(`Dropbox: ${message}`, code === 'invalid_grant');
 
 export function authorizeUrl(appKey: string, redirectUri: string, state: string, challenge: string): string {
   const q = new URLSearchParams({

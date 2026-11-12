@@ -15,7 +15,7 @@ export const DRIVE_FILE_SCOPE = 'https://www.googleapis.com/auth/drive.file';
 export class GoogleAuthError extends GrantRefused {}
 
 // invalid_grant on refresh means the person removed the app's access.
-const refused = (message: string) => new GoogleAuthError(`Google: ${message}`);
+const refused = (message: string, code?: string) => new GoogleAuthError(`Google: ${message}`, code === 'invalid_grant');
 
 export interface GoogleClient {
   id: string;

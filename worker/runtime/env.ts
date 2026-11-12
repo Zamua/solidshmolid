@@ -27,6 +27,10 @@ export interface Env {
   GOOGLE_CLIENT_SECRET?: string;
   /** Secret: 32 bytes, base64, encrypting stored refresh tokens. */
   TOKEN_KEY?: string;
+  /** Secret: the keys TOKEN_KEY replaced, newest first, separated by commas.
+   * Tokens sealed under them still open, and are sealed again under
+   * TOKEN_KEY when next used. Set only while replacing the key. */
+  TOKEN_KEY_OLD?: string;
   /** Secret: the provider's private ES256 JWK, as JSON. */
   OIDC_SIGNING_JWK?: string;
   /** Where people write with questions, shown on the privacy page. */
