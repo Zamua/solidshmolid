@@ -19,7 +19,7 @@ import { apiRoute } from './http/api.js';
 import { withClerk } from './http/clerkChrome.js';
 import { homeRoute } from './http/home.js';
 import { signInRoute } from './http/signIn.js';
-import { httpsRedirect, withHsts } from './http/transport.js';
+import { httpsRedirect, untransformed, withHsts } from './http/transport.js';
 import { oidcRoute } from './http/oidc.js';
 import { appIconRoute } from './http/assets/appIcons.js';
 import { fontRoute } from './http/assets/fonts.js';
@@ -53,8 +53,8 @@ const worker = {
     const handle = handleFromHost(url.hostname, env.POD_HOST_TEMPLATE);
     if (handle === null && url.hostname !== env.APEX_HOST) return new Response('not found\n', { status: 404 });
     // Development runs on plain http and a port of its own.
-    if (isDev(env)) return route(request, env, url, handle, ctx);
-    return httpsRedirect(request, url) ?? withHsts(await route(request, env, url, handle, ctx));
+    if (isDev(env)) return untransformed(await route(request, env, url, handle, ctx));
+    return httpsRedirect(request, url) ?? withHsts(untransformed(await route(request, env, url, handle, ctx)));
   },
 } satisfies ExportedHandler<Env>;
 

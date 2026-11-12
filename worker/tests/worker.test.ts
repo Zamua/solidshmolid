@@ -73,6 +73,12 @@ describe('a deployment (no DEV_MODE)', () => {
     expect((await get(`https://${POD_ID}.pods.example/`)).headers.get('Strict-Transport-Security')).toMatch(/^max-age=\d+$/u);
   });
 
+  it('tells the edge to leave pages and pod documents as written', async () => {
+    const { get } = world();
+    expect((await get('https://account.example/privacy')).headers.get('Cache-Control')).toBe('no-store, no-transform');
+    expect((await get(`https://${POD_ID}.pods.example/`)).headers.get('Cache-Control')).toContain('no-transform');
+  });
+
   it('is not found on a host that is not its own', async () => {
     const { get } = world();
     expect((await get('https://other.example/')).status).toBe(404);
