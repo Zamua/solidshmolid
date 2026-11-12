@@ -46,7 +46,7 @@ ${icon('caretRight', 20)}</button></form>`;
 </div>
 <ul class="plain" style="margin-top:18px">
 <li>${icon('eye')}<span>We can only open that one folder, nothing else in your storage.</span></li>
-<li>${icon('plugs')}<span>Take our access away anytime, here or in your storage provider's settings.</span></li>
+<li>${icon('plugs')}<span>If you take our access away in your storage provider's settings, your pods stop working and cannot be connected again.</span></li>
 </ul>`,
   );
 }
@@ -123,7 +123,7 @@ ${icon('caretRight', 20)}</button></form>`;
 <p class="lede">The storage your pods live in. We can open only our own folder there.</p>
 <div class="card" style="padding:6px 16px">${connected}</div>
 ${more ? `<h2 style="margin-top:28px">Add storage</h2><div class="choices" style="margin-top:12px">${more}</div>` : ''}
-<p class="small" style="margin-top:22px">Storage holding pods stays connected while they live there. You can also take our access away in your Dropbox or Google account settings.</p>`,
+<p class="small" style="margin-top:22px">Storage holding pods stays connected while they live there. If you take our access away in your Dropbox or Google account settings, the pods there stop working and cannot be connected again.</p>`,
   );
 }
 
@@ -194,8 +194,8 @@ ${files}
 export function confirmDeletionPage(token: string, sentence: string, problem: string | null = null, status = 200): Response {
   return page(
     'Delete files',
-    `<h1>This deletes files for good</h1>
-<p class="lede">Type or paste the sentence below to delete the files from your storage. Anything else deletes nothing.</p>
+    `<h1>Delete the files too?</h1>
+<p class="lede">Type or paste the sentence below to delete the files from your storage. Anything else deletes nothing. Your storage provider keeps deleted files for a while: Dropbox in its deleted files, Google Drive in its trash. Empty them there to remove them for good.</p>
 <form method="post" action="/api/deletions/confirm" class="card">
 <p class="sentence">${escapeHtml(sentence)}</p>
 <div style="margin:-6px 0 16px"><button type="button" class="pill-btn copy-btn" data-copy="${escapeHtml(sentence)}" hidden>${icon('copy', 18)}${icon('check', 18)}<span data-label>Copy</span></button></div>

@@ -476,7 +476,7 @@ async function ensureOk(res: Response, what: string): Promise<void> {
   } catch {
     // not JSON; keep the text
   }
-  if (res.status === 401) throw new StorageUnavailable('the Google Drive link was revoked or expired; reconnect Google Drive');
+  if (res.status === 401) throw new StorageUnavailable('the Google Drive link was revoked or expired');
   if (reason === 'storageQuotaExceeded') throw new InsufficientStorage('the Google Drive account is full');
   if (res.status === 429 || res.status >= 500 || /rateLimitExceeded/u.test(reason)) {
     throw new StorageUnavailable(`Google Drive ${what}: ${message}`, retryAfter(res));
