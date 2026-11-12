@@ -41,7 +41,10 @@ const fakeFetch = async (url: string) => {
   return new Response('nope', { status: 404 });
 };
 
-const verifier = () => new SolidOidcVerifier({ fetch: fakeFetch, now: () => NOW });
+const verifier = () => {
+  const v = new SolidOidcVerifier({ now: () => NOW });
+  return { verify: (request: Parameters<SolidOidcVerifier['verify']>[0]) => v.verify(request, fakeFetch) };
+};
 
 async function token(over: Record<string, unknown> = {}, signer = issuerKeys, kid = 'k1') {
   const jkt = await calculateJwkThumbprint(await exportJWK(clientKeys.publicKey), 'sha256');
@@ -170,5 +173,14 @@ describe('Solid-OIDC verification', () => {
     const agent = await v.verify(await req(await token({}, rotated, 'k2'), await proof({ jti: 'j2' })));
     expect(agent?.webid).toBe(WEBID);
     expect(fetches.filter((u) => u.endsWith('/jwks'))).toHaveLength(2);
+  });
+
+  it('looks things up through the fetch of the request at hand, not the first one it served', async () => {
+    reset();
+    await publish(issuerKeys, 'k1');
+    const v = new SolidOidcVerifier({ now: () => NOW });
+    const unreachable = async () => new Response('', { status: 522 });
+    await expect(v.verify(await req(await token(), await proof()), unreachable)).rejects.toThrow(InvalidCredentials);
+    expect((await v.verify(await req(await token(), await proof({ jti: 'j2' })), fakeFetch))?.webid).toBe(WEBID);
   });
 });

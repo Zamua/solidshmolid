@@ -172,12 +172,7 @@ describe('token', () => {
     const proof = await new SignJWT({ htm: 'GET', htu: url, jti: 'p1', iat: Math.floor(Date.now() / 1000) })
       .setProtectedHeader({ alg: 'ES256', typ: 'dpop+jwt', jwk: await exportJWK(dpop.publicKey) })
       .sign(dpop.privateKey);
-    const agent = await new SolidOidcVerifier({ fetch: fetcher, now: () => Date.now() }).verify({
-      method: 'GET',
-      url,
-      authorization: `DPoP ${tokens.access_token}`,
-      dpop: proof,
-    });
+    const agent = await new SolidOidcVerifier({ now: () => Date.now() }).verify({ method: 'GET', url, authorization: `DPoP ${tokens.access_token}`, dpop: proof }, fetcher);
     expect(agent?.webid).toBe(WEBID);
   });
 

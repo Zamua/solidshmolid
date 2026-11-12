@@ -9,7 +9,8 @@ import { Pod } from '../app/pods/pod.js';
 import { type Activity, NO_ACTIVITY } from '../app/shared/activity.js';
 import { StorageUnavailable } from '../app/shared/errors.js';
 import type { FileLister, FileStore, StorageAuthorization } from '../app/storage/ports.js';
-import { FolderSync } from '../app/storage/sync.js';
+import type { Serial } from '../app/shared/serial.js';
+import { FolderSync, type SyncClock } from '../app/storage/sync.js';
 import { AnalyticsActivity } from './adapters/activity.js';
 import { RpcAccounts, revived, rpcAccountPods, rpcDirectory, rpcIdentities, rpcPods } from './adapters/accountRpc.js';
 import { HttpClientRegistry } from './adapters/clientRegistry.js';
@@ -31,9 +32,8 @@ import { SolidOidcVerifier } from './adapters/solidOidcVerifier.js';
 import { randomHex, systemClock, webCryptoSecrets } from './adapters/system.js';
 import { type Signer, signerFromJwk } from './adapters/tokenSigner.js';
 import { UnlinkedStore } from './adapters/unlinked.js';
-import type { Env } from './env.js';
+import { type Env, isDev } from './env.js';
 import type { Hosts } from './hosts.js';
-import type { Fetch } from './adapters/http.js';
 import type { ClerkChrome } from './http/clerkChrome.js';
 
 // Module scope, so keys, JWKS and WebID lookups are cached across requests in
@@ -43,9 +43,7 @@ let verifier: SolidOidcVerifier | null = null;
 
 const fetcher = (input: string, init?: RequestInit) => fetch(input, init);
 
-export function isDev(env: Env): boolean {
-  return env.DEV_MODE === '1';
-}
+export { isDev };
 
 export async function tokenSigner(env: Env): Promise<Signer> {
   if (!env.OIDC_SIGNING_JWK) throw new Error('OIDC_SIGNING_JWK is not configured');
@@ -53,9 +51,9 @@ export async function tokenSigner(env: Env): Promise<Signer> {
   return signer;
 }
 
-/** `fetch` must serve the service's own hosts in-process (see ownHosts.ts). */
-export function tokenVerifier(fetch: Fetch): SolidOidcVerifier {
-  verifier ??= new SolidOidcVerifier({ fetch, now: () => Date.now() });
+/** Shared for its caches only: what a request arrived on is given to each `verify`. */
+export function tokenVerifier(): SolidOidcVerifier {
+  verifier ??= new SolidOidcVerifier({ now: () => Date.now() });
   return verifier;
 }
 
@@ -166,11 +164,18 @@ export interface PodServices {
 
 const SYNC_INTERVAL_MS = 30_000;
 
-export function podServices(env: Env, storage: DurableObjectStorage, base: string): PodServices {
+/** What outlives a rebuild of a pod's services: every `Pod` over one index
+ * writes through one queue, and every sync reads one clock. */
+export interface PodState {
+  writes: Serial;
+  synced: SyncClock;
+}
+
+export function podServices(env: Env, storage: DurableObjectStorage, base: string, state: PodState): PodServices {
   const sql = storage.sql as SqlRunner;
   const index = new SqlIndex(sql, (fn) => storage.transactionSync(fn));
   const placement = new SqlPlacement(sql);
-  const podOn = (files: FileStore) => new Pod({ index, files, base, now: () => new Date(), newId: randomHex });
+  const podOn = (files: FileStore) => new Pod({ index, files, base, now: () => new Date(), newId: randomHex, writes: state.writes });
   const podIn = (p: Placement) => {
     const files = placedStorage(env, sql, p);
     return { pod: podOn(files), files };
@@ -183,7 +188,7 @@ export function podServices(env: Env, storage: DurableObjectStorage, base: strin
     return { pod, sync: null, placement, podIn };
   }
   const { pod, files } = podIn(placed.target);
-  return { pod, sync: placed.state === 'placed' ? new FolderSync(pod, placement, files, SYNC_INTERVAL_MS, () => Date.now()) : null, placement, podIn };
+  return { pod, sync: placed.state === 'placed' ? new FolderSync(pod, placement, files, SYNC_INTERVAL_MS, () => Date.now(), state.synced) : null, placement, podIn };
 }
 
 function placedStorage(env: Env, sql: SqlRunner, p: Placement): FileStore & FileLister {

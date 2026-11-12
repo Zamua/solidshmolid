@@ -17,7 +17,9 @@ import { placePod } from '../../app/storage/placement.js';
 import type { PlacementOutcome } from '../../app/storage/ports.js';
 import { ProofLedger } from '../adapters/proofLedger.js';
 import { isBlank } from '../adapters/sql.js';
-import { type PodServices, podServices, storageAround } from '../composition.js';
+import { Serial } from '../../app/shared/serial.js';
+import { neverSynced } from '../../app/storage/sync.js';
+import { type PodServices, type PodState, podServices, storageAround } from '../composition.js';
 import type { Env } from '../env.js';
 import { handleSolid, withCors } from '../http/solid.js';
 
@@ -31,6 +33,9 @@ export class PodObject extends DurableObject<Env> {
   private services: PodServices | null = null;
   private servicesFor = '';
   private proofs: ProofLedger | null = null;
+  // Kept here, not on the services: those are rebuilt, and a second queue or
+  // clock would let writes interleave and syncs repeat.
+  private readonly state: PodState = { writes: new Serial(), synced: neverSynced() };
 
   async fetch(request: Request): Promise<Response> {
     const base = request.headers.get(BASE_HEADER);
@@ -77,6 +82,7 @@ export class PodObject extends DurableObject<Env> {
     } finally {
       // Built before the placement was saved, the services serve the old storage.
       this.services = null;
+      this.state.synced.last = neverSynced().last;
     }
   }
 
@@ -118,11 +124,12 @@ export class PodObject extends DurableObject<Env> {
     await this.ctx.storage.deleteAll();
     this.services = null;
     this.proofs = null;
+    this.state.synced.last = neverSynced().last;
   }
 
   private open(base: string): PodServices {
     if (!this.services || this.servicesFor !== base) {
-      this.services = podServices(this.env, this.ctx.storage, base);
+      this.services = podServices(this.env, this.ctx.storage, base, this.state);
       this.servicesFor = base;
     }
     return this.services;
