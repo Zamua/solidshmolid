@@ -130,6 +130,10 @@ export class AccountObject extends DurableObject<Env> {
     return this.open().revokeFamily(id);
   }
 
+  async spendProof(jti: string, expires: number): Promise<boolean> {
+    return this.open().spendProof(jti, expires);
+  }
+
   // ---- pods and storage ---------------------------------------------------
 
   async load(): Promise<AccountState | null> {

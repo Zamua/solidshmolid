@@ -38,18 +38,22 @@ The provider's public keys; `Cache-Control: max-age=300`.
 Query: `client_id`, `redirect_uri`, `response_type=code`, `scope` (must include `openid webid`),
 `code_challenge`, `code_challenge_method=S256`, `state`, optional `nonce`, `prompt`.
 
-1. Resolve the client: a URL `client_id` is fetched as a Client ID Document (time-boxed,
-   size-capped); its `redirect_uris` must contain `redirect_uri` exactly. The value
+1. No Clerk session: redirect to `/sign-in?return=<this URL>`, whatever `prompt` says. This
+   comes first, so only a signed-in person can make the provider fetch a client document.
+2. Resolve the client: a URL `client_id` is fetched as a Client ID Document (time-boxed,
+   size-capped, no redirects; one that could not be used is not fetched again for a minute); its
+   `redirect_uris` must contain `redirect_uri` exactly. The value
    `http://www.w3.org/ns/solid/terms#PublicOidcClient` is a public client with no redirect check
    beyond https or localhost. Registered ids are looked up.
-2. No Clerk session: redirect to `/sign-in?return=<this URL>`, whatever `prompt` says.
 3. Show the consent page: client name and origin, the identity it will receive (the account's
    own WebID), Approve / Deny. Skipped when an approval exists and `prompt` is not `consent`.
 4. Approve: redirect to `redirect_uri?code=…&state=…&iss=…`. Deny: `error=access_denied`.
 
 ## `POST /.oidc/token`
 
-Requires a `DPoP` header on every call.
+Requires a `DPoP` header on every call. A proof is taken once: its `jti` is remembered in the
+account of the grant it came with, once that grant proved genuine, and the same proof beside
+another grant is refused with `invalid_dpop_proof`.
 
 - `grant_type=authorization_code`: `code`, `redirect_uri`, `client_id`, `code_verifier`.
 - `grant_type=refresh_token`: `refresh_token`, `client_id`; the DPoP key must equal the family's.
@@ -57,6 +61,8 @@ Requires a `DPoP` header on every call.
 A code redeems once (`nextCode` in `domain/identity/oidc.ts`). Presented again, it is refused
 and every refresh family it produced is revoked, including one still being issued when the
 replay lands. Revoking an app revokes its outstanding codes with its families.
+A code is kept for a day past its expiry, so that a replay is still recognized, and then
+dropped; refresh families are dropped once expired or revoked.
 
 Response:
 
@@ -84,7 +90,8 @@ Dynamic client registration for clients without a Client ID Document: accepts up
 `redirect_uris` (each at most 2048 characters) and a `client_name` (cut to 100 characters) in a
 body of at most 16 KiB; returns `client_id` and never a secret, since every registration is a
 public client (`token_endpoint_auth_method: none`).
-A registration no one has signed in through (redeemed a code for) within 7 days is dropped.
+A registration no one has signed in through (redeemed a code for) within 7 days is dropped,
+and at most 5000 such registrations are held: past that, the oldest make room.
 
 ## `GET|POST /.oidc/session/end`
 

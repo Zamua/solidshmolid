@@ -7,6 +7,10 @@ import { base64url } from '../../domain/shared/base64url.js';
 
 /** How far a proof's `iat` may sit from our clock. */
 export const PROOF_WINDOW_S = 300;
+/** A clock ahead of ours is tolerated this far; a proof dated later was minted to outlive its window. */
+const PROOF_AHEAD_S = 60;
+/** Proof ids are remembered, so their size is bounded. */
+const JTI_LIMIT = 256;
 
 export class InvalidDpopProof extends Error {}
 
@@ -38,8 +42,10 @@ export async function verifyDpopProof(proof: string, context: ProofContext): Pro
   if (payload.htm !== context.method) throw new InvalidDpopProof('htm does not match the method');
   if (typeof payload.htu !== 'string' || withoutQuery(payload.htu) !== withoutQuery(context.url)) throw new InvalidDpopProof('htu does not match the URL');
   const { iat, jti } = payload;
-  if (typeof iat !== 'number' || Math.abs(context.nowS - iat) > PROOF_WINDOW_S) throw new InvalidDpopProof('proof is stale');
+  if (typeof iat !== 'number' || context.nowS - iat > PROOF_WINDOW_S) throw new InvalidDpopProof('proof is stale');
+  if (iat - context.nowS > PROOF_AHEAD_S) throw new InvalidDpopProof('proof is dated in the future');
   if (typeof jti !== 'string' || jti === '') throw new InvalidDpopProof('proof has no jti');
+  if (jti.length > JTI_LIMIT) throw new InvalidDpopProof('jti is too long');
   // RFC 9449 requires ath at a resource, but Solid clients predating it omit
   // it and CSS's verifier accepts them; one that is sent must match.
   if (context.accessToken !== undefined && payload.ath !== undefined && payload.ath !== (await tokenHash(context.accessToken))) {

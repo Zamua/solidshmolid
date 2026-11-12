@@ -10,6 +10,17 @@ function directory() {
 }
 
 describe('directory', () => {
+  it('holds only so many registrations no one signed in through, dropping the oldest', () => {
+    let now = 1_000_000;
+    let n = 0;
+    const d = new SqlDirectory(sqlRunner(), () => now++, () => `k${++n}`, undefined, 3);
+    const used = d.registerClient({ redirect_uris: ['https://used.example/cb'] });
+    d.clientSignedIn(used);
+    const ids = Array.from({ length: 5 }, (_, i) => d.registerClient({ redirect_uris: [`https://c${i}.example/cb`] }));
+    expect(ids.map((id) => d.registeredClient(id) !== null)).toEqual([false, false, true, true, true]);
+    expect(d.registeredClient(used)).not.toBeNull();
+  });
+
   it('gives each person one stable account key', () => {
     const { d } = directory();
     const k = d.accountKeyFor('clerk_a');

@@ -24,6 +24,17 @@ describe('DPoP proofs', () => {
     await expect(verifyDpopProof(await proof('ES256', { htu: 'not a url' }), at)).rejects.toThrow(InvalidDpopProof);
   });
 
+  it('tolerates a clock a little ahead, and no proof dated later than that', async () => {
+    await expect(verifyDpopProof(await proof('ES256', { iat: NOW_S + 30 }), at)).resolves.toMatchObject({ jti: 'j1' });
+    await expect(verifyDpopProof(await proof('ES256', { iat: NOW_S + 61 }), at)).rejects.toThrow(/future/u);
+    await expect(verifyDpopProof(await proof('ES256', { iat: NOW_S - 301 }), at)).rejects.toThrow(/stale/u);
+  });
+
+  it('refuses a proof id too long to remember', async () => {
+    await expect(verifyDpopProof(await proof('ES256', { jti: 'j'.repeat(256) }), at)).resolves.toMatchObject({ iat: NOW_S });
+    await expect(verifyDpopProof(await proof('ES256', { jti: 'j'.repeat(257) }), at)).rejects.toThrow(InvalidDpopProof);
+  });
+
   it('checks ath only against an access token sent beside the proof', async () => {
     const p = await proof('ES256', { ath: 'AAAA' });
     await expect(verifyDpopProof(p, at)).resolves.toMatchObject({ jti: 'j1' });

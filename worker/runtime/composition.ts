@@ -52,8 +52,8 @@ export async function tokenSigner(env: Env): Promise<Signer> {
 }
 
 /** Shared for its caches only: what a request arrived on is given to each `verify`. */
-export function tokenVerifier(): SolidOidcVerifier {
-  verifier ??= new SolidOidcVerifier({ now: () => Date.now() });
+export function tokenVerifier(env: Env): SolidOidcVerifier {
+  verifier ??= new SolidOidcVerifier({ now: () => Date.now(), insecure: isDev(env) });
   return verifier;
 }
 

@@ -3,7 +3,8 @@
 //
 // Every URL fetched here (the issuer, its JWKS, the WebID document) is chosen
 // by whoever sent the request, so each fetch is time-boxed, size-capped and
-// cached.
+// cached, failures included; redirects are followed by hand, each hop checked
+// like the first; and what a fetch found is logged, never told to the caller.
 
 import { type JWTPayload, type JWTVerifyGetKey, createLocalJWKSet, decodeJwt, errors, jwtVerify } from 'jose';
 import { SIGNING_ALGORITHMS } from '../../domain/identity/oidc.js';
@@ -12,7 +13,16 @@ import { SOLID } from '../../domain/shared/vocab.js';
 import { type Fetch, limitedText } from './http.js';
 import { InvalidDpopProof, PROOF_WINDOW_S, type VerifiedProof, verifyDpopProof } from './dpopProof.js';
 
-export class InvalidCredentials extends Error {}
+/** `message` is what the caller is told. `detail` is for the log only: what a
+ * lookup on the caller's behalf found is not theirs to read. */
+export class InvalidCredentials extends Error {
+  constructor(
+    message: string,
+    readonly detail?: string,
+  ) {
+    super(message);
+  }
+}
 
 export interface VerifiedAgent {
   webid: string;
@@ -33,6 +43,8 @@ export interface AuthRequest {
 export interface VerifierDeps {
   /** Milliseconds since the epoch. */
   now: () => number;
+  /** Local development only: issuers and WebIDs on plain http and loopback hosts. */
+  insecure?: boolean;
 }
 
 const CACHE_MS = 5 * 60_000;
@@ -41,6 +53,13 @@ const FETCH_LIMIT = 256 * 1024;
 /** Issuers and WebIDs are the caller's choice, so the caches stay bounded. */
 const CACHE_ENTRIES = 256;
 const JWKS_KEYS = 20;
+/** How long a failed lookup is remembered, and how often a key set is
+ * refetched for a key it lacks: a caller cannot make us fetch faster. */
+const RETRY_MS = 60_000;
+const WEBID_REDIRECTS = 3;
+
+const UNREACHABLE_ISSUER = 'the token issuer could not be reached';
+const UNREADABLE_PROFILE = 'the WebID profile could not be read';
 
 interface Cached<T> {
   at: number;
@@ -50,6 +69,7 @@ interface Cached<T> {
 export class SolidOidcVerifier {
   private readonly keys = new Map<string, Cached<JWTVerifyGetKey>>();
   private readonly webids = new Map<string, Cached<string[]>>();
+  private readonly failures = new Map<string, Cached<InvalidCredentials>>();
 
   constructor(private readonly deps: VerifierDeps) {}
 
@@ -65,7 +85,7 @@ export class SolidOidcVerifier {
     let issuer: string;
     try {
       const claims = decodeJwt(token);
-      if (typeof claims.iss !== 'string' || !/^https?:\/\//u.test(claims.iss)) throw new Error();
+      if (typeof claims.iss !== 'string' || !this.allowed(claims.iss)) throw new Error();
       issuer = claims.iss;
     } catch {
       throw new InvalidCredentials('malformed access token');
@@ -75,7 +95,7 @@ export class SolidOidcVerifier {
     const audiences = Array.isArray(payload.aud) ? payload.aud : [payload.aud];
     if (!audiences.includes('solid')) throw new InvalidCredentials('token audience lacks "solid"');
     const webid = payload.webid;
-    if (typeof webid !== 'string' || !/^https?:\/\//u.test(webid)) throw new InvalidCredentials('token has no webid');
+    if (typeof webid !== 'string' || !this.allowed(webid)) throw new InvalidCredentials('token has no webid');
     const jkt = (payload.cnf as { jkt?: unknown } | undefined)?.jkt;
     if (typeof jkt !== 'string') throw new InvalidCredentials('token is not DPoP-bound');
 
@@ -83,7 +103,7 @@ export class SolidOidcVerifier {
     if (proof.jkt !== jkt) throw new InvalidCredentials('DPoP key does not match the token');
 
     if (!(await this.issuersOf(webid, fetch)).some((i) => sameIssuer(i, issuer))) {
-      throw new InvalidCredentials(`${webid} does not name ${issuer} as its issuer`);
+      throw new InvalidCredentials('the WebID does not name the token issuer');
     }
     const clientId = typeof payload.client_id === 'string' ? payload.client_id : typeof payload.azp === 'string' ? payload.azp : null;
     return { webid, issuer, clientId, jti: proof.jti, jtiExpires: proof.iat + PROOF_WINDOW_S };
@@ -96,11 +116,12 @@ export class SolidOidcVerifier {
     try {
       return await attempt(false);
     } catch (e) {
-      // A key we have not seen may be a rotation: refetch the set once.
+      // A key we have not seen may be a rotation: refetch the set, unless it was fetched just now.
       if (e instanceof errors.JWKSNoMatchingKey) {
         try {
           return await attempt(true);
         } catch (again) {
+          if (again instanceof InvalidCredentials) throw again;
           throw new InvalidCredentials(`access token: ${(again as Error).message}`);
         }
       }
@@ -120,52 +141,97 @@ export class SolidOidcVerifier {
 
   private async keysOf(issuer: string, fresh: boolean, fetch: Fetch): Promise<JWTVerifyGetKey> {
     const hit = this.keys.get(issuer);
-    if (hit && !fresh && this.deps.now() - hit.at < CACHE_MS) return hit.value;
-    const config = await this.fetchJson(`${issuer.replace(/\/$/u, '')}/.well-known/openid-configuration`, fetch);
-    if (!sameIssuer(String(config.issuer), issuer) || typeof config.jwks_uri !== 'string') {
-      throw new InvalidCredentials(`${issuer} has no usable OpenID configuration`);
-    }
-    const jwks = await this.fetchJson(config.jwks_uri, fetch);
-    if (!Array.isArray(jwks.keys) || jwks.keys.length > JWKS_KEYS) throw new InvalidCredentials(`${issuer} publishes an unusable key set`);
-    const set = createLocalJWKSet(jwks as never);
-    remember(this.keys, issuer, { at: this.deps.now(), value: set });
-    return set;
+    if (hit && this.deps.now() - hit.at < (fresh ? RETRY_MS : CACHE_MS)) return hit.value;
+    return this.orRemembered(`issuer ${issuer}`, async () => {
+      const config = await this.fetchJson(`${issuer.replace(/\/$/u, '')}/.well-known/openid-configuration`, fetch, UNREACHABLE_ISSUER);
+      if (!sameIssuer(String(config.issuer), issuer) || typeof config.jwks_uri !== 'string') {
+        throw new InvalidCredentials('the token issuer has no usable OpenID configuration');
+      }
+      const jwks = await this.fetchJson(config.jwks_uri, fetch, UNREACHABLE_ISSUER);
+      if (!Array.isArray(jwks.keys) || jwks.keys.length > JWKS_KEYS) throw new InvalidCredentials('the token issuer publishes an unusable key set');
+      const set = createLocalJWKSet(jwks as never);
+      remember(this.keys, issuer, { at: this.deps.now(), value: set });
+      return set;
+    });
   }
 
   /** The issuers a WebID document trusts (`solid:oidcIssuer`). */
   private async issuersOf(webid: string, fetch: Fetch): Promise<string[]> {
     const hit = this.webids.get(webid);
     if (hit && this.deps.now() - hit.at < CACHE_MS) return hit.value;
-    const doc = webid.split('#')[0]!;
-    const res = await this.get(doc, 'text/turtle', fetch);
-    const quads = await parseRdf(await limitedText(res, FETCH_LIMIT, () => new InvalidCredentials(`${res.url} is larger than ${FETCH_LIMIT} bytes`)), res.headers.get('Content-Type') ?? 'text/turtle', doc).catch(() => {
-      throw new InvalidCredentials(`${webid}: profile does not parse`);
+    return this.orRemembered(`webid ${webid}`, async () => {
+      const doc = webid.split('#')[0]!;
+      const res = await this.get(doc, 'text/turtle', fetch, UNREADABLE_PROFILE, WEBID_REDIRECTS);
+      const text = await limitedText(res, FETCH_LIMIT, () => new InvalidCredentials(UNREADABLE_PROFILE, 'larger than the limit'));
+      const quads = await parseRdf(text, res.headers.get('Content-Type') ?? 'text/turtle', doc).catch(() => {
+        throw new InvalidCredentials(UNREADABLE_PROFILE, 'does not parse');
+      });
+      const issuers = quads.filter((q) => q.subject.value === webid && q.predicate.value === SOLID('oidcIssuer')).map((q) => q.object.value);
+      remember(this.webids, webid, { at: this.deps.now(), value: issuers });
+      return issuers;
     });
-    const issuers = quads.filter((q) => q.subject.value === webid && q.predicate.value === SOLID('oidcIssuer')).map((q) => q.object.value);
-    remember(this.webids, webid, { at: this.deps.now(), value: issuers });
-    return issuers;
   }
 
-  private async fetchJson(url: string, fetch: Fetch): Promise<Record<string, unknown>> {
-    const res = await this.get(url, 'application/json', fetch);
+  /** Runs a lookup, answering with its last failure while that is recent. */
+  private async orRemembered<T>(key: string, lookup: () => Promise<T>): Promise<T> {
+    const failed = this.failures.get(key);
+    if (failed && this.deps.now() - failed.at < RETRY_MS) throw failed.value;
     try {
-      return JSON.parse(await limitedText(res, FETCH_LIMIT, () => new InvalidCredentials(`${res.url} is larger than ${FETCH_LIMIT} bytes`))) as Record<string, unknown>;
-    } catch {
-      throw new InvalidCredentials(`${url} is not JSON`);
+      const value = await lookup();
+      this.failures.delete(key);
+      return value;
+    } catch (e) {
+      if (e instanceof InvalidCredentials) remember(this.failures, key, { at: this.deps.now(), value: e });
+      throw e;
     }
   }
 
-  private async get(url: string, accept: string, fetch: Fetch): Promise<Response> {
-    if (!/^https?:\/\//u.test(url)) throw new InvalidCredentials(`${url} is not an http(s) URL`);
+  private async fetchJson(url: string, fetch: Fetch, refusal: string): Promise<Record<string, unknown>> {
+    const res = await this.get(url, 'application/json', fetch, refusal, 0);
+    try {
+      return JSON.parse(await limitedText(res, FETCH_LIMIT, () => new InvalidCredentials(refusal, `${originOf(url)}: larger than the limit`))) as Record<string, unknown>;
+    } catch (e) {
+      if (e instanceof InvalidCredentials) throw e;
+      throw new InvalidCredentials(refusal, `${originOf(url)}: not JSON`);
+    }
+  }
+
+  /** Fetches `url`, following up to `redirects` redirects to URLs as acceptable as the first. */
+  private async get(url: string, accept: string, fetch: Fetch, refusal: string, redirects: number): Promise<Response> {
+    if (!this.allowed(url)) throw new InvalidCredentials(refusal, `${originOf(url)}: not a URL to fetch`);
     let res: Response;
     try {
-      res = await fetch(url, { headers: { Accept: accept }, signal: AbortSignal.timeout(FETCH_TIMEOUT_MS), redirect: 'follow' });
+      res = await fetch(url, { headers: { Accept: accept }, signal: AbortSignal.timeout(FETCH_TIMEOUT_MS), redirect: 'manual' });
     } catch (e) {
-      throw new InvalidCredentials(`${url}: ${(e as Error).message}`);
+      throw new InvalidCredentials(refusal, `${originOf(url)}: ${(e as Error).message}`);
     }
-    if (!res.ok) throw new InvalidCredentials(`${url}: HTTP ${res.status}`);
+    const next = res.status >= 300 && res.status < 400 ? res.headers.get('Location') : null;
+    if (next !== null) {
+      await res.body?.cancel();
+      if (redirects === 0 || !URL.canParse(next, url)) throw new InvalidCredentials(refusal, `${originOf(url)}: redirect not followed`);
+      return this.get(new URL(next, url).toString(), accept, fetch, refusal, redirects - 1);
+    }
+    if (!res.ok) throw new InvalidCredentials(refusal, `${originOf(url)}: HTTP ${res.status}`);
     return res;
   }
+
+  /** Whether a URL the caller chose may be fetched: https on a named host. */
+  private allowed(url: string): boolean {
+    if (!URL.canParse(url)) return false;
+    const { protocol, hostname, username, password } = new URL(url);
+    if (this.deps.insecure) return protocol === 'https:' || protocol === 'http:';
+    return protocol === 'https:' && username === '' && password === '' && !isAddress(hostname);
+  }
+}
+
+/** An IP literal or a loopback name: never where an issuer or a profile lives. */
+function isAddress(hostname: string): boolean {
+  return /^\d+(\.\d+){3}$/u.test(hostname) || hostname.startsWith('[') || hostname === 'localhost' || hostname.endsWith('.localhost');
+}
+
+/** For the log: where a lookup went, without the path, which may name a person. */
+function originOf(url: string): string {
+  return URL.canParse(url) ? new URL(url).origin : '(not a URL)';
 }
 
 /** Caches an entry, dropping the oldest once the cache is full. */

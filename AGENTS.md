@@ -56,7 +56,8 @@ make e2e         # wrangler dev on ::1: CSS WebIDs use a dev pod; our provider s
 make clerk-live  # with `make dev` running: a throwaway Clerk dev user signs in by ticket; the Worker accepts the session
 ```
 
-`wrangler.dev.jsonc` sets `DEV_MODE=1` and `STORAGE=dev`: named pods
+`wrangler.dev.jsonc` sets `DEV_MODE=1` and `STORAGE=dev` (`DEV_MODE` counts
+only while `APEX_HOST` is a loopback name, see `isDev`): named pods
 (`dana.localhost:8787`) are created on first request, `X-Dev-WebID` names the
 agent, files go to the DO's own SQLite (`DevFileStore`, 2 MB per file), and
 connecting storage grants consent on the spot. `/dev/sign-in?person=<id>`

@@ -44,6 +44,16 @@ describe('a deployment (no DEV_MODE)', () => {
     expect(response.status).toBe(401);
   });
 
+  it('stays a deployment with DEV_MODE set, off a loopback host', async () => {
+    const { get, reached, provisioned } = world({ DEV_MODE: '1' });
+    expect((await get('https://account.example/dev/sign-in?person=x')).status).toBe(404);
+    expect((await get('https://account.example/api/me', { Cookie: 'dev_person=x' })).status).toBe(401);
+    expect((await get('https://alice.pods.example/')).status).toBe(404);
+    await get(`https://${POD_ID}.pods.example/private/`, { 'X-Dev-WebID': `https://${POD_ID}.pods.example/profile/card#me` });
+    expect(reached[0]!.request.headers.get(AGENT_HEADER)).toBeNull();
+    expect(provisioned).toHaveLength(0);
+  });
+
   it('turns a named pod host away before any pod object exists', async () => {
     const { get, reached, provisioned } = world();
     expect((await get('https://alice.pods.example/')).status).toBe(404);

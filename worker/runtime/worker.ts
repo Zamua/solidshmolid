@@ -141,13 +141,15 @@ async function pod(request: Request, env: Env, url: URL, handle: string, ctx?: E
   if (request.method !== 'OPTIONS') {
     let agent: VerifiedAgent | null;
     try {
-      agent = await tokenVerifier().verify(
+      agent = await tokenVerifier(env).verify(
         { method: request.method, url: request.url, authorization: request.headers.get('Authorization'), dpop: request.headers.get('DPoP') },
         // Its lookups of the service's own hosts are served here, in-process.
         withOwnHosts(env, ownPort(env, url), (r) => worker.fetch(r, env), (input, init) => fetch(input, init)),
       );
     } catch (e) {
       if (!(e instanceof InvalidCredentials)) throw e;
+      // What a lookup found goes to the log; the caller gets the fixed reason.
+      if (e.detail) console.warn(JSON.stringify({ level: 'warn', msg: 'credentials refused', reason: e.message, detail: e.detail }));
       return withCors(invalidToken(e.message), request, request.headers.get('Origin'));
     }
     if (agent) {

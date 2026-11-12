@@ -12,7 +12,8 @@ describe.skipIf(!CSS_BIN)('a CSS-issued token', () => {
   let session: SolidSession;
   const url = 'https://alice.solidshmolid.example/notes/a.ttl';
   const verifier = () => {
-    const v = new SolidOidcVerifier({ now: () => Date.now() });
+    // The local CSS answers on plain http, which only a dev verifier fetches.
+    const v = new SolidOidcVerifier({ now: () => Date.now(), insecure: true });
     return { verify: (request: Parameters<SolidOidcVerifier['verify']>[0]) => v.verify(request, (u, i) => fetch(u, i)) };
   };
 

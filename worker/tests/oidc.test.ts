@@ -6,6 +6,7 @@ const ISS = 'https://idp.example/';
 const WEBID = 'https://alice.example/profile/card#me';
 const URL_ = 'https://alice.example/notes/a.ttl';
 const NOW = 1_800_000_000_000;
+const MINUTE = 60_000;
 
 type Keys = Awaited<ReturnType<typeof generateKeyPair>>;
 let issuerKeys: Keys;
@@ -24,6 +25,7 @@ beforeAll(async () => {
 
 function reset() {
   fetches = [];
+  redirects = {};
   discoveryIssuer = ISS;
   profile = `<${WEBID}> <http://www.w3.org/ns/solid/terms#oidcIssuer> <${ISS}>.`;
 }
@@ -32,8 +34,11 @@ async function publish(keys: Keys, kid: string) {
   jwks = { keys: [{ ...(await exportJWK(keys.publicKey)), kid, alg: 'ES256' }] };
 }
 
+let redirects: Record<string, string>;
+
 const fakeFetch = async (url: string) => {
   fetches.push(url);
+  if (redirects[url]) return new Response(null, { status: 302, headers: { Location: redirects[url]! } });
   const json = (v: unknown) => new Response(JSON.stringify(v), { headers: { 'Content-Type': 'application/json' } });
   if (url === 'https://idp.example/.well-known/openid-configuration') return json({ issuer: discoveryIssuer, jwks_uri: 'https://idp.example/jwks' });
   if (url === 'https://idp.example/jwks') return json(jwks);
@@ -145,7 +150,7 @@ describe('Solid-OIDC verification', () => {
         return req(await token(), await proof());
       },
     ],
-    ['a proof dated in the future', /DPoP proof: proof is stale/, async () => req(await token(), await proof({ iat: NOW / 1000 + 600 }))],
+    ['a proof dated in the future', /DPoP proof: proof is dated in the future/, async () => req(await token(), await proof({ iat: NOW / 1000 + 600 }))],
     ['a proof typed as a plain JWT', /DPoP proof: .*"typ"/, async () => req(await token(), await proof({}, clientKeys, 'jwt'))],
   ];
   it.each(rejectsSaying)('rejects %s', async (_label, message, make) => {
@@ -163,24 +168,128 @@ describe('Solid-OIDC verification', () => {
     await expect(verifier().verify(await req(await token(), await proof()))).rejects.toThrow(/does not name/);
   });
 
-  it('refetches the key set once for a rotated key', async () => {
+  it('refetches the key set for a rotated key, but not one it fetched within the minute', async () => {
     reset();
     await publish(issuerKeys, 'k1');
-    const v = verifier();
-    await v.verify(await req(await token(), await proof()));
+    let now = NOW;
+    const v = new SolidOidcVerifier({ now: () => now });
+    await v.verify(await req(await token(), await proof()), fakeFetch);
     const rotated = await generateKeyPair('ES256', { extractable: true });
     await publish(rotated, 'k2');
-    const agent = await v.verify(await req(await token({}, rotated, 'k2'), await proof({ jti: 'j2' })));
-    expect(agent?.webid).toBe(WEBID);
+    const next = async (jti: string) => v.verify(await req(await token({}, rotated, 'k2'), await proof({ jti })), fakeFetch);
+    await expect(next('j2')).rejects.toThrow(/access token: /);
+    expect(fetches.filter((u) => u.endsWith('/jwks'))).toHaveLength(1);
+    now += MINUTE;
+    expect((await next('j3'))?.webid).toBe(WEBID);
     expect(fetches.filter((u) => u.endsWith('/jwks'))).toHaveLength(2);
   });
 
   it('looks things up through the fetch of the request at hand, not the first one it served', async () => {
     reset();
     await publish(issuerKeys, 'k1');
-    const v = new SolidOidcVerifier({ now: () => NOW });
+    let now = NOW;
+    const v = new SolidOidcVerifier({ now: () => now });
     const unreachable = async () => new Response('', { status: 522 });
     await expect(v.verify(await req(await token(), await proof()), unreachable)).rejects.toThrow(InvalidCredentials);
+    now += MINUTE;
     expect((await v.verify(await req(await token(), await proof({ jti: 'j2' })), fakeFetch))?.webid).toBe(WEBID);
+  });
+});
+
+describe('lookups a caller can cause', () => {
+  const failing = (answer: () => Response | Promise<Response>) => {
+    const asked: string[] = [];
+    return { asked, fetch: async (url: string) => (asked.push(url), answer()) };
+  };
+
+  it('tell the caller that a lookup failed, and only the log what it found', async () => {
+    reset();
+    const v = new SolidOidcVerifier({ now: () => NOW });
+    const { fetch } = failing(() => new Response('internal words', { status: 503 }));
+    const refusal = (await v.verify(await req(await token(), await proof()), fetch).catch((e: unknown) => e)) as InvalidCredentials;
+    expect(refusal.message).toBe('the token issuer could not be reached');
+    expect(refusal.detail).toBe('https://idp.example: HTTP 503');
+  });
+
+  it('are not repeated within a minute of failing', async () => {
+    reset();
+    await publish(issuerKeys, 'k1');
+    let now = NOW;
+    const v = new SolidOidcVerifier({ now: () => now });
+    const down = failing(() => {
+      throw new Error('connect failed');
+    });
+    for (const jti of ['a', 'b', 'c']) await expect(v.verify(await req(await token(), await proof({ jti })), down.fetch)).rejects.toThrow('the token issuer could not be reached');
+    expect(down.asked).toHaveLength(1);
+    // Nor does a working fetch get asked while the failure is remembered.
+    await expect(v.verify(await req(await token(), await proof({ jti: 'd' })), fakeFetch)).rejects.toThrow(InvalidCredentials);
+    expect(fetches).toEqual([]);
+    now += MINUTE;
+    expect((await v.verify(await req(await token(), await proof({ jti: 'e' })), fakeFetch))?.webid).toBe(WEBID);
+  });
+
+  it('remember an unreadable profile the same way', async () => {
+    reset();
+    await publish(issuerKeys, 'k1');
+    profile = 'this is not turtle <';
+    const v = new SolidOidcVerifier({ now: () => NOW });
+    for (const jti of ['a', 'b']) await expect(v.verify(await req(await token(), await proof({ jti })), fakeFetch)).rejects.toThrow('the WebID profile could not be read');
+    expect(fetches.filter((u) => u === 'https://alice.example/profile/card')).toHaveLength(1);
+  });
+
+  it('do not follow an issuer that redirects', async () => {
+    reset();
+    await publish(issuerKeys, 'k1');
+    redirects['https://idp.example/.well-known/openid-configuration'] = 'https://internal.example/config';
+    const refusal = (await verifier().verify(await req(await token(), await proof())).catch((e: unknown) => e)) as InvalidCredentials;
+    expect(refusal.message).toBe('the token issuer could not be reached');
+    expect(refusal.detail).toMatch(/redirect not followed/u);
+    expect(fetches).toEqual(['https://idp.example/.well-known/openid-configuration']);
+  });
+
+  it('follow a profile that moved, a few hops and only to https', async () => {
+    reset();
+    await publish(issuerKeys, 'k1');
+    redirects['https://alice.example/profile/card'] = '/moved/card';
+    redirects['https://alice.example/moved/card'] = 'https://elsewhere.example/card';
+    const elsewhere = async (url: string) => (url === 'https://elsewhere.example/card' ? (fetches.push(url), new Response(profile, { headers: { 'Content-Type': 'text/turtle' } })) : fakeFetch(url));
+    const v = new SolidOidcVerifier({ now: () => NOW });
+    expect((await v.verify(await req(await token(), await proof()), elsewhere))?.webid).toBe(WEBID);
+
+    for (const target of ['http://alice.example/plain', 'https://127.0.0.1/card', 'https://localhost/card', 'https://[::1]/card']) {
+      reset();
+      redirects['https://alice.example/profile/card'] = target;
+      await expect(verifier().verify(await req(await token(), await proof()))).rejects.toThrow('the WebID profile could not be read');
+      expect(fetches).not.toContain(target);
+    }
+
+    reset();
+    for (let i = 0; i < 5; i++) redirects[i === 0 ? 'https://alice.example/profile/card' : `https://alice.example/hop${i}`] = `https://alice.example/hop${i + 1}`;
+    await expect(verifier().verify(await req(await token(), await proof()))).rejects.toThrow('the WebID profile could not be read');
+    expect(fetches.filter((u) => u.includes('/hop'))).toHaveLength(3);
+  });
+
+  it('never go to plain http or to an address, for an issuer or a WebID', async () => {
+    reset();
+    await publish(issuerKeys, 'k1');
+    for (const iss of ['http://idp.example/', 'https://10.0.0.1/', 'https://localhost/', 'https://user:pw@idp.example/']) {
+      await expect(verifier().verify(await req(await token({ iss }), await proof()))).rejects.toThrow('malformed access token');
+    }
+    await expect(verifier().verify(await req(await token({ webid: 'http://alice.example/profile/card#me' }), await proof()))).rejects.toThrow('token has no webid');
+    expect(fetches.filter((u) => !u.startsWith('https://idp.example/'))).toEqual([]);
+  });
+
+  it('go to plain http in local development', async () => {
+    reset();
+    const { publicKey } = issuerKeys;
+    const local = async (url: string) => {
+      const json = (v: unknown) => new Response(JSON.stringify(v), { headers: { 'Content-Type': 'application/json' } });
+      if (url === 'http://localhost:8787/.well-known/openid-configuration') return json({ issuer: 'http://localhost:8787/', jwks_uri: 'http://localhost:8787/jwks' });
+      if (url === 'http://localhost:8787/jwks') return json({ keys: [{ ...(await exportJWK(publicKey)), kid: 'k1', alg: 'ES256' }] });
+      return new Response('<http://sam.localhost:8787/profile/card#me> <http://www.w3.org/ns/solid/terms#oidcIssuer> <http://localhost:8787/>.', { headers: { 'Content-Type': 'text/turtle' } });
+    };
+    const v = new SolidOidcVerifier({ now: () => NOW, insecure: true });
+    const t = await token({ iss: 'http://localhost:8787/', webid: 'http://sam.localhost:8787/profile/card#me' });
+    expect((await v.verify(await req(t, await proof()), local))?.issuer).toBe('http://localhost:8787/');
   });
 });

@@ -2,7 +2,8 @@
 // Translation only: parse the request, call the provider, shape the response.
 
 import { OidcError, discovery } from '../../domain/identity/oidc.js';
-import { InvalidDpopProof, verifyDpopProof } from '../adapters/dpopProof.js';
+import type { TokenProof } from '../../app/identity/ports.js';
+import { InvalidDpopProof, PROOF_WINDOW_S, verifyDpopProof } from '../adapters/dpopProof.js';
 import { provider, tokenSigner } from '../composition.js';
 import type { Env } from '../env.js';
 import { consentPage } from './pages/oidcPages.js';
@@ -43,8 +44,7 @@ export async function oidcRoute(request: Request, env: Env, url: URL, person: st
     }
     if (path === '/.oidc/token' && request.method === 'POST') {
       const body = await (await withSmallBody(request)).text();
-      const jkt = await proofKey(request.headers.get('DPoP'), url);
-      const tokens = await op.token(new URLSearchParams(body), jkt);
+      const tokens = await op.token(new URLSearchParams(body), await tokenProof(request.headers.get('DPoP'), url));
       return cors(Response.json(tokens, { headers: { 'Cache-Control': 'no-store' } }));
     }
     if (path === '/.oidc/reg' && request.method === 'POST') {
@@ -88,11 +88,12 @@ async function registrationBody(request: Request): Promise<unknown> {
   }
 }
 
-/** The thumbprint of the key behind the token request's DPoP proof. */
-async function proofKey(proof: string | null, url: URL): Promise<string> {
+/** The token request's DPoP proof, verified. */
+async function tokenProof(proof: string | null, url: URL): Promise<TokenProof> {
   if (!proof) throw new OidcError('invalid_dpop_proof', 'a DPoP proof is required');
   try {
-    return (await verifyDpopProof(proof, { method: 'POST', url: url.toString(), nowS: Math.floor(Date.now() / 1000) })).jkt;
+    const { jkt, jti, iat } = await verifyDpopProof(proof, { method: 'POST', url: url.toString(), nowS: Math.floor(Date.now() / 1000) });
+    return { jkt, jti, expires: iat + PROOF_WINDOW_S };
   } catch (e) {
     if (e instanceof InvalidDpopProof) throw new OidcError('invalid_dpop_proof', e.message);
     throw e;

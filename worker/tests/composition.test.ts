@@ -20,6 +20,6 @@ describe('storage providers', () => {
 
   it('keeps grants only for providers whose keys are configured', () => {
     expect(Object.keys(storageGrants(env({ DROPBOX_APP_KEY: 'k' })))).toEqual(['dropbox']);
-    expect(Object.keys(storageGrants(env({ ...keys, DEV_MODE: '1' }))).sort()).toEqual(['dev', 'dropbox', 'google-drive']);
+    expect(Object.keys(storageGrants(env({ ...keys, DEV_MODE: '1', APEX_HOST: 'localhost' }))).sort()).toEqual(['dev', 'dropbox', 'google-drive']);
   });
 });

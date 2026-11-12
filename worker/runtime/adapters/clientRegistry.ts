@@ -10,11 +10,17 @@ import { type Fetch, limitedText } from './http.js';
 const DOC_LIMIT = 64 * 1024;
 const TIMEOUT_MS = 5000;
 const REGISTERED = 'reg_';
+/** A document that could not be used is not fetched again this soon, however often it is named. */
+const RETRY_MS = 60_000;
+const FAILURES = 256;
+/** Shared across requests: a registry is built for each one. */
+const failures = new Map<string, { at: number; error: OidcError }>();
 
 export class HttpClientRegistry implements ClientRegistry {
   constructor(
     private readonly directory: DurableObjectStub<DirectoryObject>,
     private readonly fetcher: Fetch,
+    private readonly now: () => number = () => Date.now(),
   ) {}
 
   async resolve(clientId: string): Promise<ClientInfo> {
@@ -27,7 +33,20 @@ export class HttpClientRegistry implements ClientRegistry {
     if (!/^https:\/\//u.test(clientId) && !/^http:\/\/(localhost|127\.0\.0\.1)[:/]/u.test(clientId)) {
       throw new OidcError('invalid_client', 'client_id must be an https URL');
     }
-    return clientFromDocument(clientId, await this.fetchDocument(clientId));
+    const failed = failures.get(clientId);
+    if (failed && this.now() - failed.at < RETRY_MS) throw failed.error;
+    try {
+      const client = clientFromDocument(clientId, await this.fetchDocument(clientId));
+      failures.delete(clientId);
+      return client;
+    } catch (e) {
+      if (e instanceof OidcError) {
+        failures.delete(clientId);
+        if (failures.size >= FAILURES) failures.delete(failures.keys().next().value!);
+        failures.set(clientId, { at: this.now(), error: e });
+      }
+      throw e;
+    }
   }
 
   register(registration: Registration): Promise<string> {
@@ -43,10 +62,11 @@ export class HttpClientRegistry implements ClientRegistry {
     try {
       // No redirects: the document must live at the URL the client named.
       res = await this.fetcher(url, { headers: { Accept: 'application/ld+json, application/json' }, redirect: 'manual', signal: AbortSignal.timeout(TIMEOUT_MS) });
-    } catch (e) {
-      throw new OidcError('invalid_client', `client document unreachable: ${(e as Error).message}`);
+    } catch {
+      throw new OidcError('invalid_client', 'client document could not be reached');
     }
-    if (!res.ok) throw new OidcError('invalid_client', `client document answered ${res.status}`);
+    // What the URL answered is not the caller's to learn; that it is no client document is.
+    if (!res.ok) throw new OidcError('invalid_client', 'client document could not be read');
     const text = await limitedText(res, DOC_LIMIT, () => new OidcError('invalid_client', 'client document is too large'));
     try {
       return JSON.parse(text);

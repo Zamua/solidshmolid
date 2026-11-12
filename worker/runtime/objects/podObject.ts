@@ -33,6 +33,8 @@ export class PodObject extends DurableObject<Env> {
   private services: PodServices | null = null;
   private servicesFor = '';
   private proofs: ProofLedger | null = null;
+  /** Proof ids of requests being served, which the ledger does not hold yet. */
+  private readonly inFlight = new Set<string>();
   // Kept here, not on the services: those are rebuilt, and a second queue or
   // clock would let writes interleave and syncs repeat.
   private readonly state: PodState = { writes: new Serial(), synced: neverSynced() };
@@ -47,8 +49,8 @@ export class PodObject extends DurableObject<Env> {
     if (!pod.isProvisioned()) return withCors(new Response('no such pod\n', { status: 404 }), request, origin);
 
     const jti = request.headers.get(JTI_HEADER);
-    this.proofs ??= new ProofLedger(this.ctx.storage.sql);
-    if (jti && !this.proofs.firstUse(jti, Number(request.headers.get(JTI_EXPIRES_HEADER)))) {
+    const proofs = (this.proofs ??= new ProofLedger(this.ctx.storage.sql));
+    if (jti && (this.inFlight.has(jti) || proofs.seen(jti))) {
       return withCors(
         new Response('DPoP proof already used\n', { status: 401, headers: { 'WWW-Authenticate': 'DPoP error="invalid_dpop_proof"' } }),
         request,
@@ -61,7 +63,19 @@ export class PodObject extends DurableObject<Env> {
       // Counted, not named: a file name is the person's.
       if (report && report.skipped.length > 0) console.error(JSON.stringify({ level: 'warn', msg: 'sync skipped entries', count: report.skipped.length }));
     }
-    return handleSolid(pod, request, { webid: request.headers.get(AGENT_HEADER) || null });
+    if (!jti) return handleSolid(pod, request, { webid: request.headers.get(AGENT_HEADER) || null });
+    // A proof is spent by the request it got through on. One that was refused
+    // is not written down: anyone can mint a token, and a refusal each would
+    // otherwise fill the ledger.
+    this.inFlight.add(jti);
+    try {
+      const response = await handleSolid(pod, request, { webid: request.headers.get(AGENT_HEADER) || null });
+      // A pod retired meanwhile has no ledger to write to.
+      if (response.status !== 401 && response.status !== 403 && this.proofs === proofs) proofs.record(jti, Number(request.headers.get(JTI_EXPIRES_HEADER)));
+      return response;
+    } finally {
+      this.inFlight.delete(jti);
+    }
   }
 
   /** Development only: creates a named pod in the dev store if it does not exist yet. */
