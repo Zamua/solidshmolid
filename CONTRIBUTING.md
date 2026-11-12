@@ -70,7 +70,9 @@ before it ships.
 `worker/domain` is pure (no I/O, no runtime imports); `worker/app` orchestrates
 through ports; `worker/runtime` holds the Worker, Durable Objects, HTTP
 translation and adapters. `worker/tests/layering.test.ts` enforces the
-dependency rule. Provider-specific detail stays inside its adapter;
+dependency rule on imports of every form and on packages; a new folder under
+`domain/` or `app/` needs a rule there first. It does not see ambient globals
+(`fetch`), which stay a matter of review. Provider-specific detail stays inside its adapter;
 cross-cutting concerns are wired at the composition root.
 
 ### Simplicity

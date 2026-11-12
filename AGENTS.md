@@ -33,6 +33,10 @@ worker/runtime/
 - The Solid-OIDC provider (`app/identity/provider.ts`) issues DPoP-bound
   tokens; `make e2e` proves a stock CSS accepts them.
 - No D1, no R2 for user data.
+- `worker/tests/worker.test.ts` drives the Worker entry with a constructed
+  `Env`, without `DEV_MODE` and with it: dev identity (`X-Dev-WebID`, the dev
+  cookie, `/dev/sign-in`, named pods) must stay unreachable on a deployment.
+  Keep it passing when touching `worker.ts`, `sessions()` or `http/dev.ts`.
 - Usage counting (`app/shared/activity.ts`, SPEC "Usage counting") is off
   unless the deployment binds `ACTIVITY` and sets `ACTIVITY_SALT`; events hold
   a keyed hash of the WebID pod id and nothing else about anyone. A request

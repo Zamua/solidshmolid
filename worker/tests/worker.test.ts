@@ -1,0 +1,90 @@
+// The Worker entry, driven through `fetch` with a constructed Env: what a
+// deployment (no DEV_MODE) must never do, next to what the dev config does.
+
+import { describe, expect, it } from 'vitest';
+import type { Env } from '../runtime/env.js';
+import { AGENT_HEADER } from '../runtime/objects/podObject.js';
+import worker from '../runtime/worker.js';
+
+const POD_ID = 'k3x9fqm7';
+
+function world(vars: Partial<Env> = {}) {
+  const reached: { name: string; request: Request }[] = [];
+  const provisioned: string[] = [];
+  const namespace = (answer: (name: string) => object) => ({ idFromName: (name: string) => name, get: (name: string) => answer(name) });
+  const env = {
+    POD: namespace((name) => ({
+      fetch: async (request: Request) => {
+        reached.push({ name, request });
+        return new Response('needs credentials\n', { status: 401 });
+      },
+      ensureProvisioned: async () => void provisioned.push(name),
+    })),
+    ACCOUNT: namespace(() => ({})),
+    DIRECTORY: namespace(() => ({})),
+    POD_HOST_TEMPLATE: '{handle}.pods.example',
+    APEX_HOST: 'account.example',
+    STORAGE: 'dropbox',
+    ...vars,
+  } as unknown as Env;
+  const get = (url: string, headers: Record<string, string> = {}) => worker.fetch(new Request(url, { headers }), env);
+  return { get, reached, provisioned };
+}
+
+describe('a deployment (no DEV_MODE)', () => {
+  it('has no dev sign-in', async () => {
+    const { get } = world();
+    expect((await get('https://account.example/dev/sign-in?person=x')).status).toBe(404);
+  });
+
+  it('does not take the dev cookie for a session', async () => {
+    const { get } = world();
+    const response = await get('https://account.example/api/me', { Cookie: 'dev_person=x' });
+    expect(response.status).toBe(401);
+  });
+
+  it('turns a named pod host away before any pod object exists', async () => {
+    const { get, reached, provisioned } = world();
+    expect((await get('https://alice.pods.example/')).status).toBe(404);
+    expect(reached).toHaveLength(0);
+    expect(provisioned).toHaveLength(0);
+  });
+
+  it('never takes the agent from a request header', async () => {
+    const { get, reached, provisioned } = world();
+    const owner = `https://${POD_ID}.pods.example/profile/card#me`;
+    const response = await get(`https://${POD_ID}.pods.example/private/`, { 'X-Dev-WebID': owner, [AGENT_HEADER]: owner, 'x-solidshmolid-base': 'https://elsewhere.example' });
+    expect(response.status).toBe(401);
+    expect(reached).toHaveLength(1);
+    const forwarded = reached[0]!.request.headers;
+    expect(forwarded.get(AGENT_HEADER)).toBeNull();
+    expect(forwarded.get('x-solidshmolid-base')).toBe(`https://${POD_ID}.pods.example`);
+    expect(provisioned).toHaveLength(0);
+  });
+
+  it('answers only on https at the default port, and says so', async () => {
+    const { get, reached } = world();
+    const moved = await get(`http://${POD_ID}.pods.example/notes/?a=1`);
+    expect(moved.status).toBe(301);
+    expect(moved.headers.get('Location')).toBe(`https://${POD_ID}.pods.example/notes/?a=1`);
+    expect((await get('https://account.example:8443/sign-in')).headers.get('Location')).toBe('https://account.example/sign-in');
+    expect(reached).toHaveLength(0);
+    expect((await get(`https://${POD_ID}.pods.example/`)).headers.get('Strict-Transport-Security')).toMatch(/^max-age=\d+$/u);
+  });
+
+  it('is not found on a host that is not its own', async () => {
+    const { get } = world();
+    expect((await get('https://other.example/')).status).toBe(404);
+  });
+});
+
+describe('the dev config (DEV_MODE)', () => {
+  it('trusts X-Dev-WebID, creates named pods on first request and stays on http', async () => {
+    const { get, reached, provisioned } = world({ DEV_MODE: '1', APEX_HOST: 'localhost', POD_HOST_TEMPLATE: '{handle}.localhost', STORAGE: 'dev' });
+    const response = await get('http://alice.localhost:8787/private/', { 'X-Dev-WebID': 'http://alice.localhost:8787/profile/card#me', [AGENT_HEADER]: 'http://mallory.example/#me' });
+    expect(response.status).toBe(401);
+    expect(response.headers.get('Strict-Transport-Security')).toBeNull();
+    expect(provisioned).toEqual(['alice']);
+    expect(reached[0]!.request.headers.get(AGENT_HEADER)).toBe('http://alice.localhost:8787/profile/card#me');
+  });
+});
