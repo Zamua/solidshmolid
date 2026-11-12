@@ -11,6 +11,7 @@ JSON. Errors: `{ "error": "<code>", "message": "..." }` with 400/401/403/404/409
 | `POST /api/signup` | creates the account and its first pod id and WebID; repeating returns the same |
 | `POST /api/storage/{provider}/start` | returns the provider's authorize URL (PKCE) |
 | `GET /link/{provider}/callback` | finishes linking; places every pod waiting for storage |
+| `POST /api/pods/place` | places the pods a failed placement left waiting, in the storage linked last; 409 before storage is connected, 503 or 507 when the storage fails again |
 | `POST /api/pods` | adds a pod beside the first, owned by the WebID and listed in its profile (409 before storage is connected) |
 | `POST /api/storage/{linkId}/disconnect` | gives up the grant and removes the link; 409 with the pod list while any pod uses it |
 | `GET /api/apps` | the apps the person approved |

@@ -4,7 +4,7 @@
 
 import type { AccountRepository, Directory, Identities, Placement, Pods } from '../../app/accounts/ports.js';
 import type { AccountStore, Accounts, KeyedAccount } from '../../app/identity/ports.js';
-import { BadRequest, Forbidden, InsufficientStorage, NotFound, PodError, StorageUnavailable } from '../../app/shared/errors.js';
+import { BadRequest, Conflict, Forbidden, InsufficientStorage, NotFound, PayloadTooLarge, PodError, StorageUnavailable } from '../../app/shared/errors.js';
 import { isAccountKey } from '../../domain/accounts/keys.js';
 import { profileDocument } from '../../domain/pods/profile.js';
 import type { Env } from '../env.js';
@@ -47,13 +47,13 @@ export function rpcPods(env: Env, hosts: Hosts): Pods {
   return {
     place: (podId: string, placement: Placement, owner: string, withProfile: boolean) => {
       const base = hosts.podOrigin(podId);
-      return stub(podId).place(base, placement, owner, withProfile ? profileDocument(`${base}/`, hosts.issuer) : null);
+      return revived(stub(podId).place(base, placement, owner, withProfile ? profileDocument(`${base}/`, hosts.issuer) : null));
     },
     declareStorage: (webidPodId: string, owner: string, storagePodId: string) =>
-      stub(webidPodId).declareStorage(hosts.podOrigin(webidPodId), owner, `${hosts.podOrigin(storagePodId)}/`),
+      revived(stub(webidPodId).declareStorage(hosts.podOrigin(webidPodId), owner, `${hosts.podOrigin(storagePodId)}/`)),
     dropStorage: (webidPodId: string, owner: string, storagePodId: string) =>
-      stub(webidPodId).dropStorage(hosts.podOrigin(webidPodId), owner, `${hosts.podOrigin(storagePodId)}/`),
-    retire: (podId: string, deleteFiles: boolean) => stub(podId).retire(hosts.podOrigin(podId), deleteFiles),
+      revived(stub(webidPodId).dropStorage(hosts.podOrigin(webidPodId), owner, `${hosts.podOrigin(storagePodId)}/`)),
+    retire: (podId: string, deleteFiles: boolean) => revived(stub(podId).retire(hosts.podOrigin(podId), deleteFiles)),
     list: (podId: string, owner: string, path: string) => revived(stub(podId).list(hosts.podOrigin(podId), owner, path)),
     open: (podId: string, owner: string, path: string) => revived(stub(podId).readFile(hosts.podOrigin(podId), owner, path)),
   };
@@ -70,11 +70,11 @@ export function rpcIdentities(env: Env): Identities {
   };
 }
 
-const POD_ERRORS: Record<string, new (message: string) => PodError> = { NotFound, BadRequest, Forbidden, InsufficientStorage, StorageUnavailable };
+const POD_ERRORS: Record<string, new (message: string) => PodError> = { NotFound, BadRequest, Forbidden, Conflict, PayloadTooLarge, InsufficientStorage, StorageUnavailable };
 
 /** Durable Object RPC keeps a thrown error's name and message but not its
  * class; callers branch on the class. */
-async function revived<T>(call: Promise<T>): Promise<T> {
+export async function revived<T>(call: Promise<T>): Promise<T> {
   try {
     return await call;
   } catch (e) {

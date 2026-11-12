@@ -11,7 +11,7 @@ import { StorageUnavailable } from '../app/shared/errors.js';
 import type { FileLister, FileStore, StorageAuthorization } from '../app/storage/ports.js';
 import { FolderSync } from '../app/storage/sync.js';
 import { AnalyticsActivity } from './adapters/activity.js';
-import { RpcAccounts, rpcAccountPods, rpcDirectory, rpcIdentities, rpcPods } from './adapters/accountRpc.js';
+import { RpcAccounts, revived, rpcAccountPods, rpcDirectory, rpcIdentities, rpcPods } from './adapters/accountRpc.js';
 import { HttpClientRegistry } from './adapters/clientRegistry.js';
 import { DevFileStore } from './adapters/devFiles.js';
 import { DEV_PROVIDER, devAuthorization, devGrants } from './adapters/devStorage.js';
@@ -205,7 +205,7 @@ function accountTokens(env: Env, p: Placement): (refresh: boolean) => Promise<st
   const account = env.ACCOUNT.get(env.ACCOUNT.idFromName(p.accountKey));
   let current: AccessToken | null = null;
   return async (refresh) => {
-    if (refresh || !current || current.expiresAt - Date.now() < 60_000) current = await account.accessToken(p.linkId, refresh);
+    if (refresh || !current || current.expiresAt - Date.now() < 60_000) current = await revived(account.accessToken(p.linkId, refresh));
     return current.token;
   };
 }
