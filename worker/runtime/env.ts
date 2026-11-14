@@ -45,6 +45,8 @@ export interface Env {
   /** Secret: the key the operator's routes ask for (recovery, the directory
    * export). Without it those routes do not exist. */
   OPERATOR_KEY?: string;
+  /** Where security reports go (a URL or mailto:), served as /.well-known/security.txt. Unset: no file. */
+  SECURITY_CONTACT?: string;
   /** Where usage events go; without it, or without the salt, none are written. */
   ACTIVITY?: AnalyticsEngineDataset;
   /** Secret: at least 32 random bytes keying the hash of who an event is about. */

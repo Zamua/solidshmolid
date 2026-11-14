@@ -50,6 +50,7 @@ const worker = {
         if (problems.length > 0) console.error(`not ready: ${problems.join(', ')}`);
         return problems.length > 0 ? probe('not ready', 503, env) : probe('ready', 200, env);
       }
+      if (url.pathname === SECURITY_TXT && env.SECURITY_CONTACT) return securityTxt(env.SECURITY_CONTACT, new Date());
     }
     const handle = handleFromHost(url.hostname, env.POD_HOST_TEMPLATE);
     if (handle === null && url.hostname !== env.APEX_HOST) return new Response('not found\n', { status: 404 });
@@ -64,6 +65,17 @@ function route(request: Request, env: Env, url: URL, handle: string | null, ctx?
 }
 
 export default worker;
+
+const SECURITY_TXT = '/.well-known/security.txt';
+/** How long a security.txt stays valid; it is regenerated on every read. */
+const SECURITY_TXT_DAYS = 180;
+
+/** RFC 9116: where to report a vulnerability, for a deployment that names a contact. */
+export function securityTxt(contact: string, now: Date): Response {
+  const expires = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() + SECURITY_TXT_DAYS));
+  const body = `Contact: ${contact}\nExpires: ${expires.toISOString().replace('.000Z', 'Z')}\nPreferred-Languages: en\n`;
+  return new Response(body, { status: 200, headers: { 'Content-Type': 'text/plain; charset=utf-8', 'Cache-Control': 'max-age=86400' } });
+}
 
 function probe(word: string, status: number, env: Env): Response {
   return new Response(`${word}\n`, { status, headers: { 'Content-Type': 'text/plain', 'Cache-Control': 'no-store', 'X-Release': env.RELEASE ?? 'unknown' } });
