@@ -158,6 +158,28 @@ describe('probes', () => {
   });
 });
 
+describe('security.txt', () => {
+  const CONTACT = 'https://example.org/report';
+
+  it('names the configured contact and an expiry within a year', async () => {
+    const { get } = world({ SECURITY_CONTACT: CONTACT });
+    const res = await get('https://account.example/.well-known/security.txt');
+    const text = await res.text();
+    expect([res.status, res.headers.get('Content-Type')]).toEqual([200, 'text/plain; charset=utf-8']);
+    expect(text).toContain(`Contact: ${CONTACT}\n`);
+    const expires = Date.parse(/^Expires: (\S+)$/mu.exec(text)![1]!);
+    expect(expires - Date.now()).toBeGreaterThan(150 * 86_400_000);
+    expect(expires - Date.now()).toBeLessThan(365 * 86_400_000);
+  });
+
+  it('is not there without a contact, and on a pod it is an ordinary name', async () => {
+    expect((await world().get('https://account.example/.well-known/security.txt')).status).toBe(404);
+    const { get, reached } = world({ SECURITY_CONTACT: CONTACT });
+    await get(`https://${POD_ID}.pods.example/.well-known/security.txt`);
+    expect(reached.map((r) => new URL(r.request.url).pathname)).toEqual(['/.well-known/security.txt']);
+  });
+});
+
 describe('the dev config (DEV_MODE)', () => {
   it('trusts X-Dev-WebID, creates named pods on first request and stays on http', async () => {
     const { get, reached, provisioned } = world({ DEV_MODE: '1', APEX_HOST: 'localhost', POD_HOST_TEMPLATE: '{handle}.localhost', STORAGE: 'dev' });

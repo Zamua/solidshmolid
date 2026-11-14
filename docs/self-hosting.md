@@ -45,7 +45,8 @@ Worker a name, and add the routes and variables:
   "DROPBOX_APP_KEY": "...",                // with dropbox
   "GOOGLE_CLIENT_ID": "...",               // with google-drive
   "CLERK_PUBLISHABLE_KEY": "pk_live_...",
-  "SUPPORT_EMAIL": "help@account.example"  // optional, shown on /privacy
+  "SUPPORT_EMAIL": "help@account.example", // optional, shown on /privacy
+  "SECURITY_CONTACT": "mailto:security@account.example" // optional: /.well-known/security.txt
 }
 ```
 
